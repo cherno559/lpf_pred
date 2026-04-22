@@ -1,5 +1,5 @@
 """
-dashboard_lpf.py — LPF 2026 Scouting Dashboard (v9.4 · Fix Argumentos)
+dashboard_lpf.py — LPF 2026 Scouting Dashboard (v9.5 · Marcadores Pro)
 ─────────────────────────────────────────────────────────────────────────────
 """
 import re, os, math
@@ -49,7 +49,7 @@ PLOT = dict(font=dict(family="Rajdhani", size=13, color="#dde3ee"),
             margin=dict(l=10, r=20, t=36, b=10))
 
 # ──────────────────────────────────────────────────────────────────────
-# FUNCIONES DE APOYO
+# PROCESAMIENTO DE DATOS
 # ──────────────────────────────────────────────────────────────────────
 def num(v) -> float:
     if isinstance(v, str): v = v.replace('%', '').replace(',', '.').strip()
@@ -95,7 +95,7 @@ def construir_df(datos: dict) -> pd.DataFrame:
     return pd.DataFrame(filas)
 
 # ──────────────────────────────────────────────────────────────────────
-# MOTOR ANALÍTICO (Fix v9.4)
+# MOTOR ANALÍTICO
 # ──────────────────────────────────────────────────────────────────────
 @st.cache_data(ttl=120, show_spinner=False)
 def calibrar_xg_sint(partidos_raw: tuple):
@@ -160,17 +160,16 @@ def _strength_blend(partidos_todos, eq, cond, ref_home_xg, ref_away_xg, ref_home
     rh_a, rh_d = (ref_home_xg, ref_away_xg) if cond=="Local" else (ref_away_xg, ref_home_xg)
     rr_a, rr_d = (ref_home_real, ref_away_real) if cond=="Local" else (ref_away_real, ref_home_real)
     
-    # CORRECCIÓN DE ARGUMENTOS AQUÍ:
     atk = blend_rate(xgs_atk, goles_atk, fechas_atk, rh_a, rr_a, max_f)
     deff = blend_rate(xgs_def, goles_def, fechas_def, rh_d, rr_d, max_f)
     return (n * atk + K_SHRINK)/(n + K_SHRINK), (n * deff + K_SHRINK)/(n + K_SHRINK), n
 
-def calcular_lambdas(partidos_todos, eq_a, eq_b, es_loc, ref_home_xg, ref_away_xg, ref_home_real, ref_away_real, a, b, intercept, max_f):
+def calcular_lambdas(partidos_todos, eq_a, eq_b, es_loc, rh_xg, rv_xg, rh_r, rv_r, a, b, intercept, max_f):
     ca, cb = ("Local", "Visitante") if es_loc else ("Visitante", "Local")
-    aa, da, _ = _strength_blend(partidos_todos, eq_a, ca, ref_home_xg, ref_away_xg, ref_home_real, ref_away_real, a, b, intercept, max_f)
-    ab, db, _ = _strength_blend(partidos_todos, eq_b, cb, ref_home_xg, ref_away_xg, ref_home_real, ref_away_real, a, b, intercept, max_f)
-    la = (ref_home_xg if ca=="Local" else ref_away_xg) * aa * db
-    lb = (ref_home_xg if cb=="Local" else ref_away_xg) * ab * da
+    aa, da, _ = _strength_blend(partidos_todos, eq_a, ca, rh_xg, rv_xg, rh_r, rv_r, a, b, intercept, max_f)
+    ab, db, _ = _strength_blend(partidos_todos, eq_b, cb, rh_xg, rv_xg, rh_r, rv_r, a, b, intercept, max_f)
+    la = (rh_xg if ca=="Local" else rv_xg) * aa * db
+    lb = (rh_xg if cb=="Local" else rv_xg) * ab * da
     return round(float(np.clip(la, LAM_MIN, LAM_MAX)), 3), round(float(np.clip(lb, LAM_MIN, LAM_MAX)), 3)
 
 def montecarlo(la, lb):
@@ -185,7 +184,23 @@ def montecarlo(la, lb):
     return {"victoria": float(np.tril(M, -1).sum()), "empate": float(np.trace(M)), "derrota": float(np.triu(M, 1).sum()), "matrix": M}
 
 # ──────────────────────────────────────────────────────────────────────
-# NAVEGACIÓN Y CARGA
+# VISUALIZACIÓN DE MARCADORES
+# ──────────────────────────────────────────────────────────────────────
+def fig_score_matrix(M, ea, eb, n=5):
+    sub = M[:n, :n]
+    z_text = [[f"{sub[i,j]*100:.1f}%" for j in range(n)] for i in range(n)]
+    fig = go.Figure(go.Heatmap(
+        z=sub, x=[str(j) for j in range(n)], y=[str(i) for i in range(n)],
+        text=z_text, texttemplate="%{text}",
+        colorscale=[[0,"#0f1829"],[0.5,"#7f1d1d"],[1,"#e63946"]],
+        showscale=False))
+    fig.update_layout(**PLOT, height=350,
+                      xaxis_title=f"Goles {eb}", yaxis_title=f"Goles {ea}",
+                      yaxis=dict(autorange="reversed"))
+    return fig
+
+# ──────────────────────────────────────────────────────────────────────
+# NAVEGACIÓN
 # ──────────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("## ⚽ LPF 2026")
@@ -193,9 +208,11 @@ with st.sidebar:
     nav  = st.radio("", ["🔮 Predictor","📊 Rankings","🔄 Head-to-Head","📖 Perfil Rival","🎭 Estilos","📋 Tabla"], label_visibility="collapsed")
 
 if not os.path.exists(ruta): st.stop()
-datos, df = cargar_excel(ruta), construir_df(cargar_excel(ruta))
+datos = cargar_excel(ruta)
+df = construir_df(datos)
 equipos, metricas = sorted(df["Equipo"].unique()), sorted(df["Métrica"].unique())
 max_f = int(df["nFecha"].max())
+
 partidos_todos = []
 for f, ps in datos.items():
     nf = int(re.search(r"\d+", f).group())
@@ -213,10 +230,30 @@ if nav == "🔮 Predictor":
     if st.button("🚀 INICIAR ANÁLISIS"):
         la, lb = calcular_lambdas(partidos_todos, ea, eb, loc, rh_xg, rv_xg, rh_r, rv_r, a_xg, b_xg, int_xg, max_f)
         sim = montecarlo(la, lb)
+        
         k1, k2, k3 = st.columns(3)
         k1.markdown(f'<div class="kpi"><div class="lbl">Prob. {ea}</div><div class="val">{sim["victoria"]*100:.1f}%</div></div>', unsafe_allow_html=True)
         k2.markdown(f'<div class="kpi draw"><div class="lbl">Prob. Empate</div><div class="val">{sim["empate"]*100:.1f}%</div></div>', unsafe_allow_html=True)
         k3.markdown(f'<div class="kpi loss"><div class="lbl">Prob. {eb}</div><div class="val">{sim["derrota"]*100:.1f}%</div></div>', unsafe_allow_html=True)
+
+        st.markdown('<div class="section-title">🎯 Marcadores Probables</div>', unsafe_allow_html=True)
+        col_m1, col_m2 = st.columns([7, 3])
+        
+        with col_m1:
+            st.plotly_chart(fig_score_matrix(sim["matrix"], ea, eb), use_container_width=True)
+        
+        with col_m2:
+            # Listado de Marcadores
+            scores = []
+            for i in range(5):
+                for j in range(5):
+                    scores.append({"score": f"{i} - {j}", "prob": sim["matrix"][i,j]})
+            top_scores = sorted(scores, key=lambda x: x["prob"], reverse=True)[:5]
+            st.markdown("### Top 5 Resultados")
+            for s in top_scores:
+                st.write(f"**{s['score']}**: {s['prob']*100:.1f}%")
+
+        st.markdown(f'<div class="note">λ {ea}={la:.3f} | λ {eb}={lb:.3f} | xG Sint: {a_xg:.3f}·TA + {b_xg:.3f}·TT + {int_xg:.3f}</div>', unsafe_allow_html=True)
 
 elif nav == "🎭 Estilos":
     st.markdown('<div class="section-title">🎭 Análisis de Estilo (Original)</div>', unsafe_allow_html=True)
@@ -227,6 +264,16 @@ elif nav == "🎭 Estilos":
         fig = go.Figure(go.Scatter(x=df_e["P"], y=df_e["O"], mode="markers+text", text=df_e.index, textposition="top center", marker=dict(size=12, color=RED, line=dict(width=1, color="white"))))
         fig.add_vline(x=mp, line=dict(color=GRAY, dash="dash")); fig.add_hline(y=mo_m, line=dict(color=GRAY, dash="dash"))
         st.plotly_chart(fig.update_layout(**PLOT, height=600, xaxis_title="Posesión (%)", yaxis_title=f"Ataque ({mo})"), use_container_width=True)
+
+# [MANTENER RANKINGS, H2H, PERFIL Y TABLA IGUAL A V9.4]
+elif nav == "📊 Rankings":
+    st.markdown('<div class="section-title">📊 Rankings</div>', unsafe_allow_html=True)
+    c1, c2, c3 = st.columns(3)
+    m_sel, cond_sel, tipo_sel = c1.selectbox("Métrica", metricas), c2.radio("Condición", ["General","Local","Visitante"], horizontal=True), c3.radio("Enfoque", ["A Favor","En Contra"], horizontal=True)
+    col_data = "Propio" if "A Favor" in tipo_sel else "Concedido"
+    mask = (df["Condicion"] == cond_sel) if cond_sel != "General" else df.index.notna()
+    res = df[mask & (df["Métrica"] == m_sel)].groupby("Equipo")[col_data].mean().sort_values(ascending=False).reset_index()
+    st.plotly_chart(go.Figure(go.Bar(x=res[col_data], y=res["Equipo"], orientation="h", marker_color=RED if col_data=="Propio" else GRAY)).update_layout(**PLOT, height=700), use_container_width=True)
 
 elif nav == "📋 Tabla":
     dr = df[df["Métrica"] == "Resultado"].copy()
