@@ -2,9 +2,9 @@
 dashboard_lpf.py — LPF 2026 Scouting Dashboard
 ────────────────────────────────────────────────
 Lee el Excel generado por sofascore_lpf_generales.py y construye:
-  · Predictor de partidos (modelo Dixon-Coles + xG)
+  · Predictor de partidos (modelo Dixon-Coles + xG estratificado Local/Visitante)
   · Matriz de Eficiencia (Propio vs Concedido)
-  · Head-to-Head con Tabla de Datos Exactos
+  · Head-to-Head con Tabla de Datos Exactos y Radar
   · Perfil por Rival
 """
 
@@ -234,16 +234,22 @@ st.markdown('<h1>LPF 2026 · Scouting Dashboard</h1>', unsafe_allow_html=True)
 if nav == "🔮 Predictor":
     st.markdown('<div class="section-title">🔮 Predictor de Partidos</div>', unsafe_allow_html=True)
     c1, c2, c3 = st.columns([5, 5, 3])
-    eq_a = c1.selectbox("Local", equipos); eq_b = c2.selectbox("Visitante", equipos, index=1); es_loc = c3.toggle("Ventaja local", value=True)
+    eq_a = c1.selectbox("Local", equipos)
+    eq_b = c2.selectbox("Visitante", equipos, index=1)
+    es_loc = c3.toggle("Ventaja local", value=True)
+    
     if st.button("🚀 SIMULAR"):
-        lam_a, lam_b = calcular_lambdas(df, eq_a, eq_b, es_loc); sim = montecarlo(lam_a, lam_b)
+        lam_a, lam_b = calcular_lambdas(df, eq_a, eq_b, es_loc)
+        sim = montecarlo(lam_a, lam_b)
         k1, k2, k3 = st.columns(3)
         k1.markdown(f'<div class="kpi"><div class="lbl">V. {eq_a}</div><div class="val">{sim["victoria"]*100:.1f}%</div></div>', unsafe_allow_html=True)
         k2.markdown(f'<div class="kpi draw"><div class="lbl">Empate</div><div class="val">{sim["empate"]*100:.1f}%</div></div>', unsafe_allow_html=True)
         k3.markdown(f'<div class="kpi loss"><div class="lbl">V. {eq_b}</div><div class="val">{sim["derrota"]*100:.1f}%</div></div>', unsafe_allow_html=True)
         t1, t2 = st.tabs(["📊 Probabilidades", "🕸️ Radar"])
-        with t1: st.plotly_chart(fig_probs(sim, eq_a, eq_b), use_container_width=True)
-        with t2: st.plotly_chart(fig_radar(df, eq_a, eq_b, "Local" if es_loc else "Visitante", "Visitante" if es_loc else "Local"), use_container_width=True)
+        with t1: 
+            st.plotly_chart(fig_probs(sim, eq_a, eq_b), use_container_width=True)
+        with t2: 
+            st.plotly_chart(fig_radar(df, eq_a, eq_b, "Local" if es_loc else "Visitante", "Visitante" if es_loc else "Local"), use_container_width=True)
 
 elif nav == "📊 Rankings":
     st.markdown('<div class="section-title">📊 Rankings y Matriz de Eficiencia</div>', unsafe_allow_html=True)
@@ -251,6 +257,7 @@ elif nav == "📊 Rankings":
     met_sel = c1.selectbox("Métrica", metricas)
     cond_sel = c2.radio("Condición", ["General", "Local", "Visitante"], horizontal=True)
     vista_sel = c3.radio("Vista", ["Barras (Ranking)", "Matriz (Propio vs Concedido)"], horizontal=True)
+    
     if vista_sel == "Barras (Ranking)":
         p_sel = st.radio("Enfoque", ["Propio 🟢", "Concedido 🔴"], horizontal=True)
         col = "Propio" if "Propio" in p_sel else "Concedido"
@@ -262,30 +269,41 @@ elif nav == "📊 Rankings":
 elif nav == "🔄 Head-to-Head":
     st.markdown('<div class="section-title">🔄 Head-to-Head Comparativo</div>', unsafe_allow_html=True)
     c1, c2 = st.columns(2)
-    ea, ca = c1.selectbox("Equipo A", equipos, key="ea"), c1.selectbox("Condición A", ["General", "Local", "Visitante"], key="ca")
-    eb, cb = c2.selectbox("Equipo B", equipos, index=1, key="eb"), c2.selectbox("Condición B", ["General", "Local", "Visitante"], key="cb")
+    ea = c1.selectbox("Equipo A", equipos, key="ea")
+    ca = c1.selectbox("Condición A", ["General", "Local", "Visitante"], key="ca")
     
-    # NUEVA SECCIÓN: TABLA COMPARATIVA H2H
-    st.markdown("### Tabla Comparativa de Datos Exactos")
-    
-    def get_full_stats(eq, cond):
-        d = df[df["Equipo"] == eq]
-        if cond != "General": d = d[d["Condicion"] == cond]
-        return d.groupby("Métrica")["Propio"].mean().round(2)
+    eb = c2.selectbox("Equipo B", equipos, index=min(1, len(equipos)-1), key="eb")
+    cb = c2.selectbox("Condición B", ["General", "Local", "Visitante"], key="cb")
 
-    stats_a = get_full_stats(ea, ca)
-    stats_b = get_full_stats(eb, cb)
-    
-    # Unimos las series en un solo DataFrame
-    df_h2h = pd.DataFrame({
-        f"{ea} ({ca})": stats_a,
-        f"{eb} ({cb})": stats_b
-    }).dropna()
-# Lógica para pintar de verde al ganador de cada estadística
+    if ea == eb and ca == cb:
+        st.info("⚠️ Seleccioná equipos o condiciones diferentes para comparar.")
+    else:
+        st.markdown("### Tabla Comparativa de Datos Exactos")
+        
+        def get_full_stats(eq, cond):
+            d = df[df["Equipo"] == eq]
+            if cond != "General": 
+                d = d[d["Condicion"] == cond]
+            return d.groupby("Métrica")["Propio"].mean().round(2)
+
+        stats_a = get_full_stats(ea, ca)
+        stats_b = get_full_stats(eb, cb)
+        
+        col_a = f"{ea} ({ca})"
+        col_b = f"{eb} ({cb})"
+
+        # Unimos las series en un solo DataFrame
+        df_h2h = pd.DataFrame({
+            col_a: stats_a,
+            col_b: stats_b
+        }).dropna()
+
+        if df_h2h.empty:
+            st.warning("No hay suficientes datos para comparar a estos equipos en estas condiciones.")
+        else:
+            # Lógica para pintar de verde al ganador de cada estadística
             def highlight_winner(row):
                 m = row.name
-                
-                # CORRECCIÓN: Usamos el nombre exacto de la columna en lugar de [0] y [1]
                 val_a = row[col_a]
                 val_b = row[col_b]
                 
@@ -300,10 +318,22 @@ elif nav == "🔄 Head-to-Head":
                     "background-color: rgba(34, 197, 94, 0.2)" if not a_wins else ""
                 ]
 
+            st.dataframe(df_h2h.style.apply(highlight_winner, axis=1), use_container_width=True)
+            
+            # Radar debajo para soporte visual
+            st.markdown("---")
+            st.plotly_chart(fig_radar(df, ea, eb, ca, cb), use_container_width=True)
+
 elif nav == "📖 Perfil por Rival":
     st.markdown('<div class="section-title">📖 Perfil por Rival</div>', unsafe_allow_html=True)
-    e_sel = st.selectbox("Equipo", equipos); m_sel = st.selectbox("Métrica", metricas)
-    d_eq = df[(df["Equipo"] == e_sel) & (df["Métrica"] == m_sel)].sort_values("n_Fecha" if "n_Fecha" in df.columns else "nFecha")
+    e_sel = st.selectbox("Equipo", equipos)
+    m_sel = st.selectbox("Métrica", metricas)
+    d_eq = df[(df["Equipo"] == e_sel) & (df["Métrica"] == m_sel)].sort_values("nFecha" if "nFecha" in df.columns else "n_Fecha")
+    
     if not d_eq.empty:
-        fig = go.Figure([go.Bar(x=d_eq["Rival"], y=d_eq["Propio"], name="Favor", marker_color=RED), go.Bar(x=d_eq["Rival"], y=d_eq["Concedido"], name="Contra", marker_color=GRAY)])
-        fig.update_layout(**PLOT, barmode="group"); st.plotly_chart(fig, use_container_width=True)
+        fig = go.Figure([
+            go.Bar(x=d_eq["Rival"], y=d_eq["Propio"], name="Favor", marker_color=RED), 
+            go.Bar(x=d_eq["Rival"], y=d_eq["Concedido"], name="Contra", marker_color=GRAY)
+        ])
+        fig.update_layout(**PLOT, barmode="group")
+        st.plotly_chart(fig, use_container_width=True)
