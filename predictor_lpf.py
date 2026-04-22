@@ -129,12 +129,13 @@ def _weighted_mean(series: pd.Series, fecha_series: pd.Series) -> float:
 
 def soft_clip(x):
     """
-    Compresión Dinámica: 
-    Si el nivel es normal (0.75 a 1.25) se mantiene idéntico.
-    Si el nivel es extremo (>1.25 o <0.75) se aplasta para evitar desbalances irreales.
+    Compresión Dinámica Asimétrica: 
+    Solo amortiguamos los valores altos (>1.25) que causan la explosión de Poisson (ej. Lanús).
+    Si un equipo tiene un ataque malo o una defensa excelente (x < 1.25), 
+    mantenemos su valor real puro para no inflarlos artificialmente.
     """
-    if x > 1.25: return 1.25 + (x - 1.25) * 0.35
-    if x < 0.75: return 0.75 - (0.75 - x) * 0.35
+    if x > 1.25: 
+        return 1.25 + (x - 1.25) * 0.35
     return x
 
 def calcular_lambdas(df: pd.DataFrame, eq_a: str, eq_b: str, a_es_local: bool, rot_a: float = 0.0, rot_b: float = 0.0):
