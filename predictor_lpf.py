@@ -284,39 +284,47 @@ elif nav == "🔄 Head-to-Head":
             d = df[df["Equipo"] == eq]
             if cond != "General": 
                 d = d[d["Condicion"] == cond]
-            return d.groupby("Métrica")["Propio"].mean().round(2)
+            # AHORA TRAEMOS AMBAS COLUMNAS (PROPIO Y CONCEDIDO)
+            return d.groupby("Métrica")[["Propio", "Concedido"]].mean().round(2)
 
         stats_a = get_full_stats(ea, ca)
         stats_b = get_full_stats(eb, cb)
         
-        col_a = f"{ea} ({ca})"
-        col_b = f"{eb} ({cb})"
+        idx = stats_a.index.intersection(stats_b.index)
 
-        # Unimos las series en un solo DataFrame
-        df_h2h = pd.DataFrame({
-            col_a: stats_a,
-            col_b: stats_b
-        }).dropna()
-
-        if df_h2h.empty:
+        if idx.empty:
             st.warning("No hay suficientes datos para comparar a estos equipos en estas condiciones.")
         else:
-            # Lógica para pintar de verde al ganador de cada estadística
+            col_a = f"{ea} ({ca})"
+            col_b = f"{eb} ({cb})"
+
+            # Armamos el DataFrame con 4 columnas
+            df_h2h = pd.DataFrame({
+                f"{col_a} (A Favor)": stats_a.loc[idx, "Propio"].values,
+                f"{col_b} (A Favor)": stats_b.loc[idx, "Propio"].values,
+                f"{col_a} (En Contra)": stats_a.loc[idx, "Concedido"].values,
+                f"{col_b} (En Contra)": stats_b.loc[idx, "Concedido"].values
+            }, index=idx)
+
+            # Lógica para pintar de verde al ganador (solo evaluamos la métrica A FAVOR para no marear)
             def highlight_winner(row):
                 m = row.name
-                val_a = row[col_a]
-                val_b = row[col_b]
+                styles = [""] * 4 # 4 estilos vacíos para las 4 columnas
                 
-                if val_a == val_b: 
-                    return ["", ""]
+                # Comparamos solo las dos primeras columnas (Lo generado a favor)
+                val_a = row.iloc[0] 
+                val_b = row.iloc[1]
+                
+                if val_a != val_b:
+                    is_less_better = m in METRICAS_MENOS_ES_MEJOR
+                    a_wins = (val_a > val_b) if not is_less_better else (val_a < val_b)
                     
-                is_less_better = m in METRICAS_MENOS_ES_MEJOR
-                a_wins = (val_a > val_b) if not is_less_better else (val_a < val_b)
-                
-                return [
-                    "background-color: rgba(34, 197, 94, 0.2)" if a_wins else "", 
-                    "background-color: rgba(34, 197, 94, 0.2)" if not a_wins else ""
-                ]
+                    if a_wins:
+                        styles[0] = "background-color: rgba(34, 197, 94, 0.2)"
+                    else:
+                        styles[1] = "background-color: rgba(34, 197, 94, 0.2)"
+                        
+                return styles
 
             st.dataframe(df_h2h.style.apply(highlight_winner, axis=1), use_container_width=True)
             
