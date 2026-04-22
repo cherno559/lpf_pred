@@ -1,11 +1,11 @@
 """
-dashboard_lpf.py — LPF 2026 Scouting Dashboard (v5 Final - Tope Sudamericano)
+dashboard_lpf.py — LPF 2026 Scouting Dashboard (v6 - Amortiguación Exponencial)
 ────────────────────────────────────────────────────
 Mejoras:
-  · Modelo Poisson Multiplicativo con Clipping Estricto (Topes entre 0.70 y 1.35) 
-    para mantener el favoritismo sin llegar a porcentajes irreales (ej. >80%).
-  · Calibrador Anti-Empate limitado solo a partidos parejos (Diferencia < 0.60).
-  · Blend Histórico (70% Específico / 30% General) y protección de muestra chica.
+  · Reemplazo del Clipping rígido por "Dampening Exponencial" (Raíz/Potencia).
+    Comprime los extremos (Lanús) sin borrar las diferencias sutiles en 
+    partidos parejos (Boca vs Defensa).
+  · Calibrador Anti-Empate y Blend Histórico (70/30) se mantienen.
 """
 
 import re, os
@@ -67,6 +67,10 @@ MAX_ROTATION_PENALTY = 0.12
 PESO_ESPECIFICO_DEFAULT = 0.70
 PESO_GENERAL_DEFAULT = 0.30
 
+# AMORTIGUADOR (DAMPING): 1.0 es lineal (explota), 0.5 es raíz cuadrada (muy comprimido). 
+# 0.65 es el balance ideal para el fútbol sudamericano.
+POWER_DAMPING = 0.65 
+
 # ──────────────────────────────────────────────────────────────────────
 # PARSEO Y PROCESAMIENTO
 # ──────────────────────────────────────────────────────────────────────
@@ -121,7 +125,7 @@ def ranking(df: pd.DataFrame, metrica: str, columna="Propio", ascendente=False) 
     return df[df["Métrica"] == metrica].groupby("Equipo")[columna].agg(Promedio="mean", Total="sum", Partidos="count").reset_index().round(2).sort_values("Promedio", ascending=ascendente)
 
 # ──────────────────────────────────────────────────────────────────────
-# MOTOR PREDICTOR (V5: Blend + Tope Sudamericano + Parejos)
+# MOTOR PREDICTOR (V6: Dampening Exponencial)
 # ──────────────────────────────────────────────────────────────────────
 def _weighted_mean(series: pd.Series, fecha_series: pd.Series) -> float:
     if series.empty: return float("nan")
@@ -164,14 +168,15 @@ def calcular_lambdas(df: pd.DataFrame, eq_a: str, eq_b: str, a_es_local: bool, r
     ref_a = ref_a_spec * wsa + m_gf_gen * wga
     ref_b = ref_b_spec * wsb + m_gf_gen * wgb
 
-    # ── V5 FIX: Modelo Multiplicativo Topado (Límites Estrictos "Sudamericanos") ──
-    # Bajamos el techo a 1.35 y subimos el piso a 0.70.
-    fza_ataque_a = np.clip(gfa / max(ref_a, 0.01), 0.70, 1.35)
-    deb_defensa_b = np.clip(gcb / max(ref_b, 0.01), 0.70, 1.35)
+    # ── V6 FIX: Dampening Exponencial (El Resorte) ──
+    # Reemplazamos los topes rígidos por una curva exponencial. 
+    # Mantiene las jerarquías exactas pero achata los extremos salvajes.
+    fza_ataque_a = (gfa / max(ref_a, 0.01)) ** POWER_DAMPING
+    deb_defensa_b = (gcb / max(ref_b, 0.01)) ** POWER_DAMPING
     lam_a = fza_ataque_a * deb_defensa_b * ref_a
 
-    fza_ataque_b = np.clip(gfb / max(ref_b, 0.01), 0.70, 1.35)
-    deb_defensa_a = np.clip(gca / max(ref_a, 0.01), 0.70, 1.35)
+    fza_ataque_b = (gfb / max(ref_b, 0.01)) ** POWER_DAMPING
+    deb_defensa_a = (gca / max(ref_a, 0.01)) ** POWER_DAMPING
     lam_b = fza_ataque_b * deb_defensa_a * ref_b
 
     # ── Refinamiento con xG ──
@@ -199,8 +204,14 @@ def calcular_lambdas(df: pd.DataFrame, eq_a: str, eq_b: str, a_es_local: bool, r
         w_xg_a = 0.60 if n_xa >= 3 else 0.45
         w_xg_b = 0.60 if n_xb >= 3 else 0.45
 
-        if not np.isnan(xa) and m_ref_xg_a > 0: lam_a = lam_a * (1 - w_xg_a) + (xa / m_ref_xg_a * ref_a) * w_xg_a
-        if not np.isnan(xb) and m_ref_xg_b > 0: lam_b = lam_b * (1 - w_xg_b) + (xb / m_ref_xg_b * ref_b) * w_xg_b
+        if not np.isnan(xa) and m_ref_xg_a > 0: 
+            # Aplicamos el mismo resorte al ajuste de xG
+            ajuste_xa = (xa / m_ref_xg_a) ** POWER_DAMPING
+            lam_a = lam_a * (1 - w_xg_a) + (ajuste_xa * ref_a) * w_xg_a
+            
+        if not np.isnan(xb) and m_ref_xg_b > 0: 
+            ajuste_xb = (xb / m_ref_xg_b) ** POWER_DAMPING
+            lam_b = lam_b * (1 - w_xg_b) + (ajuste_xb * ref_b) * w_xg_b
 
     # ── Penalización por rotación ──
     if rot_a > 0: lam_a *= (1 - rot_a * MAX_ROTATION_PENALTY); lam_b *= (1 + rot_a * MAX_ROTATION_PENALTY * 0.4)
@@ -324,7 +335,7 @@ if nav == "🔮 Predictor":
         k1.markdown(f'<div class="kpi"><div class="lbl">V. {eq_a}</div><div class="val">{sim["victoria"]*100:.1f}%</div></div>', unsafe_allow_html=True)
         k2.markdown(f'<div class="kpi draw"><div class="lbl">Empate</div><div class="val">{sim["empate"]*100:.1f}%</div></div>', unsafe_allow_html=True)
         k3.markdown(f'<div class="kpi loss"><div class="lbl">V. {eq_b}</div><div class="val">{sim["derrota"]*100:.1f}%</div></div>', unsafe_allow_html=True)
-        st.markdown(f'<div class="note">⚙️ Modelo Híbrido V5 (Tope Sudamericano) | λ {eq_a} = {lam_a} · λ {eq_b} = {lam_b}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="note">⚙️ Modelo V6 (Dampening = {POWER_DAMPING}) | λ {eq_a} = {lam_a} · λ {eq_b} = {lam_b}</div>', unsafe_allow_html=True)
 
         t1, t2, t3 = st.tabs(["📊 Probabilidades", "🎯 Marcadores exactos", "🕸️ Radar"])
         with t1: st.plotly_chart(fig_probs(sim, eq_a, eq_b), use_container_width=True)
