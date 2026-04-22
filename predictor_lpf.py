@@ -1,11 +1,11 @@
 """
-dashboard_lpf.py — LPF 2026 Scouting Dashboard (v5 Final)
+dashboard_lpf.py — LPF 2026 Scouting Dashboard (v5 Final - Tope Sudamericano)
 ────────────────────────────────────────────────────
 Mejoras:
-  · Modelo Poisson Multiplicativo con Clipping (Topes entre 0.5 y 1.8) para evitar 
-    explosión de probabilidades en partidos muy desparejos (ej. 85%).
-  · Calibrador Anti-Empate limitado a partidos parejos (Diferencia < 0.60).
-  · Mantiene el Blend (70% Específico / 30% General) y la protección de muestra chica.
+  · Modelo Poisson Multiplicativo con Clipping Estricto (Topes entre 0.70 y 1.35) 
+    para mantener el favoritismo sin llegar a porcentajes irreales (ej. >80%).
+  · Calibrador Anti-Empate limitado solo a partidos parejos (Diferencia < 0.60).
+  · Blend Histórico (70% Específico / 30% General) y protección de muestra chica.
 """
 
 import re, os
@@ -121,7 +121,7 @@ def ranking(df: pd.DataFrame, metrica: str, columna="Propio", ascendente=False) 
     return df[df["Métrica"] == metrica].groupby("Equipo")[columna].agg(Promedio="mean", Total="sum", Partidos="count").reset_index().round(2).sort_values("Promedio", ascending=ascendente)
 
 # ──────────────────────────────────────────────────────────────────────
-# MOTOR PREDICTOR (V5: Blend + Clipping + Parejos)
+# MOTOR PREDICTOR (V5: Blend + Tope Sudamericano + Parejos)
 # ──────────────────────────────────────────────────────────────────────
 def _weighted_mean(series: pd.Series, fecha_series: pd.Series) -> float:
     if series.empty: return float("nan")
@@ -164,14 +164,14 @@ def calcular_lambdas(df: pd.DataFrame, eq_a: str, eq_b: str, a_es_local: bool, r
     ref_a = ref_a_spec * wsa + m_gf_gen * wga
     ref_b = ref_b_spec * wsb + m_gf_gen * wgb
 
-    # ── V5 FIX: Modelo Multiplicativo Topado (Clipping) ──
-    # Limitamos la ventaja a un max de 1.8x para evitar probabilidades del 85%+
-    fza_ataque_a = np.clip(gfa / max(ref_a, 0.01), 0.5, 1.8)
-    deb_defensa_b = np.clip(gcb / max(ref_b, 0.01), 0.5, 1.8)
+    # ── V5 FIX: Modelo Multiplicativo Topado (Límites Estrictos "Sudamericanos") ──
+    # Bajamos el techo a 1.35 y subimos el piso a 0.70.
+    fza_ataque_a = np.clip(gfa / max(ref_a, 0.01), 0.70, 1.35)
+    deb_defensa_b = np.clip(gcb / max(ref_b, 0.01), 0.70, 1.35)
     lam_a = fza_ataque_a * deb_defensa_b * ref_a
 
-    fza_ataque_b = np.clip(gfb / max(ref_b, 0.01), 0.5, 1.8)
-    deb_defensa_a = np.clip(gca / max(ref_a, 0.01), 0.5, 1.8)
+    fza_ataque_b = np.clip(gfb / max(ref_b, 0.01), 0.70, 1.35)
+    deb_defensa_a = np.clip(gca / max(ref_a, 0.01), 0.70, 1.35)
     lam_b = fza_ataque_b * deb_defensa_a * ref_b
 
     # ── Refinamiento con xG ──
@@ -206,8 +206,7 @@ def calcular_lambdas(df: pd.DataFrame, eq_a: str, eq_b: str, a_es_local: bool, r
     if rot_a > 0: lam_a *= (1 - rot_a * MAX_ROTATION_PENALTY); lam_b *= (1 + rot_a * MAX_ROTATION_PENALTY * 0.4)
     if rot_b > 0: lam_b *= (1 - rot_b * MAX_ROTATION_PENALTY); lam_a *= (1 + rot_b * MAX_ROTATION_PENALTY * 0.4)
 
-    # ── V5 FIX: Calibrador Anti-Empate Limitado ──
-    # Solo aplicamos estirador si el partido es medianamente parejo.
+    # ── Calibrador Anti-Empate Limitado ──
     diferencia = abs(lam_a - lam_b)
     if 0.05 < diferencia < 0.60:
         if lam_a > lam_b: lam_a *= 1.10; lam_b *= 0.90
@@ -325,7 +324,7 @@ if nav == "🔮 Predictor":
         k1.markdown(f'<div class="kpi"><div class="lbl">V. {eq_a}</div><div class="val">{sim["victoria"]*100:.1f}%</div></div>', unsafe_allow_html=True)
         k2.markdown(f'<div class="kpi draw"><div class="lbl">Empate</div><div class="val">{sim["empate"]*100:.1f}%</div></div>', unsafe_allow_html=True)
         k3.markdown(f'<div class="kpi loss"><div class="lbl">V. {eq_b}</div><div class="val">{sim["derrota"]*100:.1f}%</div></div>', unsafe_allow_html=True)
-        st.markdown(f'<div class="note">⚙️ Modelo Híbrido V5 (Clipping activo) | λ {eq_a} = {lam_a} · λ {eq_b} = {lam_b}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="note">⚙️ Modelo Híbrido V5 (Tope Sudamericano) | λ {eq_a} = {lam_a} · λ {eq_b} = {lam_b}</div>', unsafe_allow_html=True)
 
         t1, t2, t3 = st.tabs(["📊 Probabilidades", "🎯 Marcadores exactos", "🕸️ Radar"])
         with t1: st.plotly_chart(fig_probs(sim, eq_a, eq_b), use_container_width=True)
