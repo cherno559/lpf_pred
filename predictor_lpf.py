@@ -1,5 +1,5 @@
 """
-dashboard_lpf.py — LPF 2026 Scouting Dashboard (v8.4 · Full Concedidos)
+dashboard_lpf.py — LPF 2026 Scouting Dashboard (v8.5 · Estabilidad Total)
 ─────────────────────────────────────────────────────────────────────────────
 """
 import re, os, math
@@ -9,7 +9,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 # ──────────────────────────────────────────────────────────────────────
-# CONFIGURACIÓN Y ESTILOS
+# CONFIGURACIÓN Y ESTILOS (Originales preservados)
 # ──────────────────────────────────────────────────────────────────────
 st.set_page_config(page_title="LPF 2026 · Analítica Pro", page_icon="⚽", layout="wide", initial_sidebar_state="expanded")
 
@@ -28,24 +28,24 @@ h1 { font-family:'Bebas Neue',cursive !important; font-size:2.6rem !important; c
 .stTabs [data-baseweb="tab-list"] { background:#0f1829; border-radius:10px; padding:4px; gap:4px; }
 .stTabs [data-baseweb="tab"] { font-family:'Rajdhani'; font-weight:700; font-size:14px; color:#64748b !important; border-radius:7px; padding:6px 16px; }
 .stTabs [aria-selected="true"] { background:#e63946 !important; color:#fff !important; }
-.stButton>button { font-family:'Bebas Neue'; font-size:17px; letter-spacing:2px; background:linear-gradient(135deg,#e63946,#b91c2c); color:#fff; border:none; border-radius:9px; padding:13px; width:100%; }
+.stButton>button { font-family:'Bebas Neue'; font-size:17px; letter-spacing:2px; background:linear-gradient(135deg,#e63946,#b91c2c); color:#fff; border:none; border-radius:9px; padding:13px; width:100%; transition:all .2s; }
 .stSelectbox>div>div, .stTextInput>div>div { background:#0f1829 !important; border:1px solid #1c2a40 !important; color:#dde3ee !important; border-radius:8px !important; }
 .note { background:#0f1829; border:1px solid #1c2a40; border-radius:8px; padding:10px 14px; font-size:12px; color:#64748b; margin-top:8px; }
 </style>
 """, unsafe_allow_html=True)
 
-# ── Parámetros de Equilibrio (V8.4) ───────────────────────────────────
-W_XG = 0.80            # Prioridad al xG pero reconociendo la chapa real.
-K_SHRINK = 3.5         # Menos agresivo para no aplanar a los equipos grandes.
+# ── Parámetros Calibrados (Protección de Equipos Dominantes) ──────────
+W_XG = 0.75            # Prioridad al xG pero reconociendo la chapa real.
+K_SHRINK = 3.0         # Restaurado al original para evitar sobre-compresión.
 DC_RHO = -0.10
 MAX_GOALS_MATRIX = 7
-N_RECENCIA, PESO_RECIENTE, PESO_NORMAL = 3, 1.8, 1.0  # Recencia balanceada.
+N_RECENCIA, PESO_RECIENTE, PESO_NORMAL = 3, 1.5, 1.0  # Recencia suave (ayuda a Racing/Argentinos).
 MAX_ROTATION_PENALTY, LAM_MIN, LAM_MAX = 0.12, 0.25, 4.50
 RED, BLUE, GRAY = "#e63946", "#3b82f6", "#64748b"
 PLOT = dict(font=dict(family="Rajdhani", size=13, color="#dde3ee"), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", margin=dict(l=10, r=20, t=36, b=10))
 
 # ──────────────────────────────────────────────────────────────────────
-# PROCESAMIENTO DE ARCHIVOS
+# PROCESAMIENTO
 # ──────────────────────────────────────────────────────────────────────
 def num(v) -> float:
     if isinstance(v, str): v = v.replace('%', '').replace(',', '.').strip()
@@ -151,15 +151,16 @@ def montecarlo(la, lb):
 # ──────────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("## ⚽ LPF 2026")
-    ruta = st.text_input("📂 Excel", "Fecha_x_fecha_lpf.xlsx")
+    ruta = st.text_input("📂 Archivo Excel", "Fecha_x_fecha_lpf.xlsx")
     nav = st.radio("", ["🔮 Predictor", "📊 Rankings", "🔄 Head-to-Head", "📖 Perfil Rival", "🎭 Estilos"], label_visibility="collapsed")
 
-if not os.path.exists(ruta): st.warning("Cargar Excel."); st.stop()
+if not os.path.exists(ruta): st.stop()
 datos = cargar_excel(ruta); df = construir_df(datos)
 equipos, metricas = sorted(df["Equipo"].unique()), sorted(df["Métrica"].unique())
 st.markdown('<h1>LPF 2026 · Scouting Dashboard</h1>', unsafe_allow_html=True)
 
 if nav == "🔮 Predictor":
+    st.markdown('<div class="section-title">🔮 Predictor (v8.5)</div>', unsafe_allow_html=True)
     c1, c2, c3 = st.columns([5, 5, 3])
     ea, eb, loc = c1.selectbox("Local", equipos), c2.selectbox("Visitante", equipos, index=min(1, len(equipos)-1)), c3.toggle("Bono Localía", True)
     if st.button("🚀 INICIAR ANÁLISIS"):
@@ -173,7 +174,7 @@ if nav == "🔮 Predictor":
 elif nav == "📊 Rankings":
     st.markdown('<div class="section-title">📊 Rankings: A Favor vs En Contra</div>', unsafe_allow_html=True)
     c1, c2, c3 = st.columns(3)
-    m_sel, cond_sel, tipo_sel = c1.selectbox("Métrica", metricas), c2.radio("Condición", ["General", "Local", "Visitante"], horizontal=True), c3.radio("Enfoque", ["A Favor (Propio)", "En Contra (Concedido)"], horizontal=True)
+    m_sel, cond_sel, tipo_sel = c1.selectbox("Métrica", metricas), c2.radio("Condición", ["General", "Local", "Visitante"], horizontal=True), c3.radio("Enfoque", ["A Favor", "En Contra"], horizontal=True)
     col_data = "Propio" if "A Favor" in tipo_sel else "Concedido"
     res = df[(df["Condicion"] == cond_sel if cond_sel != "General" else True) & (df["Métrica"] == m_sel)].groupby("Equipo")[col_data].mean().sort_values(ascending=False).reset_index()
     st.plotly_chart(go.Figure(go.Bar(x=res[col_data], y=res["Equipo"], orientation="h", marker_color=RED if "Propio" in col_data else GRAY)).update_layout(**PLOT, height=700), use_container_width=True)
@@ -186,6 +187,7 @@ elif nav == "🔄 Head-to-Head":
     st.table(h2h_df)
 
 elif nav == "📖 Perfil Rival":
+    st.markdown('<div class="section-title">📖 Perfil Histórico</div>', unsafe_allow_html=True)
     eq_p, met_p = st.selectbox("Equipo", equipos), st.selectbox("Métrica", metricas)
     d_eq = df[(df["Equipo"] == eq_p) & (df["Métrica"] == met_p)].sort_values("nFecha")
     if not d_eq.empty:
@@ -193,13 +195,11 @@ elif nav == "📖 Perfil Rival":
         st.plotly_chart(fig.update_layout(**PLOT, barmode="group"), use_container_width=True)
 
 elif nav == "🎭 Estilos":
-    st.markdown('<div class="section-title">🎭 Posesión vs Creación (Burbuja: Defensa)</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">🎭 Análisis de Estilo (Original)</div>', unsafe_allow_html=True)
+    mo = "Goles esperados (xG)" if "Goles esperados (xG)" in metricas else "Tiros totales"
     if "Posesión de balón" in metricas:
-        mo = "Goles esperados (xG)" if "Goles esperados (xG)" in metricas else "Tiros totales"
-        df_e = pd.DataFrame({
-            "Posesión": df[df["Métrica"]=="Posesión de balón"].groupby("Equipo")["Propio"].mean(),
-            "Creación": df[df["Métrica"]==mo].groupby("Equipo")["Propio"].mean(),
-            "Recibido": df[df["Métrica"]==mo].groupby("Equipo")["Concedido"].mean()
-        }).dropna()
-        fig = go.Figure(go.Scatter(x=df_e["Posesión"], y=df_e["Creación"], mode="markers+text", text=df_e.index, marker=dict(size=df_e["Recibido"]*10, color=RED, opacity=0.7)))
-        st.plotly_chart(fig.update_layout(**PLOT, height=600, xaxis_title="Posesión %", yaxis_title=f"Creación ({mo})"), use_container_width=True)
+        df_e = pd.DataFrame({"P": df[df["Métrica"] == "Posesión de balón"].groupby("Equipo")["Propio"].mean(), "O": df[df["Métrica"] == mo].groupby("Equipo")["Propio"].mean()}).dropna()
+        mp, mo_m = df_e["P"].mean(), df_e["O"].mean()
+        fig = go.Figure(go.Scatter(x=df_e["P"], y=df_e["O"], mode="markers+text", text=df_e.index, textposition="top center", marker=dict(size=12, color=RED, line=dict(width=1, color="white"))))
+        fig.add_vline(x=mp, line=dict(color=GRAY, dash="dash")); fig.add_hline(y=mo_m, line=dict(color=GRAY, dash="dash"))
+        st.plotly_chart(fig.update_layout(**PLOT, height=600, xaxis_title="Posesión (%)", yaxis_title=f"Ataque ({mo})"), use_container_width=True)
