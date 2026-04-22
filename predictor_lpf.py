@@ -168,9 +168,15 @@ def calcular_lambdas(df: pd.DataFrame, eq_a: str, eq_b: str, a_es_local: bool, r
     ref_a = ref_a_spec * wsa + m_gf_gen * wga
     ref_b = ref_b_spec * wsb + m_gf_gen * wgb
 
-    lam_a = (gfa / max(ref_a, 0.01)) * (gcb / max(ref_b, 0.01)) * ref_a
-    lam_b = (gfb / max(ref_b, 0.01)) * (gca / max(ref_a, 0.01)) * ref_b
+   # ── Cálculo de Lambda Base (Modelo Aditivo para evitar explosión) ──
+    fuerza_ataque_a = gfa / max(ref_a, 0.01)
+    debilidad_def_b = gcb / max(ref_b, 0.01)
+    # En lugar de multiplicar, promediamos la fuerza y la debilidad
+    lam_a = ((fuerza_ataque_a + debilidad_def_b) / 2) * ref_a
 
+    fuerza_ataque_b = gfb / max(ref_b, 0.01)
+    debilidad_def_a = gca / max(ref_a, 0.01)
+    lam_b = ((fuerza_ataque_b + debilidad_def_a) / 2) * ref_b
     # ── Refinamiento con xG Blended ──
     df_xg = df[df["Métrica"] == "Goles esperados (xG)"]
     if not df_xg.empty:
