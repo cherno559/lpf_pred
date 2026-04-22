@@ -6,6 +6,7 @@ Lee el Excel generado por sofascore_lpf_generales.py y construye:
   · Matriz de Eficiencia (Propio vs Concedido)
   · Head-to-Head con Tabla (A favor / En contra) y Radar
   · Perfil por Rival
+  · Matriz de Estilos de Juego (Modelo Heurístico)
 """
 
 import re, os
@@ -177,7 +178,6 @@ def fig_probs(sim, na, nb):
     fig.update_layout(**PLOT, height=200, xaxis=dict(**GRID, range=[0, 105], ticksuffix="%"), showlegend=False)
     return fig
 
-# ESTA ES LA FUNCIÓN DE MARCADORES QUE HABÍA SACADO POR ERROR
 def fig_marcadores(sim, na, nb):
     df = sim["df"].copy()
     df["label"] = na + " " + df["A"].astype(str) + "–" + df["B"].astype(str) + " " + nb
@@ -229,8 +229,8 @@ with st.sidebar:
     st.markdown("## ⚽ LPF 2026")
     ruta = st.text_input("📂 Excel", value="Fecha_x_fecha_lpf.xlsx")
     st.markdown("---")
-    # Limpiamos Estilos de Juego
-    nav = st.radio("", ["🔮 Predictor", "📊 Rankings", "🔄 Head-to-Head", "📖 Perfil por Rival"], label_visibility="collapsed")
+    # Agregado de vuelta: 🎭 Estilos de Juego
+    nav = st.radio("", ["🔮 Predictor", "📊 Rankings", "🔄 Head-to-Head", "📖 Perfil por Rival", "🎭 Estilos de Juego"], label_visibility="collapsed")
 
 if not os.path.exists(ruta):
     st.warning("No se encontró el Excel."); st.stop()
@@ -260,7 +260,6 @@ if nav == "🔮 Predictor":
         k2.markdown(f'<div class="kpi draw"><div class="lbl">Empate</div><div class="val">{sim["empate"]*100:.1f}%</div></div>', unsafe_allow_html=True)
         k3.markdown(f'<div class="kpi loss"><div class="lbl">V. {eq_b}</div><div class="val">{sim["derrota"]*100:.1f}%</div></div>', unsafe_allow_html=True)
         
-        # ACÁ DEVOLVÍ LOS 3 TABS EXACTOS COMO ANTES
         t1, t2, t3 = st.tabs(["📊 Probabilidades", "🎯 Marcadores exactos", "🕸️ Radar"])
         with t1: 
             st.plotly_chart(fig_probs(sim, eq_a, eq_b), use_container_width=True)
@@ -360,3 +359,65 @@ elif nav == "📖 Perfil por Rival":
         ])
         fig.update_layout(**PLOT, barmode="group")
         st.plotly_chart(fig, use_container_width=True)
+
+elif nav == "🎭 Estilos de Juego":
+    st.markdown('<div class="section-title">🎭 Matriz de Estilos de Juego</div>', unsafe_allow_html=True)
+    st.markdown("Esta matriz clasifica a los equipos basándose en su posesión (Eje X) y su volumen ofensivo (Eje Y).")
+
+    # Definimos las dos métricas clave (buscamos xG, si no hay, usamos Tiros totales)
+    metrica_ofensiva = "Goles esperados (xG)" if "Goles esperados (xG)" in metricas else "Tiros totales"
+    metrica_posesion = "Posesión de balón"
+    
+    if metrica_posesion not in metricas or metrica_ofensiva not in metricas:
+        st.warning("Faltan métricas de Posesión o Tiros/xG en el Excel para armar la matriz.")
+    else:
+        # Extraemos los promedios
+        df_pos = df[df["Métrica"] == metrica_posesion].groupby("Equipo")["Propio"].mean()
+        df_ata = df[df["Métrica"] == metrica_ofensiva].groupby("Equipo")["Propio"].mean()
+        
+        df_estilos = pd.DataFrame({"Posesion": df_pos, "Ofensiva": df_ata}).dropna()
+        
+        # Calculamos la media de la liga para trazar los cuadrantes
+        media_pos = df_estilos["Posesion"].mean()
+        media_ata = df_estilos["Ofensiva"].mean()
+
+        fig = go.Figure()
+        
+        # Trazamos los equipos
+        fig.add_trace(go.Scatter(
+            x=df_estilos["Posesion"], 
+            y=df_estilos["Ofensiva"], 
+            mode="markers+text", 
+            text=df_estilos.index, 
+            textposition="top center",
+            marker=dict(size=12, color=RED, opacity=0.8, line=dict(width=1, color="white"))
+        ))
+        
+        # Trazamos los ejes cruzados (Promedios)
+        fig.add_vline(x=media_pos, line=dict(color=GRAY, dash="dash"))
+        fig.add_hline(y=media_ata, line=dict(color=GRAY, dash="dash"))
+        
+        # Anotaciones de los Cuadrantes
+        fig.add_annotation(x=df_estilos["Posesion"].max(), y=df_estilos["Ofensiva"].max(), text="OFENSIVO DE POSESIÓN", showarrow=False, font=dict(color="#22c55e", size=11), xanchor="right")
+        fig.add_annotation(x=df_estilos["Posesion"].min(), y=df_estilos["Ofensiva"].max(), text="OFENSIVO DIRECTO", showarrow=False, font=dict(color="#f59e0b", size=11), xanchor="left")
+        fig.add_annotation(x=df_estilos["Posesion"].max(), y=df_estilos["Ofensiva"].min(), text="DEFENSIVO DE POSESIÓN", showarrow=False, font=dict(color="#3b82f6", size=11), xanchor="right")
+        fig.add_annotation(x=df_estilos["Posesion"].min(), y=df_estilos["Ofensiva"].min(), text="DEFENSIVO REACTIVO", showarrow=False, font=dict(color="#ef4444", size=11), xanchor="left")
+
+        fig.update_layout(
+            **PLOT, 
+            height=600, 
+            xaxis_title="Promedio de Posesión de Balón (%)", 
+            yaxis_title=f"Volumen de Ataque ({metrica_ofensiva})", 
+            xaxis=dict(**GRID), yaxis=dict(**GRID)
+        )
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Tabla resumen debajo
+        def categorizar(row):
+            if row["Posesion"] > media_pos and row["Ofensiva"] > media_ata: return "🟢 Ofensivo de Posesión (Elaboran y Atacan)"
+            elif row["Posesion"] <= media_pos and row["Ofensiva"] > media_ata: return "🟠 Ofensivo Directo (Contragolpe / Verticales)"
+            elif row["Posesion"] > media_pos and row["Ofensiva"] <= media_ata: return "🔵 Defensivo de Posesión (Tenencia pasiva)"
+            else: return "🔴 Defensivo Reactivo (Bloque bajo)"
+            
+        df_estilos["Categoría Asignada"] = df_estilos.apply(categorizar, axis=1)
+        st.dataframe(df_estilos.sort_values(["Categoría Asignada", "Ofensiva"], ascending=[True, False]), use_container_width=True)
