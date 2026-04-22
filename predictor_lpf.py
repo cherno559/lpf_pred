@@ -4,6 +4,7 @@ dashboard_lpf.py — LPF 2026 Scouting Dashboard
 Lee el Excel generado por sofascore_lpf_generales.py y construye:
   · Predictor de partidos (modelo Dixon-Coles + xG)
   · Matriz de Eficiencia (Propio vs Concedido)
+  · Head-to-Head con Tabla de Datos Exactos
   · Perfil por Rival
 """
 
@@ -28,10 +29,10 @@ st.set_page_config(
 st.markdown("""
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Rajdhani:wght@500;700&family=Inter:wght@400;500&display=swap" rel="stylesheet">
 <style>
-html, body, [class*=\"css\"] { font-family: 'Inter', sans-serif; }
+html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
 .stApp { background: #080d18; color: #dde3ee; }
-section[data-testid=\"stSidebar\"] { background: #0c1220 !important; border-right: 1px solid #1c2a40; }
-section[data-testid=\"stSidebar\"] label, section[data-testid=\"stSidebar\"] p { color: #8899aa !important; font-size:13px !important; }
+section[data-testid="stSidebar"] { background: #0c1220 !important; border-right: 1px solid #1c2a40; }
+section[data-testid="stSidebar"] label, section[data-testid="stSidebar"] p { color: #8899aa !important; font-size:13px !important; }
 h1 { font-family:'Bebas Neue',cursive !important; font-size:2.6rem !important; color:#e63946 !important; letter-spacing:3px; margin-bottom:0; }
 h2 { font-family:'Bebas Neue',cursive !important; font-size:1.6rem !important; color:#dde3ee !important; letter-spacing:2px; }
 h3 { font-family:'Rajdhani',sans-serif !important; font-size:1.1rem !important; color:#8899aa !important; font-weight:700; }
@@ -46,9 +47,9 @@ h3 { font-family:'Rajdhani',sans-serif !important; font-size:1.1rem !important; 
 .kpi.loss .val { color:#60a5fa; }
 .kpi.info .val { color:#4ade80; }
 .badge { display:inline-block; padding:3px 14px; border-radius:20px; font-family:'Rajdhani'; font-size:12px; font-weight:700; background:#0d2b1a; color:#4ade80; margin-bottom:14px; }
-.stTabs [data-baseweb=\"tab-list\"] { background:#0f1829; border-radius:10px; padding:4px; gap:4px; }
-.stTabs [data-baseweb=\"tab\"] { font-family:'Rajdhani'; font-weight:700; font-size:14px; color:#64748b !important; border-radius:7px; padding:6px 16px; }
-.stTabs [aria-selected=\"true\"] { background:#e63946 !important; color:#fff !important; }
+.stTabs [data-baseweb="tab-list"] { background:#0f1829; border-radius:10px; padding:4px; gap:4px; }
+.stTabs [data-baseweb="tab"] { font-family:'Rajdhani'; font-weight:700; font-size:14px; color:#64748b !important; border-radius:7px; padding:6px 16px; }
+.stTabs [aria-selected="true"] { background:#e63946 !important; color:#fff !important; }
 .stButton>button { font-family:'Bebas Neue'; font-size:17px; letter-spacing:2px; background:linear-gradient(135deg,#e63946,#b91c2c); color:#fff; border:none; border-radius:9px; padding:13px; width:100%; transition:all .2s; }
 .stButton>button:hover { transform:translateY(-1px); box-shadow:0 6px 20px rgba(230,57,70,.45); }
 .stSelectbox>div>div, .stMultiSelect>div>div, .stTextInput>div>div { background:#0f1829 !important; border:1px solid #1c2a40 !important; color:#dde3ee !important; border-radius:8px !important; }
@@ -195,30 +196,17 @@ def fig_radar(df, eq_a, eq_b, cond_a="General", cond_b="General"):
     fig.update_layout(**PLOT, height=400, polar=dict(bgcolor="rgba(0,0,0,0)", radialaxis=dict(visible=True, range=[0, 1], gridcolor="#1c2a40")))
     return fig
 
-# NUEVA FUNCIÓN: MATRIZ DE EFICIENCIA
 def fig_matriz_ranking(df, metrica, condicion):
     d = df[df["Métrica"] == metrica].copy()
     if condicion != "General": d = d[d["Condicion"] == condicion]
-    
     res = d.groupby("Equipo").agg(Propio=("Propio", "mean"), Concedido=("Concedido", "mean")).reset_index()
     if res.empty: return go.Figure()
-    
     m_p, m_c = res["Propio"].mean(), res["Concedido"].mean()
-    
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=res["Concedido"], y=res["Propio"], mode="markers+text", text=res["Equipo"], textposition="top center", marker=dict(size=12, color=RED, opacity=0.8, line=dict(width=1, color="white"))))
-    
-    # Líneas de promedio
     fig.add_vline(x=m_c, line=dict(color=GRAY, dash="dot"))
     fig.add_hline(y=m_p, line=dict(color=GRAY, dash="dot"))
-    
-    # Etiquetas de cuadrantes
-    fig.add_annotation(x=res["Concedido"].min(), y=res["Propio"].max(), text="DOMINANTE", showarrow=False, font=dict(color="#22c55e", size=10))
-    fig.add_annotation(x=res["Concedido"].max(), y=res["Propio"].max(), text="INTERCAMBIO", showarrow=False, font=dict(color="#f59e0b", size=10))
-    fig.add_annotation(x=res["Concedido"].min(), y=res["Propio"].min(), text="SÓLIDO/CHATO", showarrow=False, font=dict(color="#3b82f6", size=10))
-    fig.add_annotation(x=res["Concedido"].max(), y=res["Propio"].min(), text="FRÁGIL", showarrow=False, font=dict(color="#ef4444", size=10))
-
-    fig.update_layout(**PLOT, height=500, xaxis_title=f"{metrica} Recibido (Concedido)", yaxis_title=f"{metrica} Realizado (Propio)", xaxis=dict(**GRID), yaxis=dict(**GRID))
+    fig.update_layout(**PLOT, height=500, xaxis_title=f"{metrica} Concedido", yaxis_title=f"{metrica} Propio", xaxis=dict(**GRID), yaxis=dict(**GRID))
     return fig
 
 # ──────────────────────────────────────────────────────────────────────
@@ -263,7 +251,6 @@ elif nav == "📊 Rankings":
     met_sel = c1.selectbox("Métrica", metricas)
     cond_sel = c2.radio("Condición", ["General", "Local", "Visitante"], horizontal=True)
     vista_sel = c3.radio("Vista", ["Barras (Ranking)", "Matriz (Propio vs Concedido)"], horizontal=True)
-
     if vista_sel == "Barras (Ranking)":
         p_sel = st.radio("Enfoque", ["Propio 🟢", "Concedido 🔴"], horizontal=True)
         col = "Propio" if "Propio" in p_sel else "Concedido"
@@ -271,19 +258,49 @@ elif nav == "📊 Rankings":
         st.plotly_chart(go.Figure(go.Bar(x=df_r["Promedio"], y=df_r["Equipo"], orientation="h", marker_color=RED, text=df_r["Promedio"], textposition="outside")).update_layout(**PLOT, height=500), use_container_width=True)
     else:
         st.plotly_chart(fig_matriz_ranking(df, met_sel, cond_sel), use_container_width=True)
-        st.info("💡 El Cuadrante Superior Izquierdo es el ideal: genera mucho y recibe poco.")
 
 elif nav == "🔄 Head-to-Head":
-    st.markdown('<div class="section-title">🔄 H2H Comparativo</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">🔄 Head-to-Head Comparativo</div>', unsafe_allow_html=True)
     c1, c2 = st.columns(2)
     ea, ca = c1.selectbox("Equipo A", equipos, key="ea"), c1.selectbox("Condición A", ["General", "Local", "Visitante"], key="ca")
     eb, cb = c2.selectbox("Equipo B", equipos, index=1, key="eb"), c2.selectbox("Condición B", ["General", "Local", "Visitante"], key="cb")
+    
+    # NUEVA SECCIÓN: TABLA COMPARATIVA H2H
+    st.markdown("### Tabla Comparativa de Datos Exactos")
+    
+    def get_full_stats(eq, cond):
+        d = df[df["Equipo"] == eq]
+        if cond != "General": d = d[d["Condicion"] == cond]
+        return d.groupby("Métrica")["Propio"].mean().round(2)
+
+    stats_a = get_full_stats(ea, ca)
+    stats_b = get_full_stats(eb, cb)
+    
+    # Unimos las series en un solo DataFrame
+    df_h2h = pd.DataFrame({
+        f"{ea} ({ca})": stats_a,
+        f"{eb} ({cb})": stats_b
+    }).dropna()
+
+    def highlight_winner(row):
+        m = row.name
+        val_a, val_b = row[0], row[1]
+        is_less_better = m in METRICAS_MENOS_ES_MEJOR
+        if val_a == val_b: return ["", ""]
+        a_wins = (val_a > val_b) if not is_less_better else (val_a < val_b)
+        return ["background-color: rgba(34, 197, 94, 0.2)" if a_wins else "", 
+                "background-color: rgba(34, 197, 94, 0.2)" if not a_wins else ""]
+
+    st.dataframe(df_h2h.style.apply(highlight_winner, axis=1), use_container_width=True)
+    
+    # Radar debajo para soporte visual
+    st.markdown("---")
     st.plotly_chart(fig_radar(df, ea, eb, ca, cb), use_container_width=True)
 
 elif nav == "📖 Perfil por Rival":
     st.markdown('<div class="section-title">📖 Perfil por Rival</div>', unsafe_allow_html=True)
     e_sel = st.selectbox("Equipo", equipos); m_sel = st.selectbox("Métrica", metricas)
-    d_eq = df[(df["Equipo"] == e_sel) & (df["Métrica"] == m_sel)].sort_values("nFecha")
+    d_eq = df[(df["Equipo"] == e_sel) & (df["Métrica"] == m_sel)].sort_values("n_Fecha" if "n_Fecha" in df.columns else "nFecha")
     if not d_eq.empty:
         fig = go.Figure([go.Bar(x=d_eq["Rival"], y=d_eq["Propio"], name="Favor", marker_color=RED), go.Bar(x=d_eq["Rival"], y=d_eq["Concedido"], name="Contra", marker_color=GRAY)])
         fig.update_layout(**PLOT, barmode="group"); st.plotly_chart(fig, use_container_width=True)
