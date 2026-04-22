@@ -175,8 +175,7 @@ def ranking(df: pd.DataFrame, metrica: str, columna="Propio", ascendente=False) 
 # ──────────────────────────────────────────────────────────────────────
 # PREDICTOR
 # ──────────────────────────────────────────────────────────────────────
-
-def calcular_lambdas(df: pd.DataFrame, eq_a: str, eq_b: str, a_es_local: bool):
+def calcular_lambdas(df: pd.DataFrame, eq_a: str, eq_b: str, a_es_local: bool, mod_a: float = 1.0, mod_b: float = 1.0):
     df_r = df[df["Métrica"] == "Resultado"].copy()
     if df_r.empty: return 1.3, 0.9
 
@@ -192,12 +191,9 @@ def calcular_lambdas(df: pd.DataFrame, eq_a: str, eq_b: str, a_es_local: bool):
     gf_a, gc_a, pj_a = stats(eq_a)
     gf_b, gc_b, pj_b = stats(eq_b)
 
-    fa_a = gf_a / media_gf   
-    fd_a = gc_a / media_gf   
-    fa_b = gf_b / media_gf
-    fd_b = gc_b / media_gf
-
-    VL = 1.18  # ventaja local
+    fa_a, fd_a = gf_a / media_gf, gc_a / media_gf
+    fa_b, fd_b = gf_b / media_gf, gc_b / media_gf
+    VL = 1.18 
 
     lam_a = fa_a * fd_b * media_gf * (VL if a_es_local else 1.0)
     lam_b = fa_b * fd_a * media_gf * (1.0 if a_es_local else VL)
@@ -206,12 +202,13 @@ def calcular_lambdas(df: pd.DataFrame, eq_a: str, eq_b: str, a_es_local: bool):
     df_xg = df[df["Métrica"] == "Goles esperados (xG)"]
     if not df_xg.empty:
         xg_media = df_xg["Propio"].mean()
-        xg_a = df_xg[df_xg["Equipo"] == eq_a]["Propio"].mean()
-        xg_b = df_xg[df_xg["Equipo"] == eq_b]["Propio"].mean()
-        if not np.isnan(xg_a) and xg_media > 0:
-            lam_a = lam_a * 0.55 + (xg_a / xg_media * media_gf) * 0.45
-        if not np.isnan(xg_b) and xg_media > 0:
-            lam_b = lam_b * 0.55 + (xg_b / xg_media * media_gf) * 0.45
+        xg_a, xg_b = df_xg[df_xg["Equipo"] == eq_a]["Propio"].mean(), df_xg[df_xg["Equipo"] == eq_b]["Propio"].mean()
+        if not np.isnan(xg_a) and xg_media > 0: lam_a = lam_a * 0.55 + (xg_a / xg_media * media_gf) * 0.45
+        if not np.isnan(xg_b) and xg_media > 0: lam_b = lam_b * 0.55 + (xg_b / xg_media * media_gf) * 0.45
+
+    # ── APLICAMOS LOS MULTIPLICADORES DE CONTEXTO ──
+    lam_a = lam_a * mod_a
+    lam_b = lam_b * mod_b
 
     return round(float(np.clip(lam_a, 0.15, 5.0)), 3), round(float(np.clip(lam_b, 0.15, 5.0)), 3)
 
