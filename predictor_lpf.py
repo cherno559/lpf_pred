@@ -186,39 +186,82 @@ def ranking(df: pd.DataFrame, metrica: str, columna="Propio", ascendente=False) 
 # MOTOR DEL PREDICTOR (DIXON-COLES + MONTECARLO)
 # ──────────────────────────────────────────────────────────────────────
 
-def calcular_lambdas(df: pd.DataFrame, eq_a: str, eq_b: str, a_es_local: bool):
-    """Calcula los parámetros Lambda para la distribución de Poisson."""
+def calcular_lambdas(df: pd.DataFrame, eq_a: str, eq_b: str, a_es_local: bool, mod_a: float = 1.0, mod_b: float = 1.0):
     df_r = df[df["Métrica"] == "Resultado"].copy()
     if df_r.empty: return 1.3, 0.9
 
-    agg = df_r.groupby("Equipo").agg(GF=("Propio", "sum"), GC=("Concedido", "sum"), PJ=("Propio", "count")).reset_index()
-    media_gf = agg["GF"].sum() / max(agg["PJ"].sum(), 1)
+    # 1. Agrupamos TODO separando por Condición (Local / Visitante)
+    agg = df_r.groupby(["Equipo", "Condicion"]).agg(
+        GF=("Propio", "sum"), 
+        GC=("Concedido", "sum"), 
+        PJ=("Propio", "count")
+    ).reset_index()
 
-    def stats(eq):
-        row = agg[agg["Equipo"] == eq]
-        if row.empty: return media_gf, media_gf, 1
+    # 2. Promedios globales de la liga separados
+    media_gf_local = agg[agg["Condicion"] == "Local"]["GF"].sum() / max(agg[agg["Condicion"] == "Local"]["PJ"].sum(), 1)
+    media_gf_vis = agg[agg["Condicion"] == "Visitante"]["GF"].sum() / max(agg[agg["Condicion"] == "Visitante"]["PJ"].sum(), 1)
+
+    def stats(eq, condicion):
+        row = agg[(agg["Equipo"] == eq) & (agg["Condicion"] == condicion)]
+        if row.empty: 
+            # Si justo no tiene datos (ej. fecha 1), usamos promedios de la liga
+            return (media_gf_local if condicion == "Local" else media_gf_vis), (media_gf_vis if condicion == "Local" else media_gf_local), 1
         r = row.iloc[0]
         return r["GF"] / max(r["PJ"], 1), r["GC"] / max(r["PJ"], 1), r["PJ"]
 
-    gf_a, gc_a, pj_a = stats(eq_a)
-    gf_b, gc_b, pj_b = stats(eq_b)
+    # 3. Calculamos fuerzas cruzadas
+    if a_es_local:
+        gf_a_loc, gc_a_loc, _ = stats(eq_a, "Local")
+        gf_b_vis, gc_b_vis, _ = stats(eq_b, "Visitante")
+        
+        # Ataque Local (A) vs Defensa Visitante (B)
+        fa_a = gf_a_loc / media_gf_local
+        fd_b = gc_b_vis / media_gf_local # Cuántos goles permite el visitante comparado con lo que hace un local promedio
+        
+        # Ataque Visitante (B) vs Defensa Local (A)
+        fa_b = gf_b_vis / media_gf_vis
+        fd_a = gc_a_loc / media_gf_vis
+        
+        lam_a = fa_a * fd_b * media_gf_local
+        lam_b = fa_b * fd_a * media_gf_vis
+    else:
+        # A es visitante, B es local
+        gf_a_vis, gc_a_vis, _ = stats(eq_a, "Visitante")
+        gf_b_loc, gc_b_loc, _ = stats(eq_b, "Local")
+        
+        fa_a = gf_a_vis / media_gf_vis
+        fd_b = gc_b_loc / media_gf_vis
+        
+        fa_b = gf_b_loc / media_gf_local
+        fd_a = gc_a_vis / media_gf_local
+        
+        lam_a = fa_a * fd_b * media_gf_vis
+        lam_b = fa_b * fd_a * media_gf_local
 
-    fa_a, fd_a = gf_a / media_gf, gc_a / media_gf
-    fa_b, fd_b = gf_b / media_gf, gc_b / media_gf
-    VL = 1.18
-
-    lam_a = fa_a * fd_b * media_gf * (VL if a_es_local else 1.0)
-    lam_b = fa_b * fd_a * media_gf * (1.0 if a_es_local else VL)
-
+    # 4. Corrección con xG (también respetando la condición Local/Visitante si se puede)
     df_xg = df[df["Métrica"] == "Goles esperados (xG)"]
     if not df_xg.empty:
-        xg_media = df_xg["Propio"].mean()
-        xg_a = df_xg[df_xg["Equipo"] == eq_a]["Propio"].mean()
-        xg_b = df_xg[df_xg["Equipo"] == eq_b]["Propio"].mean()
-        if not np.isnan(xg_a) and xg_media > 0:
-            lam_a = lam_a * 0.55 + (xg_a / xg_media * media_gf) * 0.45
-        if not np.isnan(xg_b) and xg_media > 0:
-            lam_b = lam_b * 0.55 + (xg_b / xg_media * media_gf) * 0.45
+        cond_a = "Local" if a_es_local else "Visitante"
+        cond_b = "Visitante" if a_es_local else "Local"
+        
+        xg_media_a = df_xg[df_xg["Condicion"] == cond_a]["Propio"].mean()
+        xg_media_b = df_xg[df_xg["Condicion"] == cond_b]["Propio"].mean()
+        
+        xg_a = df_xg[(df_xg["Equipo"] == eq_a) & (df_xg["Condicion"] == cond_a)]["Propio"].mean()
+        xg_b = df_xg[(df_xg["Equipo"] == eq_b) & (df_xg["Condicion"] == cond_b)]["Propio"].mean()
+        
+        # Hacemos un "blend" 50% goles reales, 50% Goles Esperados
+        if not np.isnan(xg_a) and xg_media_a > 0:
+            esperado_a = (xg_a / xg_media_a) * (media_gf_local if a_es_local else media_gf_vis)
+            lam_a = (lam_a * 0.50) + (esperado_a * 0.50)
+            
+        if not np.isnan(xg_b) and xg_media_b > 0:
+            esperado_b = (xg_b / xg_media_b) * (media_gf_vis if a_es_local else media_gf_local)
+            lam_b = (lam_b * 0.50) + (esperado_b * 0.50)
+
+    # 5. Aplicamos tus multiplicadores manuales (lesiones, fatiga, etc.)
+    lam_a = lam_a * mod_a
+    lam_b = lam_b * mod_b
 
     return round(float(np.clip(lam_a, 0.15, 5.0)), 3), round(float(np.clip(lam_b, 0.15, 5.0)), 3)
 
