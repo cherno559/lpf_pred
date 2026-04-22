@@ -1,5 +1,5 @@
 """
-dashboard_lpf.py — LPF 2026 Scouting Dashboard (v8.5 · Estabilidad Total)
+dashboard_lpf.py — LPF 2026 Scouting Dashboard (v8.6 · H2H Pro & Estilos Originales)
 ─────────────────────────────────────────────────────────────────────────────
 """
 import re, os, math
@@ -9,7 +9,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 # ──────────────────────────────────────────────────────────────────────
-# CONFIGURACIÓN Y ESTILOS (Originales preservados)
+# CONFIGURACIÓN Y ESTILOS
 # ──────────────────────────────────────────────────────────────────────
 st.set_page_config(page_title="LPF 2026 · Analítica Pro", page_icon="⚽", layout="wide", initial_sidebar_state="expanded")
 
@@ -28,24 +28,24 @@ h1 { font-family:'Bebas Neue',cursive !important; font-size:2.6rem !important; c
 .stTabs [data-baseweb="tab-list"] { background:#0f1829; border-radius:10px; padding:4px; gap:4px; }
 .stTabs [data-baseweb="tab"] { font-family:'Rajdhani'; font-weight:700; font-size:14px; color:#64748b !important; border-radius:7px; padding:6px 16px; }
 .stTabs [aria-selected="true"] { background:#e63946 !important; color:#fff !important; }
-.stButton>button { font-family:'Bebas Neue'; font-size:17px; letter-spacing:2px; background:linear-gradient(135deg,#e63946,#b91c2c); color:#fff; border:none; border-radius:9px; padding:13px; width:100%; transition:all .2s; }
+.stButton>button { font-family:'Bebas Neue'; font-size:17px; letter-spacing:2px; background:linear-gradient(135deg,#e63946,#b91c2c); color:#fff; border:none; border-radius:9px; padding:13px; width:100%; }
 .stSelectbox>div>div, .stTextInput>div>div { background:#0f1829 !important; border:1px solid #1c2a40 !important; color:#dde3ee !important; border-radius:8px !important; }
 .note { background:#0f1829; border:1px solid #1c2a40; border-radius:8px; padding:10px 14px; font-size:12px; color:#64748b; margin-top:8px; }
 </style>
 """, unsafe_allow_html=True)
 
-# ── Parámetros Calibrados (Protección de Equipos Dominantes) ──────────
-W_XG = 0.75            # Prioridad al xG pero reconociendo la chapa real.
-K_SHRINK = 3.0         # Restaurado al original para evitar sobre-compresión.
+# ── Parámetros de Motor ───────────────────────────────────────────────
+W_XG = 0.75            # Balance entre xG y resultados reales
+K_SHRINK = 3.0         # Estabilidad para equipos con jerarquía
 DC_RHO = -0.10
 MAX_GOALS_MATRIX = 7
-N_RECENCIA, PESO_RECIENTE, PESO_NORMAL = 3, 1.5, 1.0  # Recencia suave (ayuda a Racing/Argentinos).
+N_RECENCIA, PESO_RECIENTE, PESO_NORMAL = 3, 1.5, 1.0 
 MAX_ROTATION_PENALTY, LAM_MIN, LAM_MAX = 0.12, 0.25, 4.50
 RED, BLUE, GRAY = "#e63946", "#3b82f6", "#64748b"
 PLOT = dict(font=dict(family="Rajdhani", size=13, color="#dde3ee"), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", margin=dict(l=10, r=20, t=36, b=10))
 
 # ──────────────────────────────────────────────────────────────────────
-# PROCESAMIENTO
+# PROCESAMIENTO (Original preservado)
 # ──────────────────────────────────────────────────────────────────────
 def num(v) -> float:
     if isinstance(v, str): v = v.replace('%', '').replace(',', '.').strip()
@@ -89,9 +89,6 @@ def construir_df(datos: dict) -> pd.DataFrame:
                 filas.append({**base, "Equipo": p["visitante"], "Rival": p["local"], "Condicion": "Visitante", "Propio": vals["visitante"], "Concedido": vals["local"]})
     return pd.DataFrame(filas)
 
-# ──────────────────────────────────────────────────────────────────────
-# MOTOR ANALÍTICO
-# ──────────────────────────────────────────────────────────────────────
 def _weighted_mean(values, fechas):
     if len(values) == 0: return np.nan
     w = np.where(fechas >= (fechas.max() - N_RECENCIA + 1), PESO_RECIENTE, PESO_NORMAL)
@@ -146,12 +143,27 @@ def montecarlo(la, lb):
     M /= M.sum()
     return {"victoria": float(np.tril(M, -1).sum()), "empate": float(np.trace(M)), "derrota": float(np.triu(M, 1).sum())}
 
+def fig_radar(df, eq_a, eq_b, cond_a, cond_b):
+    mets = [m for m in ["Posesión de balón", "Tiros totales", "Tiros al arco", "Goles esperados (xG)", "Pases totales"] if m in df["Métrica"].values]
+    if not mets: return go.Figure()
+    def gv(eq, cond, m):
+        d = df[(df["Equipo"] == eq) & (df["Métrica"] == m)]
+        if cond != "General": d = d[d["Condicion"] == cond]
+        return d["Propio"].mean() if not d.empty else 0.0
+    va, vb = [gv(eq_a, cond_a, m) for m in mets], [gv(eq_b, cond_b, m) for m in mets]
+    mx = [max(abs(a), abs(b), 1e-6) for a, b in zip(va, vb)]
+    fig = go.Figure()
+    fig.add_trace(go.Scatterpolar(r=[a/m for a,m in zip(va,mx)]+[va[0]/mx[0]], theta=mets+[mets[0]], fill="toself", name=eq_a, line=dict(color=RED)))
+    fig.add_trace(go.Scatterpolar(r=[b/m for b,m in zip(vb,mx)]+[vb[0]/mx[0]], theta=mets+[mets[0]], fill="toself", name=eq_b, line=dict(color=BLUE)))
+    fig.update_layout(**PLOT, height=400, polar=dict(bgcolor="rgba(0,0,0,0)", radialaxis=dict(visible=False)))
+    return fig
+
 # ──────────────────────────────────────────────────────────────────────
 # NAVEGACIÓN
 # ──────────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("## ⚽ LPF 2026")
-    ruta = st.text_input("📂 Archivo Excel", "Fecha_x_fecha_lpf.xlsx")
+    ruta = st.text_input("📂 Excel", "Fecha_x_fecha_lpf.xlsx")
     nav = st.radio("", ["🔮 Predictor", "📊 Rankings", "🔄 Head-to-Head", "📖 Perfil Rival", "🎭 Estilos"], label_visibility="collapsed")
 
 if not os.path.exists(ruta): st.stop()
@@ -160,7 +172,7 @@ equipos, metricas = sorted(df["Equipo"].unique()), sorted(df["Métrica"].unique(
 st.markdown('<h1>LPF 2026 · Scouting Dashboard</h1>', unsafe_allow_html=True)
 
 if nav == "🔮 Predictor":
-    st.markdown('<div class="section-title">🔮 Predictor (v8.5)</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">🔮 Predictor (v8.6)</div>', unsafe_allow_html=True)
     c1, c2, c3 = st.columns([5, 5, 3])
     ea, eb, loc = c1.selectbox("Local", equipos), c2.selectbox("Visitante", equipos, index=min(1, len(equipos)-1)), c3.toggle("Bono Localía", True)
     if st.button("🚀 INICIAR ANÁLISIS"):
@@ -172,7 +184,7 @@ if nav == "🔮 Predictor":
         k3.markdown(f'<div class="kpi loss"><div class="lbl">Prob. {eb}</div><div class="val">{sim["derrota"]*100:.1f}%</div></div>', unsafe_allow_html=True)
 
 elif nav == "📊 Rankings":
-    st.markdown('<div class="section-title">📊 Rankings: A Favor vs En Contra</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">📊 Rankings: Favor vs Concedido</div>', unsafe_allow_html=True)
     c1, c2, c3 = st.columns(3)
     m_sel, cond_sel, tipo_sel = c1.selectbox("Métrica", metricas), c2.radio("Condición", ["General", "Local", "Visitante"], horizontal=True), c3.radio("Enfoque", ["A Favor", "En Contra"], horizontal=True)
     col_data = "Propio" if "A Favor" in tipo_sel else "Concedido"
@@ -180,22 +192,26 @@ elif nav == "📊 Rankings":
     st.plotly_chart(go.Figure(go.Bar(x=res[col_data], y=res["Equipo"], orientation="h", marker_color=RED if "Propio" in col_data else GRAY)).update_layout(**PLOT, height=700), use_container_width=True)
 
 elif nav == "🔄 Head-to-Head":
-    st.markdown('<div class="section-title">🔄 H2H Detallado</div>', unsafe_allow_html=True)
-    c1, c2 = st.columns(2); ea, eb = c1.selectbox("Eq A", equipos), c2.selectbox("Eq B", equipos, index=min(1, len(equipos)-1))
-    s1, s2 = df[df["Equipo"]==ea].groupby("Métrica")[["Propio", "Concedido"]].mean().round(2), df[df["Equipo"]==eb].groupby("Métrica")[["Propio", "Concedido"]].mean().round(2)
-    h2h_df = pd.DataFrame({f"{ea} Fav": s1["Propio"], f"{ea} Contra": s1["Concedido"], f"{eb} Fav": s2["Propio"], f"{eb} Contra": s2["Concedido"]}).dropna()
-    st.table(h2h_df)
+    st.markdown('<div class="section-title">🔄 Head-to-Head Comparativo</div>', unsafe_allow_html=True)
+    c1, c2 = st.columns(2); ea, eb = c1.selectbox("Equipo A", equipos), c2.selectbox("Equipo B", equipos, index=min(1, len(equipos)-1))
+    
+    t1, t2 = st.tabs(["🕸️ Comparativa Radar", "📊 Datos Crudos"])
+    with t1:
+        st.plotly_chart(fig_radar(df, ea, eb, "General", "General"), use_container_width=True)
+    with t2:
+        s1, s2 = df[df["Equipo"]==ea].groupby("Métrica")[["Propio", "Concedido"]].mean().round(2), df[df["Equipo"]==eb].groupby("Métrica")[["Propio", "Concedido"]].mean().round(2)
+        h2h_df = pd.DataFrame({f"{ea} Favor": s1["Propio"], f"{ea} Contra": s1["Concedido"], f"{eb} Favor": s2["Propio"], f"{eb} Contra": s2["Concedido"]}).dropna()
+        st.dataframe(h2h_df, use_container_width=True)
 
 elif nav == "📖 Perfil Rival":
-    st.markdown('<div class="section-title">📖 Perfil Histórico</div>', unsafe_allow_html=True)
     eq_p, met_p = st.selectbox("Equipo", equipos), st.selectbox("Métrica", metricas)
     d_eq = df[(df["Equipo"] == eq_p) & (df["Métrica"] == met_p)].sort_values("nFecha")
     if not d_eq.empty:
-        fig = go.Figure([go.Bar(x=d_eq["Rival"], y=d_eq["Propio"], name="A Favor", marker_color=RED), go.Bar(x=d_eq["Rival"], y=d_eq["Concedido"], name="En Contra", marker_color=GRAY)])
+        fig = go.Figure([go.Bar(x=d_eq["Rival"], y=d_eq["Propio"], name="Favor", marker_color=RED), go.Bar(x=d_eq["Rival"], y=d_eq["Concedido"], name="Contra", marker_color=GRAY)])
         st.plotly_chart(fig.update_layout(**PLOT, barmode="group"), use_container_width=True)
 
 elif nav == "🎭 Estilos":
-    st.markdown('<div class="section-title">🎭 Análisis de Estilo (Original)</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">🎭 Análisis de Estilo</div>', unsafe_allow_html=True)
     mo = "Goles esperados (xG)" if "Goles esperados (xG)" in metricas else "Tiros totales"
     if "Posesión de balón" in metricas:
         df_e = pd.DataFrame({"P": df[df["Métrica"] == "Posesión de balón"].groupby("Equipo")["Propio"].mean(), "O": df[df["Métrica"] == mo].groupby("Equipo")["Propio"].mean()}).dropna()
