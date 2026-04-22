@@ -1,15 +1,10 @@
 """
-dashboard_lpf.py — LPF 2026 Scouting Dashboard (v2)
+dashboard_lpf.py — LPF 2026 Scouting Dashboard (v3)
 ────────────────────────────────────────────────────
-Mejoras sobre v1:
-  · Predictor con ponderación por recencia (últimas 3 fechas)
-  · Penalización por rotación (Copa / Sudamericana / Libertadores)
-  · Bug fix: highlight_winner en H2H devolvía 2 estilos sobre 4 columnas → crash
-  · Bug fix: radar dividía por 0 cuando ambos promedios eran 0
-  · Bug fix: fig_marcadores labels invertidos en algunos casos
-  · Lambda mínimo subido a 0.3 (0.15 era demasiado bajo para el modelo Poisson)
-  · xG pondera 60/40 cuando hay ≥ 3 partidos de muestra (antes siempre 55/45)
-  · Monte Carlo usa seed derivada de los lambdas → reproducible pero distinto por partido
+Mejoras sobre v2:
+  · Penalización por rotación reducida (Max 12% en lugar de 20%)
+  · Calibrador Anti-Empate integrado (Estira la varianza un 10% si hay favorito)
+  · Mantiene ponderación por recencia (últimas 3 fechas) y blend de xG
 """
 
 import re, os
@@ -81,14 +76,13 @@ NO_GRID = dict(showgrid=False, zeroline=False)
 
 METRICAS_MENOS_ES_MEJOR = {"Faltas", "Tarjetas amarillas", "Tarjetas rojas", "Fueras de juego"}
 
-# Pesos de recencia: las últimas N_RECENCIA fechas ponderan más
+# Pesos de recencia
 N_RECENCIA   = 3
-PESO_RECIENTE = 2.5   # multiplicador sobre fechas recientes
+PESO_RECIENTE = 2.5
 PESO_NORMAL   = 1.0
 
-# Penalización máxima aplicable por rotación (fracción del lambda)
-# 0.15 → baja el lambda ofensivo hasta un 15 % en el extremo del slider
-MAX_ROTATION_PENALTY = 0.20
+# Penalización máxima aplicable por rotación (Bajada de 0.20 a 0.12 para más realismo)
+MAX_ROTATION_PENALTY = 0.12
 
 # ──────────────────────────────────────────────────────────────────────
 # PARSEO Y PROCESAMIENTO
@@ -178,7 +172,6 @@ def ranking(df: pd.DataFrame, metrica: str, columna="Propio", ascendente=False) 
 # MOTOR PREDICTOR
 # ──────────────────────────────────────────────────────────────────────
 def _weighted_mean(series: pd.Series, fecha_series: pd.Series) -> float:
-    """Promedio ponderado por recencia. Las últimas N_RECENCIA fechas pesan más."""
     if series.empty:
         return float("nan")
     max_fecha = fecha_series.max()
@@ -196,13 +189,7 @@ def calcular_lambdas(
     rot_a: float = 0.0,
     rot_b: float = 0.0,
 ) -> tuple[float, float]:
-    """
-    Calcula los lambdas de Poisson para el partido eq_a vs eq_b.
-
-    rot_a / rot_b ∈ [0, 1]: intensidad de rotación del equipo.
-      0 = once titular completo
-      1 = rotación máxima (penalización completa = MAX_ROTATION_PENALTY)
-    """
+    
     df_r = df[df["Métrica"] == "Resultado"].copy()
     if df_r.empty:
         return 1.3, 0.9
@@ -213,28 +200,16 @@ def calcular_lambdas(
         .reset_index()
     )
 
-    # Promedios de liga por condición
-    m_gf_loc = (
-        agg[agg["Condicion"] == "Local"]["GF"].sum()
-        / max(agg[agg["Condicion"] == "Local"]["PJ"].sum(), 1)
-    )
-    m_gf_vis = (
-        agg[agg["Condicion"] == "Visitante"]["GF"].sum()
-        / max(agg[agg["Condicion"] == "Visitante"]["PJ"].sum(), 1)
-    )
+    m_gf_loc = agg[agg["Condicion"] == "Local"]["GF"].sum() / max(agg[agg["Condicion"] == "Local"]["PJ"].sum(), 1)
+    m_gf_vis = agg[agg["Condicion"] == "Visitante"]["GF"].sum() / max(agg[agg["Condicion"] == "Visitante"]["PJ"].sum(), 1)
 
     def stats(eq: str, cond: str):
         row = agg[(agg["Equipo"] == eq) & (agg["Condicion"] == cond)]
         if row.empty:
-            return (
-                (m_gf_loc if cond == "Local" else m_gf_vis),
-                (m_gf_vis if cond == "Local" else m_gf_loc),
-                0,
-            )
+            return ((m_gf_loc if cond == "Local" else m_gf_vis), (m_gf_vis if cond == "Local" else m_gf_loc), 0)
         r = row.iloc[0]
         return r["GF"] / r["PJ"], r["GC"] / r["PJ"], int(r["PJ"])
 
-    # Condiciones según quién juega de local
     cond_a = "Local"    if a_es_local else "Visitante"
     cond_b = "Visitante" if a_es_local else "Local"
     ref_a  = m_gf_loc   if a_es_local else m_gf_vis
@@ -243,11 +218,10 @@ def calcular_lambdas(
     gfa, gca, pja = stats(eq_a, cond_a)
     gfb, gcb, pjb = stats(eq_b, cond_b)
 
-    # Lambda base (modelo Dixon-Coles simplificado)
     lam_a = (gfa / max(ref_a, 0.01)) * (gcb / max(ref_b, 0.01)) * ref_a
     lam_b = (gfb / max(ref_b, 0.01)) * (gca / max(ref_a, 0.01)) * ref_b
 
-    # ── Refinamiento con xG (ponderado por recencia) ──────────────────
+    # ── Refinamiento con xG ──
     df_xg = df[df["Métrica"] == "Goles esperados (xG)"]
     if not df_xg.empty:
         m_xg_loc = df_xg[df_xg["Condicion"] == "Local"]["Propio"].mean()
@@ -264,7 +238,6 @@ def calcular_lambdas(
         m_ref_a = m_xg_loc if a_es_local else m_xg_vis
         m_ref_b = m_xg_vis if a_es_local else m_xg_loc
 
-        # Ponderamos más el xG cuando hay más muestra
         w_xg_a = 0.60 if n_xa >= 3 else 0.45
         w_xg_b = 0.60 if n_xb >= 3 else 0.45
 
@@ -273,22 +246,27 @@ def calcular_lambdas(
         if not np.isnan(xb) and m_ref_b > 0:
             lam_b = lam_b * (1 - w_xg_b) + (xb / m_ref_b * ref_b) * w_xg_b
 
-    # ── Penalización por rotación ──────────────────────────────────────
-    # La rotación reduce el lambda ofensivo y puede aumentar levemente el concedido,
-    # pero en el modelo Poisson solo tenemos lambdas de goles a favor propios,
-    # así que bajamos el lambda del equipo que rota y subimos el del rival
-    # (efecto indirecto: el rival "defiende menos").
-    # Penalización ofensiva pura: lambda * (1 - rot * MAX_PENALTY)
-    # Bonificación rival: lambda_rival * (1 + rot * MAX_PENALTY * 0.4)
+    # ── Penalización por rotación ──
     if rot_a > 0:
         penalty_a = rot_a * MAX_ROTATION_PENALTY
         lam_a *= (1 - penalty_a)
-        lam_b *= (1 + penalty_a * 0.4)   # el rival se beneficia algo
+        lam_b *= (1 + penalty_a * 0.4) 
 
     if rot_b > 0:
         penalty_b = rot_b * MAX_ROTATION_PENALTY
         lam_b *= (1 - penalty_b)
         lam_a *= (1 + penalty_b * 0.4)
+
+    # ── Calibrador Anti-Empate (Estirador de Varianza) ──
+    # Si hay diferencia entre los equipos, exageramos un 10% para evitar el colapso hacia el 1-1
+    diferencia = abs(lam_a - lam_b)
+    if diferencia > 0.05: 
+        if lam_a > lam_b:
+            lam_a *= 1.10
+            lam_b *= 0.90
+        else:
+            lam_b *= 1.10
+            lam_a *= 0.90
 
     return (
         round(float(np.clip(lam_a, 0.30, 5.0)), 3),
@@ -297,7 +275,6 @@ def calcular_lambdas(
 
 
 def montecarlo(lam_a: float, lam_b: float) -> dict:
-    # Seed reproducible pero único por partido (no siempre 42)
     seed = int((lam_a * 1000 + lam_b * 100)) % (2**31)
     rng  = np.random.default_rng(seed)
     ga   = rng.poisson(lam_a, MONTECARLO_N)
@@ -345,7 +322,6 @@ def fig_probs(sim: dict, na: str, nb: str):
 
 def fig_marcadores(sim: dict, na: str, nb: str):
     df = sim["df"].copy()
-    # Fix: el label siempre es local-visitante, sin importar quién es A
     df["label"] = na + " " + df["A"].astype(str) + "–" + df["B"].astype(str) + " " + nb
     top = df.nlargest(8, "prob").iloc[::-1]
     fig = go.Figure(go.Bar(
@@ -385,7 +361,6 @@ def fig_radar(df: pd.DataFrame, eq_a: str, eq_b: str, cond_a="General", cond_b="
     va = [get_val(eq_a, cond_a, m) for m in mets]
     vb = [get_val(eq_b, cond_b, m) for m in mets]
 
-    # Fix: evitar división por cero
     mx  = [max(abs(a), abs(b), 1e-6) for a, b in zip(va, vb)]
     van = [a / m for a, m in zip(va, mx)]
     vbn = [b / m for b, m in zip(vb, mx)]
@@ -479,18 +454,15 @@ st.markdown('<h1>LPF 2026 · Scouting Dashboard</h1>', unsafe_allow_html=True)
 if nav == "🔮 Predictor":
     st.markdown('<div class="section-title">🔮 Predictor de Partidos</div>', unsafe_allow_html=True)
 
-    # ── Selección de equipos ──────────────────────────────────────────
     c1, c2, c3 = st.columns([5, 5, 3])
     eq_a  = c1.selectbox("Local", equipos)
     eq_b  = c2.selectbox("Visitante", equipos, index=min(1, len(equipos) - 1))
     es_loc = c3.toggle("Ventaja local", value=True)
 
-    # ── Penalización por rotación ─────────────────────────────────────
     st.markdown('<div class="section-title">🔄 Penalización por Rotación / Copa</div>', unsafe_allow_html=True)
     st.caption(
-        "Activá esta opción si alguno de los equipos jugó Copa (Libertadores / Sudamericana) "
-        "y es probable que rote el equipo. El slider controla cuánto rotan: "
-        "1 = un par de cambios, 5 = once completamente diferente."
+        "Activá esta opción si alguno de los equipos jugó Copa (Libertadores/Sudamericana). "
+        "El slider controla cuánto rotan: 1 = leve, 5 = once diferente."
     )
 
     rc1, rc2 = st.columns(2)
@@ -498,18 +470,13 @@ if nav == "🔮 Predictor":
         rot_a_on = st.checkbox(f"⚠️ {eq_a} rota", value=False, key="rot_a_on")
         rot_a_int = 0.0
         if rot_a_on:
-            rot_a_nivel = st.slider(
-                "Intensidad de rotación", 1, 5, 2,
-                key="rot_a_sl",
-                help="1=leve (1-2 cambios), 5=extrema (once diferente)",
-            )
-            rot_a_int = rot_a_nivel / 5.0   # normalizado [0,1]
+            rot_a_nivel = st.slider("Intensidad de rotación", 1, 5, 2, key="rot_a_sl")
+            rot_a_int = rot_a_nivel / 5.0 
             penalty_pct = rot_a_int * MAX_ROTATION_PENALTY * 100
             st.markdown(
                 f'<div class="rotation-box">'
                 f'<div class="rot-title">⚡ Efecto estimado</div>'
-                f'Lambda ofensivo de <b>{eq_a}</b> reducido ~{penalty_pct:.0f}% '
-                f'· Lambda de <b>{eq_b}</b> aumentado ~{penalty_pct*0.4:.0f}%'
+                f'Fuerza ofensiva de <b>{eq_a}</b> reducida ~{penalty_pct:.1f}% '
                 f'</div>',
                 unsafe_allow_html=True,
             )
@@ -518,23 +485,17 @@ if nav == "🔮 Predictor":
         rot_b_on = st.checkbox(f"⚠️ {eq_b} rota", value=False, key="rot_b_on")
         rot_b_int = 0.0
         if rot_b_on:
-            rot_b_nivel = st.slider(
-                "Intensidad de rotación", 1, 5, 2,
-                key="rot_b_sl",
-                help="1=leve (1-2 cambios), 5=extrema (once diferente)",
-            )
+            rot_b_nivel = st.slider("Intensidad de rotación", 1, 5, 2, key="rot_b_sl")
             rot_b_int = rot_b_nivel / 5.0
             penalty_pct = rot_b_int * MAX_ROTATION_PENALTY * 100
             st.markdown(
                 f'<div class="rotation-box">'
                 f'<div class="rot-title">⚡ Efecto estimado</div>'
-                f'Lambda ofensivo de <b>{eq_b}</b> reducido ~{penalty_pct:.0f}% '
-                f'· Lambda de <b>{eq_a}</b> aumentado ~{penalty_pct*0.4:.0f}%'
+                f'Fuerza ofensiva de <b>{eq_b}</b> reducida ~{penalty_pct:.1f}% '
                 f'</div>',
                 unsafe_allow_html=True,
             )
 
-    # ── Simular ──────────────────────────────────────────────────────
     if st.button("🚀 SIMULAR"):
         lam_a, lam_b = calcular_lambdas(df, eq_a, eq_b, es_loc, rot_a_int, rot_b_int)
         sim = montecarlo(lam_a, lam_b)
@@ -544,7 +505,6 @@ if nav == "🔮 Predictor":
         k2.markdown(f'<div class="kpi draw"><div class="lbl">Empate</div><div class="val">{sim["empate"]*100:.1f}%</div></div>', unsafe_allow_html=True)
         k3.markdown(f'<div class="kpi loss"><div class="lbl">V. {eq_b}</div><div class="val">{sim["derrota"]*100:.1f}%</div></div>', unsafe_allow_html=True)
 
-        # Lambdas para transparencia del modelo
         st.markdown(
             f'<div class="note">⚙️ λ {eq_a} = {lam_a} · λ {eq_b} = {lam_b} &nbsp;|&nbsp; '
             f'Simulaciones Monte Carlo: {MONTECARLO_N:,}</div>',
@@ -629,10 +589,9 @@ elif nav == "🔄 Head-to-Head":
                 index=idx,
             )
 
-            # Fix: la función debe devolver exactamente 4 estilos (una por columna)
             def highlight_winner(row):
                 m       = row.name
-                styles  = ["", "", "", ""]   # 4 columnas siempre
+                styles  = ["", "", "", ""] 
                 val_a   = row[c_a_fav]
                 val_b   = row[c_b_fav]
                 if val_a == val_b:
@@ -727,7 +686,7 @@ elif nav == "🎭 Estilos de Juego":
             if   row["Posesion"] >  media_pos and row["Ofensiva"] >  media_ata: return "🟢 Ofensivo de Posesión (Elaboran y Atacan)"
             elif row["Posesion"] <= media_pos and row["Ofensiva"] >  media_ata: return "🟠 Ofensivo Directo (Contragolpe / Verticales)"
             elif row["Posesion"] >  media_pos and row["Ofensiva"] <= media_ata: return "🔵 Defensivo de Posesión (Tenencia pasiva)"
-            else:                                                                 return "🔴 Defensivo Reactivo (Bloque bajo)"
+            else:                                                               return "🔴 Defensivo Reactivo (Bloque bajo)"
 
         df_estilos["Categoría Asignada"] = df_estilos.apply(categorizar, axis=1)
         st.dataframe(
