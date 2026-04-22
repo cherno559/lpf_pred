@@ -1,5 +1,5 @@
 """
-dashboard_lpf.py — LPF 2026 Scouting Dashboard (v9.5 · Marcadores Pro)
+dashboard_lpf.py — LPF 2026 Scouting Dashboard (v10.0 · Estabilidad Total)
 ─────────────────────────────────────────────────────────────────────────────
 """
 import re, os, math
@@ -7,13 +7,11 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
-from numpy.linalg import lstsq
 
 # ──────────────────────────────────────────────────────────────────────
 # CONFIGURACIÓN Y ESTILOS
 # ──────────────────────────────────────────────────────────────────────
-st.set_page_config(page_title="LPF 2026 · Analítica Pro", page_icon="⚽",
-                   layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="LPF 2026 · Analítica Pro", page_icon="⚽", layout="wide", initial_sidebar_state="expanded")
 
 st.markdown("""
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Rajdhani:wght@500;700&family=Inter:wght@400;500&display=swap" rel="stylesheet">
@@ -36,20 +34,18 @@ h1 { font-family:'Bebas Neue',cursive !important; font-size:2.6rem !important; c
 </style>
 """, unsafe_allow_html=True)
 
-# ── Parámetros ────────────────────────────────────────────────────────
-W_SINT   = 0.65   
-K_SHRINK = 5.0    
-DC_RHO   = -0.10
+# ── Parámetros Calibrados ─────────────────────────────────────────────
+W_XG = 0.70            # El xG manda pero el resultado real pesa (30%)
+K_SHRINK = 3.5         # Suavizado para evitar que rachas cortas rompan todo
+DC_RHO = -0.10
 MAX_GOALS_MATRIX = 7
-N_RECENCIA, PESO_RECIENTE, PESO_NORMAL = 3, 1.5, 1.0
+N_RECENCIA, PESO_RECIENTE, PESO_NORMAL = 3, 1.8, 1.0 
 LAM_MIN, LAM_MAX = 0.25, 4.50
 RED, BLUE, GRAY = "#e63946", "#3b82f6", "#64748b"
-PLOT = dict(font=dict(family="Rajdhani", size=13, color="#dde3ee"),
-            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-            margin=dict(l=10, r=20, t=36, b=10))
+PLOT = dict(font=dict(family="Rajdhani", size=13, color="#dde3ee"), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", margin=dict(l=10, r=20, t=36, b=10))
 
 # ──────────────────────────────────────────────────────────────────────
-# PROCESAMIENTO DE DATOS
+# PROCESAMIENTO
 # ──────────────────────────────────────────────────────────────────────
 def num(v) -> float:
     if isinstance(v, str): v = v.replace('%', '').replace(',', '.').strip()
@@ -73,9 +69,8 @@ def cargar_excel(ruta: str):
                 while j < len(df):
                     r0 = str(df.iloc[j,0]).strip() if pd.notna(df.iloc[j,0]) else ""
                     if r0=="" or re.search(r"\s+vs\s+", r0, re.IGNORECASE): break
-                    if r0.lower() in ("métrica","metrica") or r0==loc: j+=1; continue
-                    if pd.notna(df.iloc[j,1]):
-                        stats[r0] = {"local": num(df.iloc[j,1]), "visitante": num(df.iloc[j,2])}
+                    if r0.lower() in ("métrica","metrica") or r0 == loc: j+=1; continue
+                    if pd.notna(df.iloc[j,1]): stats[r0] = {"local": num(df.iloc[j,1]), "visitante": num(df.iloc[j,2])}
                     j += 1
                 partidos.append({"local": loc, "visitante": vis, "metricas": stats})
                 i = j
@@ -97,79 +92,42 @@ def construir_df(datos: dict) -> pd.DataFrame:
 # ──────────────────────────────────────────────────────────────────────
 # MOTOR ANALÍTICO
 # ──────────────────────────────────────────────────────────────────────
-@st.cache_data(ttl=120, show_spinner=False)
-def calibrar_xg_sint(partidos_raw: tuple):
-    rows = []
-    for p in partidos_raw:
-        ms = {m[0]: {"local": m[1], "visitante": m[2]} for m in p[2]}
-        g, ta, tt = ms.get("Resultado", {}), ms.get("Tiros al arco", {}), ms.get("Tiros totales", {})
-        for side in ("local", "visitante"):
-            goles, tiro_arco, tiro_tot = g.get(side), ta.get(side), tt.get(side, 0) or 0
-            if goles is not None and tiro_arco is not None:
-                rows.append({"goles": goles, "ta": tiro_arco, "tt": tiro_tot, "cond": side})
-    if len(rows) < 10: return 0.25, 0.0, 0.5, 1.1, 0.9 
-    dfr = pd.DataFrame(rows)
-    X = np.column_stack([dfr["ta"].values, dfr["tt"].values, np.ones(len(dfr))])
-    coef, _, _, _ = lstsq(X, dfr["goles"].values, rcond=None)
-    a, b, intercept = coef
-    def xg_calc(row): return max(a * row["ta"] + b * row["tt"] + intercept, 0)
-    dfr["xg"] = dfr.apply(xg_calc, axis=1)
-    return a, b, intercept, dfr[dfr["cond"]=="local"]["xg"].mean(), dfr[dfr["cond"]=="visitante"]["xg"].mean()
-
-def xg_de_partido(p, side, a, b, intercept):
-    ta = p["metricas"].get("Tiros al arco", {}).get(side)
-    tt = p["metricas"].get("Tiros totales", {}).get(side, 0) or 0
-    return max(a * ta + b * tt + intercept, 0) if ta is not None else None
-
 def _wm(values, fechas, max_f):
     if len(values) == 0: return np.nan
     w = np.where(np.array(fechas) >= (max_f - N_RECENCIA + 1), PESO_RECIENTE, PESO_NORMAL)
     return float(np.average(values, weights=w))
 
+def _effective_rate(sub, col, max_f):
+    dr, dx = sub[sub["Métrica"] == "Resultado"], sub[sub["Métrica"] == "Goles esperados (xG)"]
+    g = _wm(dr[col].values, dr["nFecha"].values, max_f) if not dr.empty else np.nan
+    x = _wm(dx[col].values, dx["nFecha"].values, max_f) if not dx.empty else np.nan
+    if np.isnan(g) and np.isnan(x): return 1.0, 0
+    if np.isnan(x): return g, len(dr)
+    return W_XG * x + (1 - W_XG) * g, len(dr)
+
 @st.cache_data(ttl=120, show_spinner=False)
-def _league_refs(partidos_raw: tuple):
-    gl_loc, gl_vis = [], []
-    for p in partidos_raw:
-        ms = {m[0]: {"local": m[1], "visitante": m[2]} for m in p[2]}
-        g = ms.get("Resultado", {})
-        if g.get("local") is not None: gl_loc.append(g["local"])
-        if g.get("visitante") is not None: gl_vis.append(g["visitante"])
-    return np.mean(gl_loc) if gl_loc else 1.0, np.mean(gl_vis) if gl_vis else 1.0
+def _league_stats(df, max_f):
+    dr, dx = df[df["Métrica"] == "Resultado"], df[df["Métrica"] == "Goles esperados (xG)"]
+    def get_avg(d, cond): return _wm(d[d["Condicion"]==cond]["Propio"].values, d[d["Condicion"]==cond]["nFecha"].values, max_f) if not d.empty else 1.0
+    rh, rv = W_XG * get_avg(dx, "Local") + (1-W_XG) * get_avg(dr, "Local"), W_XG * get_avg(dx, "Visitante") + (1-W_XG) * get_avg(dr, "Visitante")
+    return {"ref_home": rh, "ref_away": rv, "ref_all": (rh+rv)/2}
 
-def blend_rate(xgs, goles, fechas, r_proc, r_real, max_f):
-    xg_m   = _wm(xgs, fechas, max_f) if xgs else np.nan
-    real_m = _wm(goles, fechas[:len(goles)], max_f) if goles else np.nan
-    rs = (xg_m / r_proc) if (not np.isnan(xg_m) and r_proc > 0) else 1.0
-    rr = (real_m / r_real) if (not np.isnan(real_m) and r_real > 0) else rs
-    return W_SINT * rs + (1 - W_SINT) * rr
+def _strength(df, eq, cond, league, max_f):
+    d_eq = df[df["Equipo"] == eq]
+    d_spec = d_eq[d_eq["Condicion"] == cond]
+    gf_s, n_s = _effective_rate(d_spec, "Propio", max_f); gc_s, _ = _effective_rate(d_spec, "Concedido", max_f)
+    rh, ra = (league["ref_home"], league["ref_away"]) if cond == "Local" else (league["ref_away"], league["ref_home"])
+    atk = (n_s * (gf_s / rh) + K_SHRINK)/(n_s + K_SHRINK) if rh > 0 else 1.0
+    deff = (n_s * (gc_s / ra) + K_SHRINK)/(n_s + K_SHRINK) if ra > 0 else 1.0
+    return atk, deff, n_s
 
-def _strength_blend(partidos_todos, eq, cond, ref_home_xg, ref_away_xg, ref_home_real, ref_away_real, a, b, intercept, max_f):
-    side_p, side_r = ("local", "visitante") if cond == "Local" else ("visitante", "local")
-    ps_eq = [p for p in partidos_todos if (cond == "Local" and p["local"] == eq) or (cond == "Visitante" and p["visitante"] == eq)]
-    xgs_atk, goles_atk, fechas_atk = [], [], []
-    xgs_def, goles_def, fechas_def = [], [], []
-    for p in ps_eq:
-        nf = p.get("nFecha", 0)
-        xa, xd = xg_de_partido(p, side_p, a, b, intercept), xg_de_partido(p, side_r, a, b, intercept)
-        ga, gd = p["metricas"].get("Resultado", {}).get(side_p), p["metricas"].get("Resultado", {}).get(side_r)
-        if xa is not None: xgs_atk.append(xa); fechas_atk.append(nf)
-        if xd is not None: xgs_def.append(xd); fechas_def.append(nf)
-        if ga is not None: goles_atk.append(ga)
-        if gd is not None: goles_def.append(gd)
-    n = len(goles_atk)
-    rh_a, rh_d = (ref_home_xg, ref_away_xg) if cond=="Local" else (ref_away_xg, ref_home_xg)
-    rr_a, rr_d = (ref_home_real, ref_away_real) if cond=="Local" else (ref_away_real, ref_home_real)
-    
-    atk = blend_rate(xgs_atk, goles_atk, fechas_atk, rh_a, rr_a, max_f)
-    deff = blend_rate(xgs_def, goles_def, fechas_def, rh_d, rr_d, max_f)
-    return (n * atk + K_SHRINK)/(n + K_SHRINK), (n * deff + K_SHRINK)/(n + K_SHRINK), n
-
-def calcular_lambdas(partidos_todos, eq_a, eq_b, es_loc, rh_xg, rv_xg, rh_r, rv_r, a, b, intercept, max_f):
+def calcular_lambdas(df, eq_a, eq_b, es_loc):
+    max_f = df["nFecha"].max()
+    l = _league_stats(df, max_f)
     ca, cb = ("Local", "Visitante") if es_loc else ("Visitante", "Local")
-    aa, da, _ = _strength_blend(partidos_todos, eq_a, ca, rh_xg, rv_xg, rh_r, rv_r, a, b, intercept, max_f)
-    ab, db, _ = _strength_blend(partidos_todos, eq_b, cb, rh_xg, rv_xg, rh_r, rv_r, a, b, intercept, max_f)
-    la = (rh_xg if ca=="Local" else rv_xg) * aa * db
-    lb = (rh_xg if cb=="Local" else rv_xg) * ab * da
+    aa, da, _ = _strength(df, eq_a, ca, l, max_f); ab, db, _ = _strength(df, eq_b, cb, l, max_f)
+    la = (l["ref_home"] if ca == "Local" else l["ref_away"]) * aa * db
+    lb = (l["ref_home"] if cb == "Local" else l["ref_away"]) * ab * da
     return round(float(np.clip(la, LAM_MIN, LAM_MAX)), 3), round(float(np.clip(lb, LAM_MIN, LAM_MAX)), 3)
 
 def montecarlo(la, lb):
@@ -179,25 +137,9 @@ def montecarlo(la, lb):
     pa, pb = _pmf(la, MAX_GOALS_MATRIX), _pmf(lb, MAX_GOALS_MATRIX)
     M = np.outer(pa, pb)
     rho = max(DC_RHO, -0.9 / max(la * lb, 0.01))
-    M[0,0] = max(M[0,0] * (1-la*lb*rho), 0); M[0,1] *= (1+la*rho); M[1,0] *= (1+lb*rho); M[1,1] *= (1-rho)
+    M[0,0] = max(M[0,0]*(1-la*lb*rho), 0); M[0,1] *= (1+la*rho); M[1,0] *= (1+lb*rho); M[1,1] *= (1-rho)
     M /= M.sum()
     return {"victoria": float(np.tril(M, -1).sum()), "empate": float(np.trace(M)), "derrota": float(np.triu(M, 1).sum()), "matrix": M}
-
-# ──────────────────────────────────────────────────────────────────────
-# VISUALIZACIÓN DE MARCADORES
-# ──────────────────────────────────────────────────────────────────────
-def fig_score_matrix(M, ea, eb, n=5):
-    sub = M[:n, :n]
-    z_text = [[f"{sub[i,j]*100:.1f}%" for j in range(n)] for i in range(n)]
-    fig = go.Figure(go.Heatmap(
-        z=sub, x=[str(j) for j in range(n)], y=[str(i) for i in range(n)],
-        text=z_text, texttemplate="%{text}",
-        colorscale=[[0,"#0f1829"],[0.5,"#7f1d1d"],[1,"#e63946"]],
-        showscale=False))
-    fig.update_layout(**PLOT, height=350,
-                      xaxis_title=f"Goles {eb}", yaxis_title=f"Goles {ea}",
-                      yaxis=dict(autorange="reversed"))
-    return fig
 
 # ──────────────────────────────────────────────────────────────────────
 # NAVEGACIÓN
@@ -205,84 +147,59 @@ def fig_score_matrix(M, ea, eb, n=5):
 with st.sidebar:
     st.markdown("## ⚽ LPF 2026")
     ruta = st.text_input("📂 Excel", "Fecha_x_fecha_lpf.xlsx")
-    nav  = st.radio("", ["🔮 Predictor","📊 Rankings","🔄 Head-to-Head","📖 Perfil Rival","🎭 Estilos","📋 Tabla"], label_visibility="collapsed")
+    nav = st.radio("", ["🔮 Predictor", "📊 Rankings", "🔄 Head-to-Head", "📖 Perfil Rival", "🎭 Estilos", "📋 Tabla"], label_visibility="collapsed")
 
 if not os.path.exists(ruta): st.stop()
-datos = cargar_excel(ruta)
-df = construir_df(datos)
+df = construir_df(cargar_excel(ruta))
 equipos, metricas = sorted(df["Equipo"].unique()), sorted(df["Métrica"].unique())
-max_f = int(df["nFecha"].max())
-
-partidos_todos = []
-for f, ps in datos.items():
-    nf = int(re.search(r"\d+", f).group())
-    for p in ps:
-        p_f = p.copy(); p_f["nFecha"] = nf; partidos_todos.append(p_f)
-partidos_tuple = tuple((p["local"], p["visitante"], tuple(sorted((k, v["local"], v["visitante"]) for k, v in p["metricas"].items()))) for p in partidos_todos)
-a_xg, b_xg, int_xg, rh_xg, rv_xg = calibrar_xg_sint(partidos_tuple)
-rh_r, rv_r = _league_refs(partidos_tuple)
-
 st.markdown('<h1>LPF 2026 · Scouting Dashboard</h1>', unsafe_allow_html=True)
 
 if nav == "🔮 Predictor":
     c1, c2, c3 = st.columns([5, 5, 3])
     ea, eb, loc = c1.selectbox("Local", equipos), c2.selectbox("Visitante", equipos, index=min(1, len(equipos)-1)), c3.toggle("Bono Localía", True)
     if st.button("🚀 INICIAR ANÁLISIS"):
-        la, lb = calcular_lambdas(partidos_todos, ea, eb, loc, rh_xg, rv_xg, rh_r, rv_r, a_xg, b_xg, int_xg, max_f)
+        la, lb = calcular_lambdas(df, ea, eb, loc)
         sim = montecarlo(la, lb)
-        
         k1, k2, k3 = st.columns(3)
         k1.markdown(f'<div class="kpi"><div class="lbl">Prob. {ea}</div><div class="val">{sim["victoria"]*100:.1f}%</div></div>', unsafe_allow_html=True)
         k2.markdown(f'<div class="kpi draw"><div class="lbl">Prob. Empate</div><div class="val">{sim["empate"]*100:.1f}%</div></div>', unsafe_allow_html=True)
         k3.markdown(f'<div class="kpi loss"><div class="lbl">Prob. {eb}</div><div class="val">{sim["derrota"]*100:.1f}%</div></div>', unsafe_allow_html=True)
-
-        st.markdown('<div class="section-title">🎯 Marcadores Probables</div>', unsafe_allow_html=True)
-        col_m1, col_m2 = st.columns([7, 3])
         
-        with col_m1:
-            st.plotly_chart(fig_score_matrix(sim["matrix"], ea, eb), use_container_width=True)
-        
-        with col_m2:
-            # Listado de Marcadores
-            scores = []
-            for i in range(5):
-                for j in range(5):
-                    scores.append({"score": f"{i} - {j}", "prob": sim["matrix"][i,j]})
-            top_scores = sorted(scores, key=lambda x: x["prob"], reverse=True)[:5]
-            st.markdown("### Top 5 Resultados")
-            for s in top_scores:
-                st.write(f"**{s['score']}**: {s['prob']*100:.1f}%")
+        t1, t2 = st.tabs(["📊 Radar Comparativo", "🎯 Marcadores Probables"])
+        with t1:
+            mets = [m for m in ["Posesión de balón","Tiros totales","Tiros al arco","Goles esperados (xG)"] if m in metricas]
+            va = [df[(df["Equipo"]==ea) & (df["Métrica"]==m)]["Propio"].mean() for m in mets]
+            vb = [df[(df["Equipo"]==eb) & (df["Métrica"]==m)]["Propio"].mean() for m in mets]
+            fig = go.Figure()
+            fig.add_trace(go.Scatterpolar(r=va+[va[0]], theta=mets+[mets[0]], fill="toself", name=ea, line=dict(color=RED)))
+            fig.add_trace(go.Scatterpolar(r=vb+[vb[0]], theta=mets+[mets[0]], fill="toself", name=eb, line=dict(color=BLUE)))
+            st.plotly_chart(fig.update_layout(**PLOT, height=400, polar=dict(bgcolor="rgba(0,0,0,0)", radialaxis=dict(visible=False))), use_container_width=True)
+        with t2:
+            st.plotly_chart(go.Figure(go.Heatmap(z=sim["matrix"][:5,:5], x=[str(i) for i in range(5)], y=[str(i) for i in range(5)], colorscale=[[0,"#0f1829"],[1,"#e63946"]], showscale=False)).update_layout(**PLOT, height=320, xaxis_title=f"Goles {eb}", yaxis_title=f"Goles {ea}", yaxis=dict(autorange="reversed")), use_container_width=True)
 
-        st.markdown(f'<div class="note">λ {ea}={la:.3f} | λ {eb}={lb:.3f} | xG Sint: {a_xg:.3f}·TA + {b_xg:.3f}·TT + {int_xg:.3f}</div>', unsafe_allow_html=True)
+elif nav == "📊 Rankings":
+    c1, c2, c3 = st.columns(3)
+    m_sel, cond_sel, tipo_sel = c1.selectbox("Métrica", metricas), c2.radio("Condición", ["General","Local","Visitante"], horizontal=True), c3.radio("Enfoque", ["A Favor","En Contra"], horizontal=True)
+    col_data = "Propio" if "A Favor" in tipo_sel else "Concedido"
+    res = df[(df["Condicion"] == cond_sel if cond_sel != "General" else True) & (df["Métrica"] == m_sel)].groupby("Equipo")[col_data].mean().sort_values(ascending=False).reset_index()
+    st.plotly_chart(go.Figure(go.Bar(x=res[col_data], y=res["Equipo"], orientation="h", marker_color=RED if col_data=="Propio" else GRAY)).update_layout(**PLOT, height=700), use_container_width=True)
+
+elif nav == "🔄 Head-to-Head":
+    c1, c2 = st.columns(2); ea, eb = c1.selectbox("Equipo A", equipos), c2.selectbox("Equipo B", equipos, index=min(1, len(equipos)-1))
+    s1, s2 = df[df["Equipo"]==ea].groupby("Métrica")[["Propio", "Concedido"]].mean().round(2), df[df["Equipo"]==eb].groupby("Métrica")[["Propio", "Concedido"]].mean().round(2)
+    st.table(pd.DataFrame({f"{ea} Favor": s1["Propio"], f"{ea} Contra": s1["Concedido"], f"{eb} Favor": s2["Propio"], f"{eb} Contra": s2["Concedido"]}).dropna())
 
 elif nav == "🎭 Estilos":
     st.markdown('<div class="section-title">🎭 Análisis de Estilo (Original)</div>', unsafe_allow_html=True)
     mo = "Tiros al arco" if "Tiros al arco" in metricas else "Tiros totales"
-    if "Posesión de balón" in metricas:
-        df_e = pd.DataFrame({"P": df[df["Métrica"] == "Posesión de balón"].groupby("Equipo")["Propio"].mean(), "O": df[df["Métrica"] == mo].groupby("Equipo")["Propio"].mean()}).dropna()
-        mp, mo_m = df_e["P"].mean(), df_e["O"].mean()
-        fig = go.Figure(go.Scatter(x=df_e["P"], y=df_e["O"], mode="markers+text", text=df_e.index, textposition="top center", marker=dict(size=12, color=RED, line=dict(width=1, color="white"))))
-        fig.add_vline(x=mp, line=dict(color=GRAY, dash="dash")); fig.add_hline(y=mo_m, line=dict(color=GRAY, dash="dash"))
-        st.plotly_chart(fig.update_layout(**PLOT, height=600, xaxis_title="Posesión (%)", yaxis_title=f"Ataque ({mo})"), use_container_width=True)
-
-# [MANTENER RANKINGS, H2H, PERFIL Y TABLA IGUAL A V9.4]
-elif nav == "📊 Rankings":
-    st.markdown('<div class="section-title">📊 Rankings</div>', unsafe_allow_html=True)
-    c1, c2, c3 = st.columns(3)
-    m_sel, cond_sel, tipo_sel = c1.selectbox("Métrica", metricas), c2.radio("Condición", ["General","Local","Visitante"], horizontal=True), c3.radio("Enfoque", ["A Favor","En Contra"], horizontal=True)
-    col_data = "Propio" if "A Favor" in tipo_sel else "Concedido"
-    mask = (df["Condicion"] == cond_sel) if cond_sel != "General" else df.index.notna()
-    res = df[mask & (df["Métrica"] == m_sel)].groupby("Equipo")[col_data].mean().sort_values(ascending=False).reset_index()
-    st.plotly_chart(go.Figure(go.Bar(x=res[col_data], y=res["Equipo"], orientation="h", marker_color=RED if col_data=="Propio" else GRAY)).update_layout(**PLOT, height=700), use_container_width=True)
+    df_e = pd.DataFrame({"P": df[df["Métrica"] == "Posesión de balón"].groupby("Equipo")["Propio"].mean(), "O": df[df["Métrica"] == mo].groupby("Equipo")["Propio"].mean()}).dropna()
+    mp, mo_m = df_e["P"].mean(), df_e["O"].mean()
+    fig = go.Figure(go.Scatter(x=df_e["P"], y=df_e["O"], mode="markers+text", text=df_e.index, textposition="top center", marker=dict(size=12, color=RED, line=dict(width=1, color="white"))))
+    fig.add_vline(x=mp, line=dict(color=GRAY, dash="dash")); fig.add_hline(y=mo_m, line=dict(color=GRAY, dash="dash"))
+    st.plotly_chart(fig.update_layout(**PLOT, height=600, xaxis_title="Posesión (%)", yaxis_title=f"Ataque ({mo})"), use_container_width=True)
 
 elif nav == "📋 Tabla":
     dr = df[df["Métrica"] == "Resultado"].copy()
-    rows = []
-    for eq in equipos:
-        d = dr[dr["Equipo"] == eq]; pj = len(d)
-        if pj > 0:
-            v, e = (d["Propio"] > d["Concedido"]).sum(), (d["Propio"] == d["Concedido"]).sum()
-            rows.append({"Pos": 0, "Equipo": eq, "PJ": pj, "V": int(v), "E": int(e), "D": int(pj-v-e), "GF": int(d["Propio"].sum()), "GC": int(d["Concedido"].sum()), "PTS": int(v*3+e), "PPJ": (v*3+e)/pj})
-    tabla = pd.DataFrame(rows).sort_values(["PTS","GF"], ascending=False).reset_index(drop=True)
-    tabla["Pos"] = tabla.index + 1
-    st.dataframe(tabla[["Pos","Equipo","PJ","V","E","D","GF","GC","PTS","PPJ"]], use_container_width=True, hide_index=True)
+    rows = [{"Equipo": eq, "PJ": len(dr[dr["Equipo"]==eq]), "V": (dr[dr["Equipo"]==eq]["Propio"] > dr[dr["Equipo"]==eq]["Concedido"]).sum(), "E": (dr[dr["Equipo"]==eq]["Propio"] == dr[dr["Equipo"]==eq]["Concedido"]).sum(), "GF": dr[dr["Equipo"]==eq]["Propio"].sum(), "GC": dr[dr["Equipo"]==eq]["Concedido"].sum()} for eq in equipos]
+    tabla = pd.DataFrame(rows); tabla["PTS"] = tabla["V"]*3 + tabla["E"]
+    st.dataframe(tabla.sort_values(["PTS","GF"], ascending=False), use_container_width=True, hide_index=True)
