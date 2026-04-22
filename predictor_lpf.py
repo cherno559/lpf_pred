@@ -2,11 +2,10 @@
 dashboard_lpf.py — LPF 2026 Scouting Dashboard
 ────────────────────────────────────────────────
 Lee el Excel generado por sofascore_lpf_generales.py y construye:
-  · Predictor de partidos (modelo Dixon-Coles + xG estratificado Local/Visitante)
+  · Predictor de partidos (con Marcadores Exactos devueltos)
   · Matriz de Eficiencia (Propio vs Concedido)
   · Head-to-Head con Tabla (A favor / En contra) y Radar
   · Perfil por Rival
-  · Agrupación por Estilos de Juego (K-Means Clustering)
 """
 
 import re, os
@@ -16,8 +15,6 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
-from sklearn.cluster import KMeans
-from sklearn.preprocessing import StandardScaler
 
 # ──────────────────────────────────────────────────────────────────────
 # CONFIGURACIÓN
@@ -180,6 +177,19 @@ def fig_probs(sim, na, nb):
     fig.update_layout(**PLOT, height=200, xaxis=dict(**GRID, range=[0, 105], ticksuffix="%"), showlegend=False)
     return fig
 
+# ESTA ES LA FUNCIÓN DE MARCADORES QUE HABÍA SACADO POR ERROR
+def fig_marcadores(sim, na, nb):
+    df = sim["df"].copy()
+    df["label"] = na + " " + df["A"].astype(str) + "–" + df["B"].astype(str) + " " + nb
+    top = df.nlargest(8, "prob").iloc[::-1]
+    fig = go.Figure(go.Bar(
+        x=top["prob"]*100, y=top["label"], orientation="h", marker_color=RED,
+        text=(top["prob"]*100).map(lambda x: f"{x:.1f}%"), textposition="auto",
+        textfont=dict(color="white", size=14, family="Rajdhani")
+    ))
+    fig.update_layout(**PLOT, height=340, xaxis=dict(**GRID, ticksuffix="%"), yaxis=dict(**NO_GRID, tickfont=dict(size=13, family="Rajdhani")))
+    return fig
+
 def fig_radar(df, eq_a, eq_b, cond_a="General", cond_b="General"):
     mets = ["Posesión de balón", "Tiros totales", "Tiros al arco", "Pases totales", "Goles esperados (xG)", "Córners", "Quites", "Intercepciones"]
     mets = [m for m in mets if m in df["Métrica"].values]
@@ -219,7 +229,8 @@ with st.sidebar:
     st.markdown("## ⚽ LPF 2026")
     ruta = st.text_input("📂 Excel", value="Fecha_x_fecha_lpf.xlsx")
     st.markdown("---")
-    nav = st.radio("", ["🔮 Predictor", "📊 Rankings", "🔄 Head-to-Head", "📖 Perfil por Rival", "🧬 Estilos (Clustering)"], label_visibility="collapsed")
+    # Limpiamos Estilos de Juego
+    nav = st.radio("", ["🔮 Predictor", "📊 Rankings", "🔄 Head-to-Head", "📖 Perfil por Rival"], label_visibility="collapsed")
 
 if not os.path.exists(ruta):
     st.warning("No se encontró el Excel."); st.stop()
@@ -248,10 +259,14 @@ if nav == "🔮 Predictor":
         k1.markdown(f'<div class="kpi"><div class="lbl">V. {eq_a}</div><div class="val">{sim["victoria"]*100:.1f}%</div></div>', unsafe_allow_html=True)
         k2.markdown(f'<div class="kpi draw"><div class="lbl">Empate</div><div class="val">{sim["empate"]*100:.1f}%</div></div>', unsafe_allow_html=True)
         k3.markdown(f'<div class="kpi loss"><div class="lbl">V. {eq_b}</div><div class="val">{sim["derrota"]*100:.1f}%</div></div>', unsafe_allow_html=True)
-        t1, t2 = st.tabs(["📊 Probabilidades", "🕸️ Radar"])
+        
+        # ACÁ DEVOLVÍ LOS 3 TABS EXACTOS COMO ANTES
+        t1, t2, t3 = st.tabs(["📊 Probabilidades", "🎯 Marcadores exactos", "🕸️ Radar"])
         with t1: 
             st.plotly_chart(fig_probs(sim, eq_a, eq_b), use_container_width=True)
-        with t2: 
+        with t2:
+            st.plotly_chart(fig_marcadores(sim, eq_a, eq_b), use_container_width=True)
+        with t3: 
             st.plotly_chart(fig_radar(df, eq_a, eq_b, "Local" if es_loc else "Visitante", "Visitante" if es_loc else "Local"), use_container_width=True)
 
 elif nav == "📊 Rankings":
@@ -300,7 +315,6 @@ elif nav == "🔄 Head-to-Head":
             col_a = f"{ea} ({ca})"
             col_b = f"{eb} ({cb})"
             
-            # Identificadores exactos de columna para evitar errores al pintar
             c_a_fav = f"{col_a} (A Favor)"
             c_b_fav = f"{col_b} (A Favor)"
             c_a_con = f"{col_a} (En Contra)"
@@ -313,7 +327,6 @@ elif nav == "🔄 Head-to-Head":
                 c_b_con: stats_b.loc[idx, "Concedido"].values
             }, index=idx)
 
-            # Lógica para pintar de verde al ganador (evaluando solo la métrica A FAVOR)
             def highlight_winner(row):
                 m = row.name
                 styles = [""] * 4 
@@ -347,57 +360,3 @@ elif nav == "📖 Perfil por Rival":
         ])
         fig.update_layout(**PLOT, barmode="group")
         st.plotly_chart(fig, use_container_width=True)
-
-elif nav == "🧬 Estilos (Clustering)":
-    st.markdown('<div class="section-title">🧬 Agrupación por Estilos de Juego (K-Means)</div>', unsafe_allow_html=True)
-    st.markdown("El algoritmo de Machine Learning agrupa a los equipos basándose en su comportamiento matemático en la cancha, ignorando sus puntos en la tabla.")
-    
-    metricas_estilo = ["Posesión de balón", "Pases totales", "Quites", "Tiros totales", "Faltas"]
-    metricas_validas = [m for m in metricas_estilo if m in metricas]
-    
-    if len(metricas_validas) < 3:
-        st.warning("No hay suficientes métricas en el Excel para correr el algoritmo.")
-    else:
-        df_estilo = df[df["Métrica"].isin(metricas_validas)].groupby(["Equipo", "Métrica"])["Propio"].mean().unstack().fillna(0)
-        
-        scaler = StandardScaler()
-        datos_escalados = scaler.fit_transform(df_estilo)
-        
-        c1, c2 = st.columns([1, 4])
-        n_clusters = c1.slider("Cantidad de Estilos (Grupos)", min_value=2, max_value=5, value=3)
-        
-        kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init="auto")
-        df_estilo["Cluster"] = kmeans.fit_predict(datos_escalados)
-        
-        eje_x = "Posesión de balón" if "Posesión de balón" in metricas_validas else metricas_validas[0]
-        eje_y = "Quites" if "Quites" in metricas_validas else metricas_validas[1]
-        
-        fig = go.Figure()
-        colores_cluster = [RED, BLUE, "#22c55e", "#f59e0b", "#a855f7"]
-        
-        for i in range(n_clusters):
-            grupo = df_estilo[df_estilo["Cluster"] == i]
-            fig.add_trace(go.Scatter(
-                x=grupo[eje_x], 
-                y=grupo[eje_y], 
-                mode="markers+text", 
-                text=grupo.index, 
-                textposition="top center",
-                name=f"Grupo {i+1}",
-                marker=dict(size=14, color=colores_cluster[i], opacity=0.8, line=dict(width=1, color="white"))
-            ))
-            
-        fig.update_layout(
-            **PLOT, 
-            height=600, 
-            title=dict(text=f"Mapa de Estilos: {eje_x} vs {eje_y}", font=dict(family="Bebas Neue", size=20)),
-            xaxis_title=eje_x, 
-            yaxis_title=eje_y,
-            xaxis=dict(**GRID), yaxis=dict(**GRID)
-        )
-        st.plotly_chart(fig, use_container_width=True)
-        
-        st.markdown("### ¿Qué define a cada grupo?")
-        resumen_clusters = df_estilo.groupby("Cluster")[metricas_validas].mean().round(1)
-        resumen_clusters.index = [f"Grupo {i+1}" for i in resumen_clusters.index]
-        st.dataframe(resumen_clusters.style.background_gradient(cmap="viridis"), use_container_width=True)
