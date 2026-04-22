@@ -281,21 +281,24 @@ elif nav == "🔄 Head-to-Head":
         f"{ea} ({ca})": stats_a,
         f"{eb} ({cb})": stats_b
     }).dropna()
-
-    def highlight_winner(row):
-        m = row.name
-        val_a, val_b = row[0], row[1]
-        is_less_better = m in METRICAS_MENOS_ES_MEJOR
-        if val_a == val_b: return ["", ""]
-        a_wins = (val_a > val_b) if not is_less_better else (val_a < val_b)
-        return ["background-color: rgba(34, 197, 94, 0.2)" if a_wins else "", 
-                "background-color: rgba(34, 197, 94, 0.2)" if not a_wins else ""]
-
-    st.dataframe(df_h2h.style.apply(highlight_winner, axis=1), use_container_width=True)
-    
-    # Radar debajo para soporte visual
-    st.markdown("---")
-    st.plotly_chart(fig_radar(df, ea, eb, ca, cb), use_container_width=True)
+# Lógica para pintar de verde al ganador de cada estadística
+            def highlight_winner(row):
+                m = row.name
+                
+                # CORRECCIÓN: Usamos el nombre exacto de la columna en lugar de [0] y [1]
+                val_a = row[col_a]
+                val_b = row[col_b]
+                
+                if val_a == val_b: 
+                    return ["", ""]
+                    
+                is_less_better = m in METRICAS_MENOS_ES_MEJOR
+                a_wins = (val_a > val_b) if not is_less_better else (val_a < val_b)
+                
+                return [
+                    "background-color: rgba(34, 197, 94, 0.2)" if a_wins else "", 
+                    "background-color: rgba(34, 197, 94, 0.2)" if not a_wins else ""
+                ]
 
 elif nav == "📖 Perfil por Rival":
     st.markdown('<div class="section-title">📖 Perfil por Rival</div>', unsafe_allow_html=True)
