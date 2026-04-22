@@ -209,8 +209,10 @@ def calcular_lambdas(df: pd.DataFrame, eq_a: str, eq_b: str, a_es_local: bool, r
         lam_a *= (1 + rot_b * MAX_ROTATION_PENALTY * 0.4)
 
     # ── Calibrador Anti-Empate ──
+   # ── Calibrador Anti-Empate ──
     diferencia = abs(lam_a - lam_b)
-    if diferencia > 0.05:
+    # Solo aplicamos el estirador en partidos parejos. Si ya hay goleada predictiva, no tocamos nada.
+    if 0.05 < diferencia < 0.60:
         if lam_a > lam_b: 
             lam_a *= 1.10
             lam_b *= 0.90
