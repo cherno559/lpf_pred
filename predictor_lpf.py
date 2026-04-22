@@ -1,10 +1,6 @@
 """
-dashboard_lpf.py — LPF 2026 Scouting Dashboard (v10.1 · Calibración Market)
+dashboard_lpf.py — LPF 2026 Scouting Dashboard (v10.3 · Full Features)
 ─────────────────────────────────────────────────────────────────────────────
-Cambios v10.1:
-  - W_XG = 0.85: Prioridad casi total al peligro generado (proceso).
-  - K_SHRINK = 2.5: Menos "miedo" a los datos específicos de cada equipo.
-  - PESO_RECIENTE = 1.6: Equilibrio para no hundir a los grandes por un mal partido.
 """
 import re, os, math
 import numpy as np
@@ -38,18 +34,17 @@ h1 { font-family:'Bebas Neue',cursive !important; font-size:2.6rem !important; c
 </style>
 """, unsafe_allow_html=True)
 
-# ── Parámetros Calibrados v10.1 ───────────────────────────────────────
-W_XG = 0.85            # Prioridad máxima al proceso (xG)
-K_SHRINK = 2.5         # Menos conservador, más importancia a la data individual
+# ── Parámetros Calibrados ─────────────────────────────────────────────
+W_XG = 0.65            
+K_SHRINK = 3.0         
 DC_RHO = -0.10
 MAX_GOALS_MATRIX = 7
-N_RECENCIA, PESO_RECIENTE, PESO_NORMAL = 3, 1.6, 1.0 
-LAM_MIN, LAM_MAX = 0.25, 4.50
+N_RECENCIA, PESO_RECIENTE, PESO_NORMAL = 3, 1.5, 1.0 
 RED, BLUE, GRAY = "#e63946", "#3b82f6", "#64748b"
 PLOT = dict(font=dict(family="Rajdhani", size=13, color="#dde3ee"), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", margin=dict(l=10, r=20, t=36, b=10))
 
 # ──────────────────────────────────────────────────────────────────────
-# FUNCIONES (Mantenidas de v10.0 pero optimizadas)
+# PROCESAMIENTO
 # ──────────────────────────────────────────────────────────────────────
 def num(v) -> float:
     if isinstance(v, str): v = v.replace('%', '').replace(',', '.').strip()
@@ -93,6 +88,9 @@ def construir_df(datos: dict) -> pd.DataFrame:
                 filas.append({**base, "Equipo": p["visitante"], "Rival": p["local"], "Condicion": "Visitante", "Propio": vals["visitante"], "Concedido": vals["local"]})
     return pd.DataFrame(filas)
 
+# ──────────────────────────────────────────────────────────────────────
+# MOTOR ANALÍTICO
+# ──────────────────────────────────────────────────────────────────────
 def _wm(values, fechas, max_f):
     if len(values) == 0: return np.nan
     w = np.where(np.array(fechas) >= (max_f - N_RECENCIA + 1), PESO_RECIENTE, PESO_NORMAL)
@@ -132,7 +130,7 @@ def calcular_lambdas(df, eq_a, eq_b, es_loc):
     aa, da, _ = _strength(df, eq_a, ca, l, max_f); ab, db, _ = _strength(df, eq_b, cb, l, max_f)
     la = (l["ref_home"] if ca == "Local" else l["ref_away"]) * aa * db
     lb = (l["ref_home"] if cb == "Local" else l["ref_away"]) * ab * da
-    return round(float(np.clip(la, LAM_MIN, LAM_MAX)), 3), round(float(np.clip(lb, LAM_MIN, LAM_MAX)), 3)
+    return round(float(np.clip(la, 0.25, 4.5)), 3), round(float(np.clip(lb, 0.25, 4.5)), 3)
 
 def montecarlo(la, lb):
     def _pmf(lam, kmax):
@@ -146,12 +144,34 @@ def montecarlo(la, lb):
     return {"victoria": float(np.tril(M, -1).sum()), "empate": float(np.trace(M)), "derrota": float(np.triu(M, 1).sum()), "matrix": M}
 
 # ──────────────────────────────────────────────────────────────────────
-# NAVEGACIÓN Y RENDER
+# FUNCIONES VISUALES
+# ──────────────────────────────────────────────────────────────────────
+def fig_radar(df, ea, eb):
+    mets = [m for m in ["Posesión de balón","Tiros totales","Tiros al arco","Goles esperados (xG)"] if m in df["Métrica"].values]
+    if not mets: return go.Figure()
+    va = [df[(df["Equipo"]==ea) & (df["Métrica"]==m)]["Propio"].mean() for m in mets]
+    vb = [df[(df["Equipo"]==eb) & (df["Métrica"]==m)]["Propio"].mean() for m in mets]
+    fig = go.Figure()
+    fig.add_trace(go.Scatterpolar(r=va+[va[0]], theta=mets+[mets[0]], fill="toself", name=ea, line=dict(color=RED)))
+    fig.add_trace(go.Scatterpolar(r=vb+[vb[0]], theta=mets+[mets[0]], fill="toself", name=eb, line=dict(color=BLUE)))
+    fig.update_layout(**PLOT, height=400, polar=dict(bgcolor="rgba(0,0,0,0)", radialaxis=dict(visible=False)))
+    return fig
+
+def fig_marcadores(M, ea, eb):
+    sub = M[:5, :5]
+    fig = go.Figure(go.Heatmap(z=sub, x=[str(i) for i in range(5)], y=[str(i) for i in range(5)], 
+                               colorscale=[[0,"#0f1829"],[1,"#e63946"]], showscale=False,
+                               text=[[f"{sub[i,j]*100:.1f}%" for j in range(5)] for i in range(5)], texttemplate="%{text}"))
+    fig.update_layout(**PLOT, height=350, xaxis_title=f"Goles {eb}", yaxis_title=f"Goles {ea}", yaxis=dict(autorange="reversed"))
+    return fig
+
+# ──────────────────────────────────────────────────────────────────────
+# NAVEGACIÓN
 # ──────────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("## ⚽ LPF 2026")
     ruta = st.text_input("📂 Excel", "Fecha_x_fecha_lpf.xlsx")
-    nav = st.radio("", ["🔮 Predictor", "📊 Rankings", "🔄 Head-to-Head", "🎭 Estilos", "📋 Tabla"], label_visibility="collapsed")
+    nav = st.radio("", ["🔮 Predictor", "📊 Rankings", "🔄 Head-to-Head", "📖 Perfil Rival", "🎭 Estilos", "📋 Tabla"], label_visibility="collapsed")
 
 if not os.path.exists(ruta): st.stop()
 df = construir_df(cargar_excel(ruta))
@@ -159,6 +179,7 @@ equipos, metricas = sorted(df["Equipo"].unique()), sorted(df["Métrica"].unique(
 st.markdown('<h1>LPF 2026 · Scouting Dashboard</h1>', unsafe_allow_html=True)
 
 if nav == "🔮 Predictor":
+    st.markdown('<div class="section-title">🔮 Predictor Analítico</div>', unsafe_allow_html=True)
     c1, c2, c3 = st.columns([5, 5, 3])
     ea, eb, loc = c1.selectbox("Local", equipos), c2.selectbox("Visitante", equipos, index=min(1, len(equipos)-1)), c3.toggle("Bono Localía", True)
     if st.button("🚀 INICIAR ANÁLISIS"):
@@ -168,7 +189,25 @@ if nav == "🔮 Predictor":
         k1.markdown(f'<div class="kpi"><div class="lbl">Prob. {ea}</div><div class="val">{sim["victoria"]*100:.1f}%</div></div>', unsafe_allow_html=True)
         k2.markdown(f'<div class="kpi draw"><div class="lbl">Prob. Empate</div><div class="val">{sim["empate"]*100:.1f}%</div></div>', unsafe_allow_html=True)
         k3.markdown(f'<div class="kpi loss"><div class="lbl">Prob. {eb}</div><div class="val">{sim["derrota"]*100:.1f}%</div></div>', unsafe_allow_html=True)
-        st.markdown(f'<div class="note">λ {ea}:{la} vs λ {eb}:{lb} | Market-Calibration: K=2.5, W_xG=0.85</div>', unsafe_allow_html=True)
+        
+        t1, t2 = st.tabs(["🎯 Marcadores Probables", "🕸️ Radar Comparativo"])
+        with t1:
+            cm1, cm2 = st.columns([7, 3])
+            cm1.plotly_chart(fig_marcadores(sim["matrix"], ea, eb), use_container_width=True)
+            with cm2:
+                st.markdown("### Top 5 Marcadores")
+                scores = sorted([{"s": f"{i}-{j}", "p": sim["matrix"][i,j]} for i in range(5) for j in range(5)], key=lambda x: x["p"], reverse=True)[:5]
+                for s in scores: st.write(f"**{s['s']}**: {s['p']*100:.1f}%")
+        with t2:
+            st.plotly_chart(fig_radar(df, ea, eb), use_container_width=True)
+        st.markdown(f'<div class="note">λ {ea}:{la} vs λ {eb}:{lb} | W_xG=0.65 | K=3.0</div>', unsafe_allow_html=True)
+
+elif nav == "🔄 Head-to-Head":
+    st.markdown('<div class="section-title">🔄 H2H Detallado</div>', unsafe_allow_html=True)
+    c1, c2 = st.columns(2); ea, eb = c1.selectbox("Equipo A", equipos), c2.selectbox("Equipo B", equipos, index=min(1, len(equipos)-1))
+    st.plotly_chart(fig_radar(df, ea, eb), use_container_width=True)
+    s1, s2 = df[df["Equipo"]==ea].groupby("Métrica")[["Propio", "Concedido"]].mean().round(2), df[df["Equipo"]==eb].groupby("Métrica")[["Propio", "Concedido"]].mean().round(2)
+    st.dataframe(pd.DataFrame({f"{ea} Favor": s1["Propio"], f"{ea} Contra": s1["Concedido"], f"{eb} Favor": s2["Propio"], f"{eb} Contra": s2["Concedido"]}).dropna(), use_container_width=True)
 
 elif nav == "🎭 Estilos":
     st.markdown('<div class="section-title">🎭 Análisis de Estilo (Original)</div>', unsafe_allow_html=True)
@@ -179,7 +218,6 @@ elif nav == "🎭 Estilos":
     fig.add_vline(x=mp, line=dict(color=GRAY, dash="dash")); fig.add_hline(y=mo_m, line=dict(color=GRAY, dash="dash"))
     st.plotly_chart(fig.update_layout(**PLOT, height=600, xaxis_title="Posesión (%)", yaxis_title=f"Ataque ({mo})"), use_container_width=True)
 
-# [MANTENER RANKINGS, H2H Y TABLA IGUAL A V10.0]
 elif nav == "📊 Rankings":
     c1, c2, c3 = st.columns(3)
     m_sel, cond_sel, tipo_sel = c1.selectbox("Métrica", metricas), c2.radio("Condición", ["General","Local","Visitante"], horizontal=True), c3.radio("Enfoque", ["A Favor","En Contra"], horizontal=True)
