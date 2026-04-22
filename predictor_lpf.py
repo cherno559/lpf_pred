@@ -4,7 +4,6 @@ dashboard_lpf.py — LPF 2026 Scouting Dashboard
 Lee el Excel generado por sofascore_lpf_generales.py y construye:
   · Predictor de partidos (modelo Dixon-Coles + xG con split Local/Visitante)
   · Tablas comparativas por métrica (propias y concedidas)
-  · Radares H2H dinámicos (Local vs Visitante)
   · Perfil por Rival
 
 Instalación:
@@ -159,11 +158,9 @@ def construir_df(datos: dict) -> pd.DataFrame:
     return pd.DataFrame(filas)
 
 def prom_equipo(df: pd.DataFrame) -> pd.DataFrame:
-    """Promedio general sin importar local/visitante"""
     return df.groupby(["Equipo", "Métrica"])[["Propio", "Concedido"]].mean().round(2).reset_index()
 
 def prom_equipo_cond(df: pd.DataFrame) -> pd.DataFrame:
-    """Promedio separando por condición (Local/Visitante)"""
     return df.groupby(["Equipo", "Métrica", "Condicion"])[["Propio", "Concedido"]].mean().round(2).reset_index()
 
 def ranking(df: pd.DataFrame, metrica: str, columna="Propio", ascendente=False) -> pd.DataFrame:
@@ -194,23 +191,19 @@ def calcular_lambdas(df: pd.DataFrame, eq_a: str, eq_b: str, a_es_local: bool):
     if a_es_local:
         gf_a_loc, gc_a_loc, _ = stats(eq_a, "Local")
         gf_b_vis, gc_b_vis, _ = stats(eq_b, "Visitante")
-        
         fa_a = gf_a_loc / media_gf_local
         fd_b = gc_b_vis / media_gf_local
         fa_b = gf_b_vis / media_gf_vis
         fd_a = gc_a_loc / media_gf_vis
-        
         lam_a = fa_a * fd_b * media_gf_local
         lam_b = fa_b * fd_a * media_gf_vis
     else:
         gf_a_vis, gc_a_vis, _ = stats(eq_a, "Visitante")
         gf_b_loc, gc_b_loc, _ = stats(eq_b, "Local")
-        
         fa_a = gf_a_vis / media_gf_vis
         fd_b = gc_b_loc / media_gf_vis
         fa_b = gf_b_loc / media_gf_local
         fd_a = gc_a_vis / media_gf_local
-        
         lam_a = fa_a * fd_b * media_gf_vis
         lam_b = fa_b * fd_a * media_gf_local
 
@@ -218,17 +211,13 @@ def calcular_lambdas(df: pd.DataFrame, eq_a: str, eq_b: str, a_es_local: bool):
     if not df_xg.empty:
         cond_a = "Local" if a_es_local else "Visitante"
         cond_b = "Visitante" if a_es_local else "Local"
-        
         xg_media_a = df_xg[df_xg["Condicion"] == cond_a]["Propio"].mean()
         xg_media_b = df_xg[df_xg["Condicion"] == cond_b]["Propio"].mean()
-        
         xg_a = df_xg[(df_xg["Equipo"] == eq_a) & (df_xg["Condicion"] == cond_a)]["Propio"].mean()
         xg_b = df_xg[(df_xg["Equipo"] == eq_b) & (df_xg["Condicion"] == cond_b)]["Propio"].mean()
-        
         if not np.isnan(xg_a) and xg_media_a > 0:
             esperado_a = (xg_a / xg_media_a) * (media_gf_local if a_es_local else media_gf_vis)
             lam_a = (lam_a * 0.55) + (esperado_a * 0.45)
-            
         if not np.isnan(xg_b) and xg_media_b > 0:
             esperado_b = (xg_b / xg_media_b) * (media_gf_vis if a_es_local else media_gf_local)
             lam_b = (lam_b * 0.55) + (esperado_b * 0.45)
@@ -275,10 +264,8 @@ def fig_marcadores(sim, na, nb):
     return fig
 
 def fig_radar(df: pd.DataFrame, eq_a: str, eq_b: str, cond_a: str = "General", cond_b: str = "General"):
-    """Dibuja el radar permitiendo filtrar si el rendimiento es Local, Visitante o General"""
     mets = ["Posesión de balón", "Tiros totales", "Tiros al arco", "Pases totales", "Goles esperados (xG)", "Córners", "Quites", "Intercepciones"]
     mets = [m for m in mets if m in df["Métrica"].values]
-    
     prom_gen = prom_equipo(df)
     prom_cnd = prom_equipo_cond(df)
 
@@ -301,11 +288,8 @@ def fig_radar(df: pd.DataFrame, eq_a: str, eq_b: str, cond_a: str = "General", c
         return f"rgba({r},{g},{b},{alpha})"
 
     fig = go.Figure()
-    
-    # Nombres para la leyenda
     name_a = f"{eq_a} ({cond_a})" if cond_a != "General" else eq_a
     name_b = f"{eq_b} ({cond_b})" if cond_b != "General" else eq_b
-
     for vals, name, col in [(van, name_a, RED), (vbn, name_b, BLUE)]:
         fig.add_trace(go.Scatterpolar(
             r=vals + [vals[0]], theta=mets + [mets[0]],
@@ -334,12 +318,12 @@ with st.sidebar:
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
     ruta = st.text_input("📂 Ruta del Excel", value="Fecha_x_fecha_lpf.xlsx")
     st.markdown("---")
-    nav = st.radio("", ["🔮  Predictor", "📊  Rankings", "🔄  Head-to-Head", "📋  Resumen Completo", "📖  Perfil por Rival"], label_visibility="collapsed")
+    nav = st.radio("", ["🔮  Predictor", "📊  Rankings", "🔄  Head-to-Head", "📖  Perfil por Rival"], label_visibility="collapsed")
     st.markdown("---")
     st.markdown('<p style="font-size:11px;color:#334155;text-align:center;">Fuente: SofaScore API<br>Liga Profesional 2026</p>', unsafe_allow_html=True)
 
 # ──────────────────────────────────────────────────────────────────────
-# CARGA
+# CARGA Y HEADER
 # ──────────────────────────────────────────────────────────────────────
 if not os.path.exists(ruta):
     st.markdown('<h1>LPF 2026 · Scouting Dashboard</h1>', unsafe_allow_html=True)
@@ -380,21 +364,12 @@ if nav == "🔮  Predictor":
             with st.spinner("Calculando modelo estratificado Local/Visitante…"):
                 lam_a, lam_b = calcular_lambdas(df, eq_a, eq_b, es_local)
                 sim = montecarlo(lam_a, lam_b)
-
             nombre_a = eq_a + (" 🏠" if es_local else " ✈️")
             nombre_b = eq_b + (" ✈️" if es_local else " 🏠")
             st.markdown(f"### {nombre_a}  vs  {nombre_b}")
-
             k1, k2, k3, k4, k5 = st.columns(5)
-            for col, lbl, val, cls in [
-                (k1, f"Victoria {eq_a[:10]}", f"{sim['victoria']*100:.1f}%", ""),
-                (k2, "Empate",                f"{sim['empate']*100:.1f}%",   "draw"),
-                (k3, f"Victoria {eq_b[:10]}", f"{sim['derrota']*100:.1f}%",  "loss"),
-                (k4, f"λ {eq_a[:10]}",        f"{lam_a:.2f}",               "info"),
-                (k5, f"λ {eq_b[:10]}",        f"{lam_b:.2f}",               "info"),
-            ]:
+            for col, lbl, val, cls in [(k1, f"Victoria {eq_a[:10]}", f"{sim['victoria']*100:.1f}%", ""), (k2, "Empate", f"{sim['empate']*100:.1f}%", "draw"), (k3, f"Victoria {eq_b[:10]}", f"{sim['derrota']*100:.1f}%", "loss"), (k4, f"λ {eq_a[:10]}", f"{lam_a:.2f}", "info"), (k5, f"λ {eq_b[:10]}", f"{lam_b:.2f}", "info")]:
                 col.markdown(f'<div class="kpi {cls}"><div class="lbl">{lbl}</div><div class="val">{val}</div></div>', unsafe_allow_html=True)
-
             st.markdown("<br>", unsafe_allow_html=True)
             t1, t2, t3 = st.tabs(["📊 Probabilidades", "🎯 Marcadores exactos", "🕸️ Radar H2H"])
             with t1:
@@ -402,7 +377,6 @@ if nav == "🔮  Predictor":
                 st.markdown('<div class="note">λ = goles esperados. El modelo cruza el desempeño específico de A en su condición vs el desempeño específico de B en su condición.</div>', unsafe_allow_html=True)
             with t2: st.plotly_chart(fig_marcadores(sim, eq_a, eq_b), use_container_width=True)
             with t3:
-                # El radar ahora toma la condición real de la simulación
                 cond_str_a = "Local" if es_local else "Visitante"
                 cond_str_b = "Visitante" if es_local else "Local"
                 st.plotly_chart(fig_radar(df, eq_a, eq_b, cond_str_a, cond_str_b), use_container_width=True)
@@ -415,94 +389,44 @@ elif nav == "📊  Rankings":
     perspectiva = c2.radio("Perspectiva", ["Propio 🟢", "Concedido 🔴"], help="**Propio**: lo que el equipo genera (ej. sus tiros).\n**Concedido**: lo que le genera el rival (ej. tiros que recibe).")
     col_datos = "Propio" if perspectiva == "Propio 🟢" else "Concedido"
     top_n = c3.slider("Top N", 5, len(equipos), min(16, len(equipos)))
-    default_asc = met_sel in METRICAS_MENOS_ES_MEJOR
     asc = c4.radio("Orden", ["Mayor primero ↓", "Menor primero ↑"]) == "Menor primero ↑"
-
     df_r = ranking(df, met_sel, col_datos, asc)
     sufijo = "recibido" if col_datos == "Concedido" else ""
     titulo_fig = f"{met_sel} {sufijo} — {'Menor a mayor' if asc else 'Mayor a menor'}"
     st.plotly_chart(fig_bar_ranking(df_r, titulo_fig, top_n, asc), use_container_width=True)
     st.dataframe(df_r.head(top_n).rename(columns={"Promedio": "Prom/partido", "Total": "Total acum.", "Partidos": "PJ"}).style.background_gradient(subset=["Prom/partido"], cmap="RdYlGn" if not asc else "RdYlGn_r"), use_container_width=True, hide_index=True)
 
-    st.markdown('<div class="section-title" style="font-size:1rem;">📌 Comparativas rápidas</div>', unsafe_allow_html=True)
-    comparativas = [
-        ("⚽ Más tiros generados",       "Tiros totales",         "Propio",     False),
-        ("🛡️ Más tiros recibidos",       "Tiros al arco",         "Concedido",  False),
-        ("🎯 Mayor xG generado",         "Goles esperados (xG)",  "Propio",     False),
-        ("🧱 Más tiros concedidos (xG)", "Goles esperados (xG)",  "Concedido",  False),
-        ("🏃 Más faltas cometidas",      "Faltas",                "Propio",     False),
-        ("🔒 Más intercepciones",        "Intercepciones",        "Propio",     False),
-    ]
-    comparativas = [(t, m, c, a) for t, m, c, a in comparativas if m in metricas]
-    cols = st.columns(len(comparativas))
-    for col, (titulo, met, col_d, asc_r) in zip(cols, comparativas):
-        df_tmp = ranking(df, met, col_d, asc_r).head(5)
-        col.markdown(f"**{titulo}**")
-        col.dataframe(df_tmp[["Equipo", "Promedio"]].rename(columns={"Promedio": "Prom."}), use_container_width=True, hide_index=True)
-
 elif nav == "🔄  Head-to-Head":
     st.markdown('<div class="section-title">🔄 Head-to-Head Comparativo</div>', unsafe_allow_html=True)
     c1, c2 = st.columns(2)
     eq_a = c1.selectbox("Equipo A", equipos, key="h2h_a")
     cond_a = c1.selectbox("Condición A", ["General", "Local", "Visitante"], key="c_a")
-    
     eq_b = c2.selectbox("Equipo B", equipos, index=min(1, len(equipos)-1), key="h2h_b")
     cond_b = c2.selectbox("Condición B", ["General", "Local", "Visitante"], key="c_b")
-
     if eq_a == eq_b and cond_a == cond_b:
         st.info("Seleccioná equipos o condiciones diferentes.")
     else:
-        prom_gen = prom_equipo(df)
-        prom_cnd = prom_equipo_cond(df)
-        
+        prom_gen, prom_cnd = prom_equipo(df), prom_equipo_cond(df)
         def get_df(eq, cond):
             if cond == "General": return prom_gen[prom_gen["Equipo"] == eq].set_index("Métrica")
             else: return prom_cnd[(prom_cnd["Equipo"] == eq) & (prom_cnd["Condicion"] == cond)].set_index("Métrica")
-
-        pa = get_df(eq_a, cond_a)
-        pb = get_df(eq_b, cond_b)
+        pa, pb = get_df(eq_a, cond_a), get_df(eq_b, cond_b)
         idx = pa.index.intersection(pb.index)
-        
         if idx.empty: st.warning("No hay métricas comunes en estas condiciones.")
         else:
-            col_a = f"{eq_a} ({cond_a})"
-            col_b = f"{eq_b} ({cond_b})"
-            
-            df_h2h = pd.DataFrame({
-                "Métrica": idx, 
-                f"{col_a} (Propio)": pa.loc[idx, "Propio"].values.round(2), 
-                f"{col_b} (Propio)": pb.loc[idx, "Propio"].values.round(2), 
-                f"{col_a} (Concedido)": pa.loc[idx, "Concedido"].values.round(2), 
-                f"{col_b} (Concedido)": pb.loc[idx, "Concedido"].values.round(2)
-            })
-            
+            col_a, col_b = f"{eq_a} ({cond_a})", f"{eq_b} ({cond_b})"
+            df_h2h = pd.DataFrame({"Métrica": idx, f"{col_a} (Propio)": pa.loc[idx, "Propio"].values.round(2), f"{col_b} (Propio)": pb.loc[idx, "Propio"].values.round(2), f"{col_a} (Concedido)": pa.loc[idx, "Concedido"].values.round(2), f"{col_b} (Concedido)": pb.loc[idx, "Concedido"].values.round(2)})
             def ventaja(row):
                 a, b = row[f"{col_a} (Propio)"], row[f"{col_b} (Propio)"]
                 if a > b: return f"▲ {eq_a}"
                 if b > a: return f"▲ {eq_b}"
                 return "— Igual"
-                
             df_h2h["Ventaja (Propio)"] = df_h2h.apply(ventaja, axis=1)
             st.dataframe(df_h2h, use_container_width=True, hide_index=True)
-            
             va, vb = (df_h2h["Ventaja (Propio)"].str.startswith(f"▲ {eq_a}")).sum(), (df_h2h["Ventaja (Propio)"].str.startswith(f"▲ {eq_b}")).sum()
             ca, cb, cc = st.columns(3)
-            ca.metric(f"Gana {eq_a}", va)
-            cb.metric(f"Gana {eq_b}", vb)
-            cc.metric("Empates", len(df_h2h) - va - vb)
-            
+            ca.metric(f"Gana {eq_a}", va); cb.metric(f"Gana {eq_b}", vb); cc.metric("Empates", len(df_h2h) - va - vb)
             st.plotly_chart(fig_radar(df, eq_a, eq_b, cond_a, cond_b), use_container_width=True)
-
-elif nav == "📋  Resumen Completo":
-    st.markdown('<div class="section-title">📋 Resumen Completo del Torneo</div>', unsafe_allow_html=True)
-    perspectiva_r = st.radio("Mostrar", ["Propio (lo que genera cada equipo)", "Concedido (lo que le generan)"], horizontal=True)
-    col_r = "Propio" if "Propio" in perspectiva_r else "Concedido"
-    mets_sel = st.multiselect("Métricas a mostrar", metricas, default=metricas[:min(8, len(metricas))])
-    if mets_sel:
-        prom = prom_equipo(df)
-        df_pivot = prom[prom["Métrica"].isin(mets_sel)].pivot(index="Equipo", columns="Métrica", values=col_r).round(2).reset_index()
-        st.dataframe(df_pivot.style.background_gradient(subset=[c for c in df_pivot.columns if c != "Equipo"], cmap="RdYlGn"), use_container_width=True, hide_index=True, height=620)
-        st.caption(f"Valores promedio por partido — perspectiva: {col_r.lower()}")
 
 elif nav == "📖  Perfil por Rival":
     st.markdown('<div class="section-title">📖 Perfil por Rival (Contextual)</div>', unsafe_allow_html=True)
@@ -510,14 +434,12 @@ elif nav == "📖  Perfil por Rival":
     eq_sel = c1.selectbox("Seleccionar Equipo", equipos)
     met_sel = c2.selectbox("Métrica a analizar", metricas, index=metricas.index("Goles esperados (xG)") if "Goles esperados (xG)" in metricas else 0)
     df_eq = df[(df["Equipo"] == eq_sel) & (df["Métrica"] == met_sel)].sort_values("nFecha")
-
     if not df_eq.empty:
         fig = go.Figure()
         fig.add_trace(go.Bar(x=df_eq["Rival"], y=df_eq["Propio"], name="Generado (A Favor)", marker_color=RED))
         fig.add_trace(go.Bar(x=df_eq["Rival"], y=df_eq["Concedido"], name="Concedido (En Contra)", marker_color=GRAY))
         fig.update_layout(**PLOT, barmode='group', xaxis_title="Rival Enfrentado", yaxis_title=met_sel, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
         st.plotly_chart(fig, use_container_width=True)
-
         st.markdown("### Historial de Partidos")
         df_res = df[(df["Equipo"] == eq_sel) & (df["Métrica"] == "Resultado")].sort_values("nFecha")
         df_display = pd.merge(df_res[["Fecha", "Condicion", "Rival", "Propio", "Concedido"]], df_eq[["Fecha", "Propio", "Concedido"]], on="Fecha", suffixes=("_goles", "_metrica"))
