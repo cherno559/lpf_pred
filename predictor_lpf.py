@@ -1,11 +1,10 @@
 """
-dashboard_lpf.py — LPF 2026 Scouting Dashboard (v6 - Amortiguación Exponencial)
+dashboard_lpf.py — LPF 2026 Scouting Dashboard (v7 - Compresión Dinámica)
 ────────────────────────────────────────────────────
 Mejoras:
-  · Reemplazo del Clipping rígido por "Dampening Exponencial" (Raíz/Potencia).
-    Comprime los extremos (Lanús) sin borrar las diferencias sutiles en 
-    partidos parejos (Boca vs Defensa).
-  · Calibrador Anti-Empate y Blend Histórico (70/30) se mantienen.
+  · Se reemplaza el exponente ciego por "Soft-Clipping" (Compresión Dinámica).
+    Deja intactas las ventajas normales (Boca vs Defensa) pero comprime
+    fuerte los extremos irreales (Lanús vs CCO).
 """
 
 import re, os
@@ -67,10 +66,6 @@ MAX_ROTATION_PENALTY = 0.12
 PESO_ESPECIFICO_DEFAULT = 0.70
 PESO_GENERAL_DEFAULT = 0.30
 
-# AMORTIGUADOR (DAMPING): 1.0 es lineal (explota), 0.5 es raíz cuadrada (muy comprimido). 
-# 0.65 es el balance ideal para el fútbol sudamericano.
-POWER_DAMPING = 0.65 
-
 # ──────────────────────────────────────────────────────────────────────
 # PARSEO Y PROCESAMIENTO
 # ──────────────────────────────────────────────────────────────────────
@@ -125,12 +120,22 @@ def ranking(df: pd.DataFrame, metrica: str, columna="Propio", ascendente=False) 
     return df[df["Métrica"] == metrica].groupby("Equipo")[columna].agg(Promedio="mean", Total="sum", Partidos="count").reset_index().round(2).sort_values("Promedio", ascending=ascendente)
 
 # ──────────────────────────────────────────────────────────────────────
-# MOTOR PREDICTOR (V6: Dampening Exponencial)
+# MOTOR PREDICTOR (V7: Soft-Clipping)
 # ──────────────────────────────────────────────────────────────────────
 def _weighted_mean(series: pd.Series, fecha_series: pd.Series) -> float:
     if series.empty: return float("nan")
     pesos = fecha_series.apply(lambda f: PESO_RECIENTE if f >= (fecha_series.max() - N_RECENCIA + 1) else PESO_NORMAL)
     return float(np.average(series, weights=pesos))
+
+def soft_clip(x):
+    """
+    Compresión Dinámica: 
+    Si el nivel es normal (0.75 a 1.25) se mantiene idéntico.
+    Si el nivel es extremo (>1.25 o <0.75) se aplasta para evitar desbalances irreales.
+    """
+    if x > 1.25: return 1.25 + (x - 1.25) * 0.35
+    if x < 0.75: return 0.75 - (0.75 - x) * 0.35
+    return x
 
 def calcular_lambdas(df: pd.DataFrame, eq_a: str, eq_b: str, a_es_local: bool, rot_a: float = 0.0, rot_b: float = 0.0):
     df_r = df[df["Métrica"] == "Resultado"].copy()
@@ -168,15 +173,13 @@ def calcular_lambdas(df: pd.DataFrame, eq_a: str, eq_b: str, a_es_local: bool, r
     ref_a = ref_a_spec * wsa + m_gf_gen * wga
     ref_b = ref_b_spec * wsb + m_gf_gen * wgb
 
-    # ── V6 FIX: Dampening Exponencial (El Resorte) ──
-    # Reemplazamos los topes rígidos por una curva exponencial. 
-    # Mantiene las jerarquías exactas pero achata los extremos salvajes.
-    fza_ataque_a = (gfa / max(ref_a, 0.01)) ** POWER_DAMPING
-    deb_defensa_b = (gcb / max(ref_b, 0.01)) ** POWER_DAMPING
+    # ── V7 FIX: Multiplicador con Soft-Clipping ──
+    fza_ataque_a = soft_clip(gfa / max(ref_a, 0.01))
+    deb_defensa_b = soft_clip(gcb / max(ref_b, 0.01))
     lam_a = fza_ataque_a * deb_defensa_b * ref_a
 
-    fza_ataque_b = (gfb / max(ref_b, 0.01)) ** POWER_DAMPING
-    deb_defensa_a = (gca / max(ref_a, 0.01)) ** POWER_DAMPING
+    fza_ataque_b = soft_clip(gfb / max(ref_b, 0.01))
+    deb_defensa_a = soft_clip(gca / max(ref_a, 0.01))
     lam_b = fza_ataque_b * deb_defensa_a * ref_b
 
     # ── Refinamiento con xG ──
@@ -205,20 +208,21 @@ def calcular_lambdas(df: pd.DataFrame, eq_a: str, eq_b: str, a_es_local: bool, r
         w_xg_b = 0.60 if n_xb >= 3 else 0.45
 
         if not np.isnan(xa) and m_ref_xg_a > 0: 
-            # Aplicamos el mismo resorte al ajuste de xG
-            ajuste_xa = (xa / m_ref_xg_a) ** POWER_DAMPING
+            ajuste_xa = soft_clip(xa / m_ref_xg_a)
             lam_a = lam_a * (1 - w_xg_a) + (ajuste_xa * ref_a) * w_xg_a
             
         if not np.isnan(xb) and m_ref_xg_b > 0: 
-            ajuste_xb = (xb / m_ref_xg_b) ** POWER_DAMPING
+            ajuste_xb = soft_clip(xb / m_ref_xg_b)
             lam_b = lam_b * (1 - w_xg_b) + (ajuste_xb * ref_b) * w_xg_b
 
     # ── Penalización por rotación ──
     if rot_a > 0: lam_a *= (1 - rot_a * MAX_ROTATION_PENALTY); lam_b *= (1 + rot_a * MAX_ROTATION_PENALTY * 0.4)
     if rot_b > 0: lam_b *= (1 - rot_b * MAX_ROTATION_PENALTY); lam_a *= (1 + rot_b * MAX_ROTATION_PENALTY * 0.4)
 
-    # ── Calibrador Anti-Empate Limitado ──
+    # ── Calibrador Anti-Empate (solo para partidos parejos) ──
     diferencia = abs(lam_a - lam_b)
+    # Al usar Soft-Clipping, los lambdas de Boca/Defensa vuelven a separarse naturalmente,
+    # así que el calibrador ahora puede trabajar en rangos normales de diferencia.
     if 0.05 < diferencia < 0.60:
         if lam_a > lam_b: lam_a *= 1.10; lam_b *= 0.90
         else: lam_b *= 1.10; lam_a *= 0.90
@@ -335,7 +339,7 @@ if nav == "🔮 Predictor":
         k1.markdown(f'<div class="kpi"><div class="lbl">V. {eq_a}</div><div class="val">{sim["victoria"]*100:.1f}%</div></div>', unsafe_allow_html=True)
         k2.markdown(f'<div class="kpi draw"><div class="lbl">Empate</div><div class="val">{sim["empate"]*100:.1f}%</div></div>', unsafe_allow_html=True)
         k3.markdown(f'<div class="kpi loss"><div class="lbl">V. {eq_b}</div><div class="val">{sim["derrota"]*100:.1f}%</div></div>', unsafe_allow_html=True)
-        st.markdown(f'<div class="note">⚙️ Modelo V6 (Dampening = {POWER_DAMPING}) | λ {eq_a} = {lam_a} · λ {eq_b} = {lam_b}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="note">⚙️ Modelo V7 (Soft-Clipping Activado) | λ {eq_a} = {lam_a} · λ {eq_b} = {lam_b}</div>', unsafe_allow_html=True)
 
         t1, t2, t3 = st.tabs(["📊 Probabilidades", "🎯 Marcadores exactos", "🕸️ Radar"])
         with t1: st.plotly_chart(fig_probs(sim, eq_a, eq_b), use_container_width=True)
