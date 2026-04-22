@@ -4,8 +4,7 @@ dashboard_lpf.py — LPF 2026 Scouting Dashboard
 Lee el Excel generado por sofascore_lpf_generales.py y construye:
   · Predictor de partidos (modelo Dixon-Coles + xG)
   · Tablas comparativas por métrica (propias y concedidas)
-  · Evolución fecha a fecha por equipo
-  · Dispersión entre métricas
+  · Perfil por Rival
 
 Instalación:
     pip install streamlit plotly pandas openpyxl numpy
@@ -37,24 +36,13 @@ st.markdown("""
 <style>
 html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
 .stApp { background: #080d18; color: #dde3ee; }
-
 section[data-testid="stSidebar"] { background: #0c1220 !important; border-right: 1px solid #1c2a40; }
 section[data-testid="stSidebar"] label, section[data-testid="stSidebar"] p { color: #8899aa !important; font-size:13px !important; }
-
 h1 { font-family:'Bebas Neue',cursive !important; font-size:2.6rem !important; color:#e63946 !important; letter-spacing:3px; margin-bottom:0; }
 h2 { font-family:'Bebas Neue',cursive !important; font-size:1.6rem !important; color:#dde3ee !important; letter-spacing:2px; }
 h3 { font-family:'Rajdhani',sans-serif !important; font-size:1.1rem !important; color:#8899aa !important; font-weight:700; }
-
-.section-title {
-    font-family:'Bebas Neue',cursive; font-size:1.3rem; letter-spacing:3px;
-    color:#e63946; border-bottom:1px solid #1c2a40; padding-bottom:8px; margin:28px 0 18px;
-    text-transform:uppercase;
-}
-.kpi {
-    background:linear-gradient(135deg,#0f1829,#162035);
-    border:1px solid #1c2a40; border-left:4px solid #e63946;
-    border-radius:10px; padding:16px 18px; text-align:center;
-}
+.section-title { font-family:'Bebas Neue',cursive; font-size:1.3rem; letter-spacing:3px; color:#e63946; border-bottom:1px solid #1c2a40; padding-bottom:8px; margin:28px 0 18px; text-transform:uppercase; }
+.kpi { background:linear-gradient(135deg,#0f1829,#162035); border:1px solid #1c2a40; border-left:4px solid #e63946; border-radius:10px; padding:16px 18px; text-align:center; }
 .kpi.draw  { border-left-color:#64748b; }
 .kpi.loss  { border-left-color:#3b82f6; }
 .kpi.info  { border-left-color:#22c55e; }
@@ -63,31 +51,14 @@ h3 { font-family:'Rajdhani',sans-serif !important; font-size:1.1rem !important; 
 .kpi.draw .val { color:#94a3b8; }
 .kpi.loss .val { color:#60a5fa; }
 .kpi.info .val { color:#4ade80; }
-
 .badge { display:inline-block; padding:3px 14px; border-radius:20px; font-family:'Rajdhani'; font-size:12px; font-weight:700; background:#0d2b1a; color:#4ade80; margin-bottom:14px; }
-
-/* Tabs */
 .stTabs [data-baseweb="tab-list"] { background:#0f1829; border-radius:10px; padding:4px; gap:4px; }
 .stTabs [data-baseweb="tab"] { font-family:'Rajdhani'; font-weight:700; font-size:14px; color:#64748b !important; border-radius:7px; padding:6px 16px; }
 .stTabs [aria-selected="true"] { background:#e63946 !important; color:#fff !important; }
-
-/* Button */
-.stButton>button {
-    font-family:'Bebas Neue'; font-size:17px; letter-spacing:2px;
-    background:linear-gradient(135deg,#e63946,#b91c2c);
-    color:#fff; border:none; border-radius:9px; padding:13px;
-    width:100%; transition:all .2s;
-}
+.stButton>button { font-family:'Bebas Neue'; font-size:17px; letter-spacing:2px; background:linear-gradient(135deg,#e63946,#b91c2c); color:#fff; border:none; border-radius:9px; padding:13px; width:100%; transition:all .2s; }
 .stButton>button:hover { transform:translateY(-1px); box-shadow:0 6px 20px rgba(230,57,70,.45); }
-
-/* Inputs */
-.stSelectbox>div>div, .stMultiSelect>div>div, .stTextInput>div>div {
-    background:#0f1829 !important; border:1px solid #1c2a40 !important;
-    color:#dde3ee !important; border-radius:8px !important;
-}
+.stSelectbox>div>div, .stMultiSelect>div>div, .stTextInput>div>div { background:#0f1829 !important; border:1px solid #1c2a40 !important; color:#dde3ee !important; border-radius:8px !important; }
 .stDataFrame { border-radius:10px !important; }
-
-/* Note box */
 .note { background:#0f1829; border:1px solid #1c2a40; border-radius:8px; padding:10px 14px; font-size:12px; color:#64748b; margin-top:8px; }
 </style>
 """, unsafe_allow_html=True)
@@ -97,7 +68,6 @@ h3 { font-family:'Rajdhani',sans-serif !important; font-size:1.1rem !important; 
 # ──────────────────────────────────────────────────────────────────────
 MONTECARLO_N = 15_000
 RED, BLUE, GRAY = "#e63946", "#3b82f6", "#64748b"
-COLORS_LINE = [RED, BLUE, "#22c55e", "#f59e0b", "#a78bfa", "#f97316"]
 
 PLOT = dict(
     font=dict(family="Rajdhani", size=13, color="#dde3ee"),
@@ -125,12 +95,8 @@ def num(v) -> float:
     except (ValueError, TypeError):
         return 0.0
 
-
 @st.cache_data(ttl=120, show_spinner=False)
 def cargar_excel(ruta: str) -> dict[str, list[dict]]:
-    """
-    Devuelve { "Fecha 5": [ {local, visitante, metricas:{met:{local,visitante}}}, ...] }
-    """
     try:
         xl = pd.ExcelFile(ruta, engine="openpyxl")
     except Exception as e:
@@ -147,7 +113,6 @@ def cargar_excel(ruta: str) -> dict[str, list[dict]]:
             resultado[hoja] = partidos
     return resultado
 
-
 def _parsear_hoja(df: pd.DataFrame) -> list[dict]:
     partidos, i = [], 0
     while i < len(df):
@@ -162,12 +127,8 @@ def _parsear_hoja(df: pd.DataFrame) -> list[dict]:
                     r0 = str(df.iloc[j, 0]).strip() if pd.notna(df.iloc[j, 0]) else ""
                     r1 = df.iloc[j, 1] if df.shape[1] > 1 else None
                     r2 = df.iloc[j, 2] if df.shape[1] > 2 else None
-                    # fin de tabla
-                    if r0 == "" and (pd.isna(r1) if r1 is not None else True):
-                        break
-                    if re.search(r"\s+vs\s+", r0, re.IGNORECASE):
-                        break
-                    # saltar cabecera y fila de título
+                    if r0 == "" and (pd.isna(r1) if r1 is not None else True): break
+                    if re.search(r"\s+vs\s+", r0, re.IGNORECASE): break
                     if r0.lower() in ("métrica", "metrica") or r0 == local:
                         j += 1
                         continue
@@ -177,75 +138,39 @@ def _parsear_hoja(df: pd.DataFrame) -> list[dict]:
                 if stats:
                     partidos.append({"local": local, "visitante": visitante, "metricas": stats})
                 i = j
-            else:
-                i += 1
-        else:
-            i += 1
+            else: i += 1
+        else: i += 1
     return partidos
-
 
 # ──────────────────────────────────────────────────────────────────────
 # CONSTRUCCIÓN DE DataFrames
 # ──────────────────────────────────────────────────────────────────────
 
 def construir_df(datos: dict) -> pd.DataFrame:
-    """
-    DataFrame largo con columnas:
-    Fecha | Partido | Equipo | Rival | Condicion | Métrica | Propio | Concedido
-
-    'Propio'    = lo que hizo el equipo
-    'Concedido' = lo que hizo el rival (mismo stat)
-    Esto permite calcular, por ej., "tiros recibidos" = Concedido de "Tiros al arco" del rival.
-    """
     filas = []
     for fecha, partidos in datos.items():
         nf = int(re.search(r"\d+", fecha).group())
         for p in partidos:
             loc, vis = p["local"], p["visitante"]
             for met, vals in p["metricas"].items():
-                # Perspectiva Local
                 filas.append({
-                    "Fecha": fecha, "nFecha": nf,
-                    "Partido": f"{loc} vs {vis}",
-                    "Equipo": loc, "Rival": vis,
-                    "Condicion": "Local",
-                    "Métrica": met,
-                    "Propio": vals["local"],
-                    "Concedido": vals["visitante"],   # ← lo que el RIVAL hizo
+                    "Fecha": fecha, "nFecha": nf, "Partido": f"{loc} vs {vis}",
+                    "Equipo": loc, "Rival": vis, "Condicion": "Local",
+                    "Métrica": met, "Propio": vals["local"], "Concedido": vals["visitante"],
                 })
-                # Perspectiva Visitante
                 filas.append({
-                    "Fecha": fecha, "nFecha": nf,
-                    "Partido": f"{loc} vs {vis}",
-                    "Equipo": vis, "Rival": loc,
-                    "Condicion": "Visitante",
-                    "Métrica": met,
-                    "Propio": vals["visitante"],
-                    "Concedido": vals["local"],        # ← lo que el RIVAL hizo
+                    "Fecha": fecha, "nFecha": nf, "Partido": f"{loc} vs {vis}",
+                    "Equipo": vis, "Rival": loc, "Condicion": "Visitante",
+                    "Métrica": met, "Propio": vals["visitante"], "Concedido": vals["local"],
                 })
     return pd.DataFrame(filas)
 
-
 def prom_equipo(df: pd.DataFrame) -> pd.DataFrame:
-    """Promedio de Propio y Concedido por equipo y métrica."""
-    return (
-        df.groupby(["Equipo", "Métrica"])[["Propio", "Concedido"]]
-        .mean()
-        .round(2)
-        .reset_index()
-    )
-
+    return df.groupby(["Equipo", "Métrica"])[["Propio", "Concedido"]].mean().round(2).reset_index()
 
 def ranking(df: pd.DataFrame, metrica: str, columna="Propio", ascendente=False) -> pd.DataFrame:
     df_m = df[df["Métrica"] == metrica].copy()
-    return (
-        df_m.groupby("Equipo")[columna]
-        .agg(Promedio="mean", Total="sum", Partidos="count")
-        .reset_index()
-        .round(2)
-        .sort_values("Promedio", ascending=ascendente)
-    )
-
+    return df_m.groupby("Equipo")[columna].agg(Promedio="mean", Total="sum", Partidos="count").reset_index().round(2).sort_values("Promedio", ascending=ascendente)
 
 # ──────────────────────────────────────────────────────────────────────
 # PREDICTOR
@@ -253,28 +178,22 @@ def ranking(df: pd.DataFrame, metrica: str, columna="Propio", ascendente=False) 
 
 def calcular_lambdas(df: pd.DataFrame, eq_a: str, eq_b: str, a_es_local: bool):
     df_r = df[df["Métrica"] == "Resultado"].copy()
-    if df_r.empty:
-        return 1.3, 0.9
+    if df_r.empty: return 1.3, 0.9
 
-    agg = (
-        df_r.groupby("Equipo")
-        .agg(GF=("Propio", "sum"), GC=("Concedido", "sum"), PJ=("Propio", "count"))
-        .reset_index()
-    )
+    agg = df_r.groupby("Equipo").agg(GF=("Propio", "sum"), GC=("Concedido", "sum"), PJ=("Propio", "count")).reset_index()
     media_gf = agg["GF"].sum() / max(agg["PJ"].sum(), 1)
 
     def stats(eq):
         row = agg[agg["Equipo"] == eq]
-        if row.empty:
-            return media_gf, media_gf, 1
+        if row.empty: return media_gf, media_gf, 1
         r = row.iloc[0]
         return r["GF"] / max(r["PJ"], 1), r["GC"] / max(r["PJ"], 1), r["PJ"]
 
     gf_a, gc_a, pj_a = stats(eq_a)
     gf_b, gc_b, pj_b = stats(eq_b)
 
-    fa_a = gf_a / media_gf   # fuerza ataque A
-    fd_a = gc_a / media_gf   # debilidad defensa A (mayor = peor)
+    fa_a = gf_a / media_gf   
+    fd_a = gc_a / media_gf   
     fa_b = gf_b / media_gf
     fd_b = gc_b / media_gf
 
@@ -296,13 +215,11 @@ def calcular_lambdas(df: pd.DataFrame, eq_a: str, eq_b: str, a_es_local: bool):
 
     return round(float(np.clip(lam_a, 0.15, 5.0)), 3), round(float(np.clip(lam_b, 0.15, 5.0)), 3)
 
-
 def montecarlo(lam_a, lam_b) -> dict:
     rng = np.random.default_rng(42)
     ga  = rng.poisson(lam_a, MONTECARLO_N)
     gb  = rng.poisson(lam_b, MONTECARLO_N)
-    res = [{"A": r, "B": v, "prob": float(np.mean((ga == r) & (gb == v)))}
-           for r in range(8) for v in range(8)]
+    res = [{"A": r, "B": v, "prob": float(np.mean((ga == r) & (gb == v)))} for r in range(8) for v in range(8)]
     return {
         "victoria": float(np.mean(ga > gb)),
         "empate":   float(np.mean(ga == gb)),
@@ -310,7 +227,6 @@ def montecarlo(lam_a, lam_b) -> dict:
         "df": pd.DataFrame(res),
         "lam_a": lam_a, "lam_b": lam_b,
     }
-
 
 # ──────────────────────────────────────────────────────────────────────
 # FIGURAS
@@ -326,38 +242,25 @@ def fig_probs(sim, na, nb):
         textposition="outside",
         textfont=dict(size=15, family="Rajdhani"),
     ))
-    fig.update_layout(**PLOT, height=200,
-        xaxis=dict(**GRID, range=[0, 105], ticksuffix="%"),
-        yaxis=dict(**NO_GRID, tickfont=dict(size=14, family="Rajdhani")),
-        showlegend=False,
-    )
+    fig.update_layout(**PLOT, height=200, xaxis=dict(**GRID, range=[0, 105], ticksuffix="%"), yaxis=dict(**NO_GRID, tickfont=dict(size=14, family="Rajdhani")), showlegend=False)
     return fig
-
 
 def fig_marcadores(sim, na, nb):
     df = sim["df"].copy()
     df["label"] = na + " " + df["A"].astype(str) + "–" + df["B"].astype(str) + " " + nb
     top = df.nlargest(8, "prob").iloc[::-1]
     fig = go.Figure(go.Bar(
-        x=top["prob"]*100, y=top["label"], orientation="h",
-        marker_color=RED,
-        text=(top["prob"]*100).map(lambda x: f"{x:.1f}%"),
-        textposition="auto",
+        x=top["prob"]*100, y=top["label"], orientation="h", marker_color=RED,
+        text=(top["prob"]*100).map(lambda x: f"{x:.1f}%"), textposition="auto",
         textfont=dict(color="white", size=14, family="Rajdhani"),
     ))
-    fig.update_layout(**PLOT, height=340,
-        xaxis=dict(**GRID, ticksuffix="%"),
-        yaxis=dict(**NO_GRID, tickfont=dict(size=13, family="Rajdhani")),
-    )
+    fig.update_layout(**PLOT, height=340, xaxis=dict(**GRID, ticksuffix="%"), yaxis=dict(**NO_GRID, tickfont=dict(size=13, family="Rajdhani")))
     return fig
 
-
 def fig_radar(df: pd.DataFrame, eq_a: str, eq_b: str):
-    mets = [
-        "Posesión de balón", "Tiros totales", "Tiros al arco",
-        "Pases totales", "Goles esperados (xG)", "Córners",
-        "Quites", "Intercepciones",
-    ]
+    mets = ["Posesión de balón", "Tiros totales", "Tiros al arco", "Pases totales", "Goles esperados (xG)", "Córners", "Quites", "Intercepciones"]
+    mets = [m for m in mets if m in df["Métrica"].values]
+    
     prom = prom_equipo(df)
 
     def get(eq, m):
@@ -370,13 +273,18 @@ def fig_radar(df: pd.DataFrame, eq_a: str, eq_b: str):
     van = [a/m for a, m in zip(va, mx)]
     vbn = [b/m for b, m in zip(vb, mx)]
 
+    def hex_to_rgba(hex_code, alpha):
+        hex_code = hex_code.lstrip('#')
+        r, g, b = tuple(int(hex_code[i:i+2], 16) for i in (0, 2, 4))
+        return f"rgba({r},{g},{b},{alpha})"
+
     fig = go.Figure()
     for vals, eq, col in [(van, eq_a, RED), (vbn, eq_b, BLUE)]:
         fig.add_trace(go.Scatterpolar(
             r=vals + [vals[0]], theta=mets + [mets[0]],
             fill="toself", name=eq,
             line=dict(color=col, width=2),
-            fillcolor=col + "30",
+            fillcolor=hex_to_rgba(col, 0.2), 
         ))
     fig.update_layout(**PLOT, height=400,
         polar=dict(
@@ -388,105 +296,44 @@ def fig_radar(df: pd.DataFrame, eq_a: str, eq_b: str):
     )
     return fig
 
-
 def fig_bar_ranking(df_r: pd.DataFrame, titulo: str, top_n=16, asc=False):
     df = df_r.head(top_n).iloc[::-1]
-    if df.empty:
-        return go.Figure()
+    if df.empty: return go.Figure()
     colores = [RED if i == len(df)-1 else "#1c2a40" for i in range(len(df))]
     fig = go.Figure(go.Bar(
         x=df["Promedio"], y=df["Equipo"], orientation="h",
-        marker_color=colores,
-        text=df["Promedio"].map(lambda x: f"{x:.2f}"),
-        textposition="outside",
-        textfont=dict(size=12, family="Rajdhani"),
+        marker_color=colores, text=df["Promedio"].map(lambda x: f"{x:.2f}"),
+        textposition="outside", textfont=dict(size=12, family="Rajdhani"),
     ))
-    fig.update_layout(**PLOT, height=max(320, top_n * 26),
-        title=dict(text=titulo, font=dict(family="Bebas Neue", size=20), x=0),
-        xaxis=dict(**GRID),
-        yaxis=dict(**NO_GRID, tickfont=dict(size=12, family="Rajdhani")),
-    )
+    fig.update_layout(**PLOT, height=max(320, top_n * 26), title=dict(text=titulo, font=dict(family="Bebas Neue", size=20), x=0), xaxis=dict(**GRID), yaxis=dict(**NO_GRID, tickfont=dict(size=12, family="Rajdhani")))
     return fig
-
-
-def fig_evolucion(df: pd.DataFrame, equipo: str, mets: list[str], columna="Propio"):
-    df_eq = df[(df["Equipo"] == equipo) & (df["Métrica"].isin(mets))].copy()
-    if df_eq.empty:
-        return go.Figure()
-    df_eq = df_eq.sort_values("nFecha")
-    fig = go.Figure()
-    for idx, met in enumerate(mets):
-        dm = df_eq[df_eq["Métrica"] == met].groupby(["nFecha", "Fecha"])[columna].mean().reset_index()
-        fig.add_trace(go.Scatter(
-            x=dm["Fecha"], y=dm[columna],
-            mode="lines+markers", name=met,
-            line=dict(color=COLORS_LINE[idx % len(COLORS_LINE)], width=2),
-            marker=dict(size=8, symbol="circle"),
-        ))
-    fig.update_layout(**PLOT, height=360,
-        xaxis=dict(**GRID, tickfont=dict(size=11)),
-        yaxis=dict(**GRID),
-        legend=dict(font=dict(family="Rajdhani", size=12)),
-    )
-    return fig
-
-
-def fig_scatter(df: pd.DataFrame, mx: str, my: str):
-    prom = prom_equipo(df)
-    dx = prom[prom["Métrica"] == mx][["Equipo", "Propio"]].rename(columns={"Propio": "X"})
-    dy = prom[prom["Métrica"] == my][["Equipo", "Propio"]].rename(columns={"Propio": "Y"})
-    dm = dx.merge(dy, on="Equipo")
-    if dm.empty:
-        return go.Figure()
-    fig = go.Figure(go.Scatter(
-        x=dm["X"], y=dm["Y"], mode="markers+text",
-        text=dm["Equipo"], textposition="top center",
-        textfont=dict(size=10, family="Rajdhani", color="#94a3b8"),
-        marker=dict(size=13, color=RED, opacity=0.85, line=dict(color="white", width=1)),
-    ))
-    # Líneas de media
-    fig.add_hline(y=dm["Y"].mean(), line=dict(color=GRAY, dash="dot", width=1))
-    fig.add_vline(x=dm["X"].mean(), line=dict(color=GRAY, dash="dot", width=1))
-    fig.update_layout(**PLOT, height=420,
-        xaxis=dict(**GRID, title=mx),
-        yaxis=dict(**GRID, title=my),
-    )
-    return fig
-
 
 # ──────────────────────────────────────────────────────────────────────
 # SIDEBAR
 # ──────────────────────────────────────────────────────────────────────
-
 with st.sidebar:
     st.markdown("## ⚽  LPF 2026")
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
     ruta = st.text_input("📂 Ruta del Excel", value="Fecha_x_fecha_lpf.xlsx")
     st.markdown("---")
+    
+    # Se eliminó la opción "Dispersión"
     nav = st.radio("", [
         "🔮  Predictor",
         "📊  Rankings",
         "🔄  Head-to-Head",
         "📋  Resumen Completo",
-        "📈  Evolución",
-        "🔍  Dispersión",
+        "📖  Perfil por Rival"
     ], label_visibility="collapsed")
     st.markdown("---")
-    st.markdown(
-        '<p style="font-size:11px;color:#334155;text-align:center;">Fuente: SofaScore API<br>Liga Profesional 2026</p>',
-        unsafe_allow_html=True,
-    )
+    st.markdown('<p style="font-size:11px;color:#334155;text-align:center;">Fuente: SofaScore API<br>Liga Profesional 2026</p>', unsafe_allow_html=True)
 
 # ──────────────────────────────────────────────────────────────────────
 # CARGA
 # ──────────────────────────────────────────────────────────────────────
-
 if not os.path.exists(ruta):
     st.markdown('<h1>LPF 2026 · Scouting Dashboard</h1>', unsafe_allow_html=True)
-    st.warning(
-        f"**Archivo no encontrado:** `{ruta}`\n\n"
-        "Corré primero `sofascore_lpf_generales.py` para generar el Excel con los datos del torneo."
-    )
+    st.warning(f"**Archivo no encontrado:** `{ruta}`\n\nCorré primero el scraper para generar el Excel.")
     st.stop()
 
 with st.spinner("Cargando datos…"):
@@ -506,10 +353,7 @@ n_partidos = df[df["Métrica"] == "Resultado"]["Partido"].nunique()
 # HEADER
 # ──────────────────────────────────────────────────────────────────────
 st.markdown('<h1>LPF 2026 · Scouting Dashboard</h1>', unsafe_allow_html=True)
-st.markdown(
-    f'<div class="badge">✅ {len(fechas)} fecha(s) · {len(equipos)} equipos · {n_partidos} partidos</div>',
-    unsafe_allow_html=True,
-)
+st.markdown(f'<div class="badge">✅ {len(fechas)} fecha(s) · {len(equipos)} equipos · {n_partidos} partidos</div>', unsafe_allow_html=True)
 
 # ──────────────────────────────────────────────────────────────────────
 # 🔮 PREDICTOR
@@ -543,21 +387,14 @@ if nav == "🔮  Predictor":
                 (k4, f"λ {eq_a[:10]}",        f"{lam_a:.2f}",               "info"),
                 (k5, f"λ {eq_b[:10]}",        f"{lam_b:.2f}",               "info"),
             ]:
-                col.markdown(
-                    f'<div class="kpi {cls}"><div class="lbl">{lbl}</div>'
-                    f'<div class="val">{val}</div></div>', unsafe_allow_html=True
-                )
+                col.markdown(f'<div class="kpi {cls}"><div class="lbl">{lbl}</div><div class="val">{val}</div></div>', unsafe_allow_html=True)
 
             st.markdown("<br>", unsafe_allow_html=True)
             t1, t2, t3 = st.tabs(["📊 Probabilidades", "🎯 Marcadores exactos", "🕸️ Radar"])
 
             with t1:
                 st.plotly_chart(fig_probs(sim, eq_a, eq_b), use_container_width=True)
-                st.markdown(
-                    '<div class="note">λ = goles esperados promedio. Modelo basado en fuerza ofensiva/defensiva '
-                    'relativa al promedio del torneo, con ventaja de local ×1.18 y ajuste por xG cuando está disponible.</div>',
-                    unsafe_allow_html=True,
-                )
+                st.markdown('<div class="note">λ = goles esperados promedio. Modelo basado en fuerza ofensiva/defensiva relativa al promedio del torneo, con ventaja de local ×1.18 y ajuste por xG cuando está disponible.</div>', unsafe_allow_html=True)
 
             with t2:
                 st.plotly_chart(fig_marcadores(sim, eq_a, eq_b), use_container_width=True)
@@ -574,15 +411,9 @@ elif nav == "📊  Rankings":
 
     c1, c2, c3, c4 = st.columns([4, 2, 2, 2])
     met_sel  = c1.selectbox("Métrica", metricas)
-    # Columna: Propio = lo que el equipo hace; Concedido = lo que le hacen
-    perspectiva = c2.radio(
-        "Perspectiva",
-        ["Propio 🟢", "Concedido 🔴"],
-        help="**Propio**: lo que el equipo genera (ej. sus tiros).\n**Concedido**: lo que le genera el rival (ej. tiros que recibe).",
-    )
+    perspectiva = c2.radio("Perspectiva", ["Propio 🟢", "Concedido 🔴"], help="**Propio**: lo que el equipo genera (ej. sus tiros).\n**Concedido**: lo que le genera el rival (ej. tiros que recibe).")
     col_datos = "Propio" if perspectiva == "Propio 🟢" else "Concedido"
     top_n  = c3.slider("Top N", 5, len(equipos), min(16, len(equipos)))
-    # Orden por defecto según si la métrica es "menos es mejor"
     default_asc = met_sel in METRICAS_MENOS_ES_MEJOR
     asc = c4.radio("Orden", ["Mayor primero ↓", "Menor primero ↑"]) == "Menor primero ↑"
 
@@ -591,13 +422,8 @@ elif nav == "📊  Rankings":
     titulo_fig = f"{met_sel} {sufijo} — {'Menor a mayor' if asc else 'Mayor a menor'}"
 
     st.plotly_chart(fig_bar_ranking(df_r, titulo_fig, top_n, asc), use_container_width=True)
-    st.dataframe(
-        df_r.head(top_n).rename(columns={"Promedio": "Prom/partido", "Total": "Total acum.", "Partidos": "PJ"})
-        .style.background_gradient(subset=["Prom/partido"], cmap="RdYlGn" if not asc else "RdYlGn_r"),
-        use_container_width=True, hide_index=True,
-    )
+    st.dataframe(df_r.head(top_n).rename(columns={"Promedio": "Prom/partido", "Total": "Total acum.", "Partidos": "PJ"}).style.background_gradient(subset=["Prom/partido"], cmap="RdYlGn" if not asc else "RdYlGn_r"), use_container_width=True, hide_index=True)
 
-    # ── Tabla rápida: 6 rankings destacados ──────────────────────
     st.markdown('<div class="section-title" style="font-size:1rem;">📌 Comparativas rápidas</div>', unsafe_allow_html=True)
     comparativas = [
         ("⚽ Más tiros generados",       "Tiros totales",         "Propio",     False),
@@ -607,16 +433,12 @@ elif nav == "📊  Rankings":
         ("🏃 Más faltas cometidas",      "Faltas",                "Propio",     False),
         ("🔒 Más intercepciones",        "Intercepciones",        "Propio",     False),
     ]
-    # Filtrar solo las que tienen datos
     comparativas = [(t, m, c, a) for t, m, c, a in comparativas if m in metricas]
     cols = st.columns(len(comparativas))
     for col, (titulo, met, col_d, asc_r) in zip(cols, comparativas):
         df_tmp = ranking(df, met, col_d, asc_r).head(5)
         col.markdown(f"**{titulo}**")
-        col.dataframe(
-            df_tmp[["Equipo", "Promedio"]].rename(columns={"Promedio": "Prom."}),
-            use_container_width=True, hide_index=True,
-        )
+        col.dataframe(df_tmp[["Equipo", "Promedio"]].rename(columns={"Promedio": "Prom."}), use_container_width=True, hide_index=True)
 
 # ──────────────────────────────────────────────────────────────────────
 # 🔄 HEAD-TO-HEAD
@@ -654,7 +476,6 @@ elif nav == "🔄  Head-to-Head":
                 return "— Igual"
 
             df_h2h["Ventaja (Propio)"] = df_h2h.apply(ventaja, axis=1)
-
             st.dataframe(df_h2h, use_container_width=True, hide_index=True)
 
             va = (df_h2h["Ventaja (Propio)"].str.startswith(f"▲ {eq_a}")).sum()
@@ -672,101 +493,53 @@ elif nav == "🔄  Head-to-Head":
 elif nav == "📋  Resumen Completo":
     st.markdown('<div class="section-title">📋 Resumen Completo del Torneo</div>', unsafe_allow_html=True)
 
-    perspectiva_r = st.radio(
-        "Mostrar",
-        ["Propio (lo que genera cada equipo)", "Concedido (lo que le generan)"],
-        horizontal=True,
-    )
+    perspectiva_r = st.radio("Mostrar", ["Propio (lo que genera cada equipo)", "Concedido (lo que le generan)"], horizontal=True)
     col_r = "Propio" if "Propio" in perspectiva_r else "Concedido"
-
-    mets_sel = st.multiselect(
-        "Métricas a mostrar",
-        metricas,
-        default=metricas[:min(8, len(metricas))],
-    )
+    mets_sel = st.multiselect("Métricas a mostrar", metricas, default=metricas[:min(8, len(metricas))])
 
     if mets_sel:
         prom = prom_equipo(df)
-        df_pivot = (
-            prom[prom["Métrica"].isin(mets_sel)]
-            .pivot(index="Equipo", columns="Métrica", values=col_r)
-            .round(2)
-            .reset_index()
-        )
-        st.dataframe(
-            df_pivot.style.background_gradient(
-                subset=[c for c in df_pivot.columns if c != "Equipo"],
-                cmap="RdYlGn",
-            ),
-            use_container_width=True, hide_index=True, height=620,
-        )
+        df_pivot = prom[prom["Métrica"].isin(mets_sel)].pivot(index="Equipo", columns="Métrica", values=col_r).round(2).reset_index()
+        st.dataframe(df_pivot.style.background_gradient(subset=[c for c in df_pivot.columns if c != "Equipo"], cmap="RdYlGn"), use_container_width=True, hide_index=True, height=620)
         st.caption(f"Valores promedio por partido — perspectiva: {col_r.lower()}")
 
 # ──────────────────────────────────────────────────────────────────────
-# 📈 EVOLUCIÓN
+# 📖 PERFIL POR RIVAL (SIN ERROR DE MARGEN)
 # ──────────────────────────────────────────────────────────────────────
-elif nav == "📈  Evolución":
-    st.markdown('<div class="section-title">📈 Evolución Fecha a Fecha</div>', unsafe_allow_html=True)
+elif nav == "📖  Perfil por Rival":
+    st.markdown('<div class="section-title">📖 Perfil por Rival (Contextual)</div>', unsafe_allow_html=True)
 
-    c1, c2, c3 = st.columns([3, 4, 2])
-    eq_ev = c1.selectbox("Equipo", equipos)
-    mets_ev = c2.multiselect(
-        "Métricas (máx. 6)",
-        metricas,
-        default=[m for m in ["Tiros totales", "Goles esperados (xG)", "Posesión de balón"] if m in metricas],
-        max_selections=6,
-    )
-    persp_ev = c3.radio("Perspectiva", ["Propio", "Concedido"])
+    c1, c2 = st.columns([1, 1])
+    eq_sel = c1.selectbox("Seleccionar Equipo", equipos)
+    met_sel = c2.selectbox("Métrica a analizar", metricas, index=metricas.index("Goles esperados (xG)") if "Goles esperados (xG)" in metricas else 0)
 
-    if mets_ev:
-        st.plotly_chart(fig_evolucion(df, eq_ev, mets_ev, persp_ev), use_container_width=True)
+    df_eq = df[(df["Equipo"] == eq_sel) & (df["Métrica"] == met_sel)].sort_values("nFecha")
 
-        df_ev_tbl = (
-            df[(df["Equipo"] == eq_ev) & (df["Métrica"].isin(mets_ev))]
-            .groupby(["nFecha", "Fecha", "Métrica"])[persp_ev]
-            .mean()
-            .reset_index()
-            .pivot(index="Fecha", columns="Métrica", values=persp_ev)
-            .round(2)
-            .reset_index()
+    if not df_eq.empty:
+        fig = go.Figure()
+        fig.add_trace(go.Bar(x=df_eq["Rival"], y=df_eq["Propio"], name="Generado (A Favor)", marker_color=RED))
+        fig.add_trace(go.Bar(x=df_eq["Rival"], y=df_eq["Concedido"], name="Concedido (En Contra)", marker_color=GRAY))
+        
+        # ERROR CORREGIDO: Se le quitó la palabra 'margin' explícita para evitar choque con **PLOT
+        fig.update_layout(**PLOT,
+            barmode='group',
+            xaxis_title="Rival Enfrentado",
+            yaxis_title=met_sel,
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
         )
-        st.dataframe(df_ev_tbl, use_container_width=True, hide_index=True)
+        st.plotly_chart(fig, use_container_width=True)
 
-        # Tendencia
-        st.markdown("#### Tendencia (última vs primera fecha)")
-        cols_t = st.columns(len(mets_ev))
-        for col_t, met in zip(cols_t, mets_ev):
-            dm = (df[(df["Equipo"] == eq_ev) & (df["Métrica"] == met)]
-                  .groupby(["nFecha", "Fecha"])[persp_ev].mean()
-                  .reset_index()
-                  .sort_values("nFecha"))
-            if len(dm) >= 2:
-                delta = round(float(dm[persp_ev].iloc[-1]) - float(dm[persp_ev].iloc[0]), 2)
-                col_t.metric(met[:18], round(float(dm[persp_ev].iloc[-1]), 2), delta=delta)
-            elif len(dm) == 1:
-                col_t.metric(met[:18], round(float(dm[persp_ev].iloc[0]), 2))
-
-# ──────────────────────────────────────────────────────────────────────
-# 🔍 DISPERSIÓN
-# ──────────────────────────────────────────────────────────────────────
-elif nav == "🔍  Dispersión":
-    st.markdown('<div class="section-title">🔍 Dispersión entre Métricas</div>', unsafe_allow_html=True)
-    st.caption("Cada punto = un equipo (promedio del torneo). Las líneas punteadas marcan la media.")
-
-    c1, c2 = st.columns(2)
-    met_x = c1.selectbox("Eje X", metricas,
-        index=metricas.index("Posesión de balón") if "Posesión de balón" in metricas else 0)
-    met_y = c2.selectbox("Eje Y", metricas,
-        index=metricas.index("Goles esperados (xG)") if "Goles esperados (xG)" in metricas else 1)
-
-    if met_x != met_y:
-        st.plotly_chart(fig_scatter(df, met_x, met_y), use_container_width=True)
-
-        prom = prom_equipo(df)
-        dx = prom[prom["Métrica"] == met_x][["Equipo", "Propio"]].rename(columns={"Propio": met_x})
-        dy = prom[prom["Métrica"] == met_y][["Equipo", "Propio"]].rename(columns={"Propio": met_y})
-        dm = dx.merge(dy, on="Equipo").sort_values(met_x, ascending=False).round(2)
-        corr = dm[met_x].corr(dm[met_y])
-        st.metric("Correlación de Pearson", f"{corr:.3f}",
-                  help="Cercano a 1 = correlación positiva fuerte. Cercano a -1 = negativa fuerte. Cercano a 0 = sin correlación.")
-        st.dataframe(dm, use_container_width=True, hide_index=True)
+        st.markdown("### Historial de Partidos")
+        df_res = df[(df["Equipo"] == eq_sel) & (df["Métrica"] == "Resultado")].sort_values("nFecha")
+        
+        df_display = pd.merge(
+            df_res[["Fecha", "Condicion", "Rival", "Propio", "Concedido"]],
+            df_eq[["Fecha", "Propio", "Concedido"]],
+            on="Fecha", suffixes=("_goles", "_metrica")
+        )
+        
+        df_display["Resultado"] = df_display["Propio_goles"].astype(int).astype(str) + " - " + df_display["Concedido_goles"].astype(int).astype(str)
+        df_display = df_display[["Fecha", "Condicion", "Rival", "Resultado", "Propio_metrica", "Concedido_metrica"]]
+        df_display.columns = ["Jornada", "Condición", "Rival", "Resultado Final", f"{met_sel} (A Favor)", f"{met_sel} (En Contra)"]
+        
+        st.dataframe(df_display, use_container_width=True, hide_index=True)
