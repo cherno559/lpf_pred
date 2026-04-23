@@ -22,7 +22,6 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-/* Mejorando la legibilidad y usando colores menos agresivos */
 h1, h2, h3 { font-family: 'Arial', sans-serif; color: #e63946; }
 .section-title { 
     font-size: 1.4rem; font-weight: bold; color: #e63946; 
@@ -47,7 +46,7 @@ PLOT = dict(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", margin=
 MAX_G = 8
 
 # ──────────────────────────────────────────────────────────────────────
-# PARSING DEL EXCEL
+# LECTURA DE DATOS MULTIFORMATO (CSV / EXCEL)
 # ──────────────────────────────────────────────────────────────────────
 def _parse_num(v) -> float:
     if isinstance(v, str):
@@ -64,39 +63,60 @@ def _parse_regate(v) -> float:
         if m: return float(m.group(1))
     return 0.0
 
+def parse_dataframe(df, nf):
+    partidos = []
+    i = 0
+    while i < len(df):
+        c0 = str(df.iloc[i, 0]).strip() if pd.notna(df.iloc[i, 0]) else ""
+        if re.search(r"\s+vs\s+", c0, re.IGNORECASE):
+            partes = re.split(r"\s+vs\s+", c0, flags=re.IGNORECASE)
+            loc, vis = partes[0].strip(), partes[1].strip()
+            stats, j = {}, i + 1
+            while j < len(df):
+                r0 = str(df.iloc[j, 0]).strip() if pd.notna(df.iloc[j, 0]) else ""
+                # Si encontramos línea en blanco u otro partido, terminamos este bloque
+                if r0 == "" or re.search(r"\s+vs\s+", r0, re.IGNORECASE): break
+                
+                # Ignorar encabezados o la parte de métricas calculadas
+                if any(r0.lower().startswith(s) for s in ("métrica", "metrica", "📊", loc.lower(), vis.lower())):
+                    j += 1; continue
+                
+                # Extraer datos protegiéndonos de columnas vacías
+                raw_l = df.iloc[j, 1] if df.shape[1] > 1 and pd.notna(df.iloc[j, 1]) else 0
+                raw_v = df.iloc[j, 2] if df.shape[1] > 2 and pd.notna(df.iloc[j, 2]) else 0
+                
+                stats[r0] = {
+                    "local": _parse_regate(raw_l) if "regate" in r0.lower() else _parse_num(raw_l),
+                    "visitante": _parse_regate(raw_v) if "regate" in r0.lower() else _parse_num(raw_v)
+                }
+                j += 1
+            partidos.append({"local": loc, "visitante": vis, "stats": stats, "nFecha": nf})
+            i = j
+        else: i += 1
+    return partidos
+
 @st.cache_data(ttl=180, show_spinner=False)
-def cargar_excel(ruta: str) -> dict:
-    if not os.path.exists(ruta): return {}
-    try: xl = pd.ExcelFile(ruta, engine="openpyxl")
-    except Exception: return {}
-        
+def procesar_archivos_subidos(archivos) -> dict:
     datos = {}
-    for hoja in xl.sheet_names:
-        if not re.search(r"fecha\s*\d+", hoja, re.IGNORECASE): continue
-        nf = int(re.search(r"\d+", hoja).group())
-        df = pd.read_excel(ruta, sheet_name=hoja, header=None)
-        partidos = []
-        i = 0
-        while i < len(df):
-            c0 = str(df.iloc[i, 0]).strip() if pd.notna(df.iloc[i, 0]) else ""
-            if re.search(r"\s+vs\s+", c0, re.IGNORECASE):
-                partes = re.split(r"\s+vs\s+", c0, flags=re.IGNORECASE)
-                loc, vis = partes[0].strip(), partes[1].strip()
-                stats, j = {}, i + 1
-                while j < len(df):
-                    r0 = str(df.iloc[j, 0]).strip() if pd.notna(df.iloc[j, 0]) else ""
-                    if r0 == "" or re.search(r"\s+vs\s+", r0, re.IGNORECASE): break
-                    if any(r0.lower().startswith(s) for s in ("métrica", "metrica", "📊", loc.lower(), vis.lower())):
-                        j += 1; continue
-                    if pd.notna(df.iloc[j, 1]):
-                        raw_l, raw_v = df.iloc[j, 1], df.iloc[j, 2] if j < len(df) and pd.notna(df.iloc[j, 2]) else 0
-                        stats[r0] = {"local": _parse_regate(raw_l) if "regate" in r0.lower() else _parse_num(raw_l),
-                                     "visitante": _parse_regate(raw_v) if "regate" in r0.lower() else _parse_num(raw_v)}
-                    j += 1
-                partidos.append({"local": loc, "visitante": vis, "stats": stats, "nFecha": nf})
-                i = j
-            else: i += 1
-        datos[nf] = partidos
+    for file in archivos:
+        name = file.name.lower()
+        # Intentar extraer el número de fecha del nombre del archivo
+        m = re.search(r"fecha\s*(\d+)", name, re.IGNORECASE)
+        nf_base = int(m.group(1)) if m else 1
+        
+        try:
+            if name.endswith('.csv'):
+                df = pd.read_csv(file, header=None)
+                datos[nf_base] = parse_dataframe(df, nf_base)
+            elif name.endswith('.xlsx'):
+                xl = pd.ExcelFile(file, engine="openpyxl")
+                for hoja in xl.sheet_names:
+                    if not re.search(r"fecha\s*\d+", hoja, re.IGNORECASE): continue
+                    nf = int(re.search(r"\d+", hoja).group())
+                    df = pd.read_excel(xl, sheet_name=hoja, header=None)
+                    datos[nf] = parse_dataframe(df, nf)
+        except Exception as e:
+            st.error(f"Error procesando {file.name}: {e}")
     return datos
 
 def construir_df(datos: dict) -> pd.DataFrame:
@@ -153,7 +173,7 @@ def tabla_resumen(df, equipos, xg_df):
                      "GF/PJ": round(goles_f, 2) if pd.notna(goles_f) else 0, "GC/PJ": round(goles_c, 2) if pd.notna(goles_c) else 0})
     return pd.DataFrame(rows).sort_values("PTS", ascending=False).reset_index(drop=True)
 
-# MOTOR DE PREDICCIÓN (Simplificado visualmente en código)
+# MOTOR DE PREDICCIÓN
 def calcular_lambdas(df, xg_df, ea, eb, es_local, k, nr, wr, wn, h_atk, h_def, sc):
     max_f = df["nFecha"].max()
     ca, cb = ("Local", "Visitante") if es_local else ("Visitante", "Local")
@@ -226,11 +246,18 @@ def plot_radar(df, ea, eb):
     return fig
 
 # ──────────────────────────────────────────────────────────────────────
-# SIDEBAR
+# SIDEBAR Y FLUJO PRINCIPAL
 # ──────────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("## ⚽ LPF Scouting 2026")
-    ruta = st.text_input("📂 Base de Datos (Excel)", "Fecha_x_fecha_lpf.xlsx")
+    
+    # NUEVO: Subir múltiples archivos en vez de buscar una ruta de texto
+    archivos_subidos = st.file_uploader(
+        "📂 Subir archivo(s) de datos (.csv o .xlsx)", 
+        type=["csv", "xlsx"], 
+        accept_multiple_files=True
+    )
+    
     st.divider()
     nav = st.radio("Navegación", ["🔮 Predictor de Partidos", "📊 Métricas y Rankings", "🕸️ Head to Head", "🛡️ Análisis vs Nivel de Rival"])
     
@@ -242,19 +269,17 @@ with st.sidebar:
         scaling = st.slider("Scaling (Under/Over)", 0.7, 1.1, 0.88)
         rho_dc = st.slider("ρ Dixon-Coles", -0.3, 0.0, -0.1)
 
-# ──────────────────────────────────────────────────────────────────────
-# CARGA DE DATOS
-# ──────────────────────────────────────────────────────────────────────
-if not os.path.exists(ruta):
-    st.error(f"No se encontró el archivo: **{ruta}**")
+# Verificación de que haya archivos cargados
+if not archivos_subidos:
+    st.info("👈 Por favor, subí tus archivos CSV (Ej: Fecha 1.csv, Fecha 2.csv) desde el menú lateral izquierdo para comenzar el análisis.")
     st.stop()
 
 with st.spinner("Procesando matriz de datos..."):
-    datos_raw = cargar_excel(ruta)
+    datos_raw = procesar_archivos_subidos(archivos_subidos)
     df = construir_df(datos_raw)
     
 if df.empty:
-    st.error("⚠️ El archivo está vacío o el formato no coincide.")
+    st.error("⚠️ No se pudieron extraer datos. Asegúrate de que los archivos tengan el formato correcto de SofaScore/Scouting.")
     st.stop()
     
 xg_df = calcular_xg_df(datos_raw)
@@ -277,7 +302,6 @@ if nav == "🔮 Predictor de Partidos":
         s = simular(la, lb, rho_dc)
         M = s["mat"]
         
-        # Probabilidades Principales
         k1, k2, k3 = st.columns(3)
         k1.markdown(f'<div class="kpi-container"><div class="kpi-title">Gana {ea}</div><div class="kpi-value">{s["vic"]*100:.1f}%</div></div>', unsafe_allow_html=True)
         k2.markdown(f'<div class="kpi-container kpi-draw"><div class="kpi-title">Empate</div><div class="kpi-value">{s["emp"]*100:.1f}%</div></div>', unsafe_allow_html=True)
@@ -328,7 +352,6 @@ elif nav == "🕸️ Head to Head":
     
     st.plotly_chart(plot_radar(df, ea, eb), use_container_width=True)
     
-    # Tabla lado a lado
     def get_promedios(eq):
         return df[df["Equipo"] == eq].groupby("Métrica")["Propio"].mean().round(2)
     
@@ -342,7 +365,6 @@ elif nav == "🛡️ Análisis vs Nivel de Rival":
     st.markdown('<div class="section-title">🛡️ Rendimiento según Jerarquía del Rival</div>', unsafe_allow_html=True)
     st.info("Divide a los oponentes en 3 niveles (Top, Medio, Bajo) según la tabla general actual para ver cómo rinde un equipo dependiendo de la exigencia del partido.")
     
-    # Armar Tiers
     n_teams = len(equipos)
     tabla_pos['Rank'] = tabla_pos['PTS'].rank(method='min', ascending=False)
     
@@ -356,11 +378,9 @@ elif nav == "🛡️ Análisis vs Nivel de Rival":
     
     eq_analisis = st.selectbox("Seleccionar Equipo para Analizar:", equipos)
     
-    # Recolectar estadísticas contra cada tier
     partidos_eq = df[(df["Equipo"] == eq_analisis) & (df["Métrica"] == "Resultado")].copy()
     partidos_eq['Nivel_Rival'] = partidos_eq['Rival'].map(tier_map)
     
-    # Unir con xG
     xg_fav = xg_df[xg_df["Equipo"] == eq_analisis][['nFecha', 'Rival', 'xG']].rename(columns={'xG': 'xGF'})
     xg_con = xg_df[xg_df["Rival"] == eq_analisis][['nFecha', 'Equipo', 'xG']].rename(columns={'xG': 'xGC', 'Equipo': 'Rival'})
     
@@ -377,7 +397,6 @@ elif nav == "🛡️ Análisis vs Nivel de Rival":
         
         st.dataframe(res_tier, use_container_width=True)
         
-        # Gráfico de barras agrupadas
         fig = go.Figure()
         fig.add_trace(go.Bar(name='xG Generado', x=res_tier['Nivel_Rival'], y=res_tier['xG_Generado'], marker_color=BLUE))
         fig.add_trace(go.Bar(name='xG Concedido', x=res_tier['Nivel_Rival'], y=res_tier['xG_Concedido'], marker_color=RED))
