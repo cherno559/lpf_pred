@@ -1,14 +1,6 @@
 """
-dashboard_lpf.py — LPF 2026 Scouting Dashboard (v9.1 · Prior de Jerarquía Automático)
+dashboard_lpf.py — LPF 2026 Scouting Dashboard (v9.2 · Mejoras de Localía y Radares)
 ─────────────────────────────────────────────────────────────────────────────
-Fixes v9.1 sobre v9.0:
-  [F6] Prior de jerarquía: la tabla de posiciones (PPJ) se calcula automáticamente
-       desde el Excel y actúa como prior bayesiano sobre ataque y defensa.
-       Equipos con más puntos por partido tienen un prior de ataque > 1.0
-       y prior de defensa < 1.0, en lugar del prior neutro (1.0, 1.0) de v9.0.
-  [F7] Indicador de lambdas y tabla de posiciones visible en el Predictor
-       para que el usuario pueda auditar el resultado.
-  [F8] Restaurados los marcadores de score en la matriz de probabilidades.
 """
 import re, os, math
 import numpy as np
@@ -37,19 +29,17 @@ h1 { font-family:'Bebas Neue',cursive !important; font-size:2.6rem !important; c
 .stTabs [data-baseweb="tab"] { font-family:'Rajdhani'; font-weight:700; font-size:14px; color:#64748b !important; border-radius:7px; padding:6px 16px; }
 .stTabs [aria-selected="true"] { background:#e63946 !important; color:#fff !important; }
 .stButton>button { font-family:'Bebas Neue'; font-size:17px; letter-spacing:2px; background:linear-gradient(135deg,#e63946,#b91c2c); color:#fff; border:none; border-radius:9px; padding:13px; width:100%; }
-.stSelectbox>div>div, .stTextInput>div>div { background:#0f1829 !important; border:1px solid #1c2a40 !important; color:#dde3ee !important; border-radius:8px !important; }
+.stSelectbox>div>div, .stTextInput>div>div, .stRadio>div>div { background:#0f1829 !important; border:1px solid #1c2a40 !important; color:#dde3ee !important; border-radius:8px !important; }
 .note { background:#0f1829; border:1px solid #1c2a40; border-radius:8px; padding:10px 14px; font-size:12px; color:#64748b; margin-top:8px; }
 </style>
 """, unsafe_allow_html=True)
  
 # ── Parámetros de Motor ───────────────────────────────────────────────
 W_XG = 0.75
-K_SHRINK = 6.0          # shrinkage sobre datos observados
-K_PRIOR  = 4.0          # [F6] peso del prior de jerarquía (en unidades de "partidos equivalentes")
-                        #      a mayor K_PRIOR, más influencia tiene la tabla sobre equipos
-                        #      con pocos partidos en esa condición específica
-PRIOR_ATK_SCALE = 0.35  # [F6] amplitud del prior de ataque: PPJ_norm * SCALE desplaza el prior
-PRIOR_DEF_SCALE = 0.25  # [F6] amplitud del prior de defensa (más conservador)
+K_SHRINK = 6.0          
+K_PRIOR  = 4.0          
+PRIOR_ATK_SCALE = 0.35  
+PRIOR_DEF_SCALE = 0.25  
 DC_RHO = -0.10
 MAX_GOALS_MATRIX = 7
 N_RECENCIA, PESO_RECIENTE, PESO_NORMAL = 3, 1.5, 1.0
@@ -104,24 +94,14 @@ def construir_df(datos: dict) -> pd.DataFrame:
                 filas.append({**base, "Equipo": p["visitante"],"Rival": p["local"],     "Condicion": "Visitante", "Propio": vals["visitante"], "Concedido": vals["local"]})
     return pd.DataFrame(filas)
  
-# ── [F6] Tabla de posiciones y priors de jerarquía ───────────────────
+# ── Tabla de posiciones y priors de jerarquía (con filtro por condición) ───────────────────
 @st.cache_data(ttl=120, show_spinner=False)
-def calcular_tabla(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Construye la tabla de posiciones y calcula el prior de jerarquía
-    normalizado para cada equipo.
- 
-    prior_atk: valor > 1 = equipo que genera más de lo esperado (buenos)
-                valor < 1 = equipo que genera menos (malos)
-    prior_def: valor < 1 = equipo que concede menos (buena defensa)
-                valor > 1 = equipo que concede más (mala defensa)
- 
-    El prior se deriva del PPJ (puntos por partido) normalizado en torno
-    a la media del torneo.  PPJ_norm = PPJ / PPJ_mean.
-    Un equipo con PPJ_norm=1.5 tiene prior_atk = 1 + 0.5*PRIOR_ATK_SCALE
-    y prior_def = 1 - 0.5*PRIOR_DEF_SCALE (concede menos).
-    """
+def calcular_tabla(df: pd.DataFrame, condicion: str = "General") -> pd.DataFrame:
     dr = df[df["Métrica"] == "Resultado"].copy()
+    
+    if condicion != "General":
+        dr = dr[dr["Condicion"] == condicion]
+        
     if dr.empty:
         return pd.DataFrame()
  
@@ -146,26 +126,20 @@ def calcular_tabla(df: pd.DataFrame) -> pd.DataFrame:
     tabla = pd.DataFrame(rows).sort_values(["PTS", "GF"], ascending=False).reset_index(drop=True)
     tabla["Pos"] = tabla.index + 1
  
-    # Prior normalizado: cuánto se desvía cada equipo de la media del torneo
     ppj_mean = tabla["PPJ"].mean()
     if ppj_mean > 0:
         tabla["PPJ_norm"] = tabla["PPJ"] / ppj_mean
     else:
         tabla["PPJ_norm"] = 1.0
  
-    # prior_atk: equipos buenos atacan más → prior > 1
     tabla["prior_atk"] = 1.0 + (tabla["PPJ_norm"] - 1.0) * PRIOR_ATK_SCALE
-    # prior_def: equipos buenos defienden mejor → prior < 1 (conceden menos)
     tabla["prior_def"] = 1.0 - (tabla["PPJ_norm"] - 1.0) * PRIOR_DEF_SCALE
- 
-    # Clip para evitar priors absurdos
     tabla["prior_atk"] = tabla["prior_atk"].clip(0.5, 2.0)
     tabla["prior_def"] = tabla["prior_def"].clip(0.5, 2.0)
  
     return tabla.set_index("Equipo")
  
 def _get_prior(tabla: pd.DataFrame, eq: str):
-    """Retorna (prior_atk, prior_def) para un equipo. Default neutro si no está."""
     if tabla is None or eq not in tabla.index:
         return 1.0, 1.0
     return float(tabla.loc[eq, "prior_atk"]), float(tabla.loc[eq, "prior_def"])
@@ -206,19 +180,6 @@ def _league_stats(df):
     return {"ref_home": rh, "ref_away": rv, "ref_all": (rh+rv)/2}
  
 def _strength(df, eq, cond, league, max_fecha_torneo: int, tabla: pd.DataFrame):
-    """
-    [F6] Shrinkage bayesiano con prior de jerarquía.
- 
-    En lugar de shrinkage hacia (1.0, 1.0) neutro, encogemos hacia
-    (prior_atk, prior_def) derivados de los puntos por partido del equipo.
- 
-    Formulación:
-        atk_posterior = (n * atk_obs + K_PRIOR * prior_atk) / (n + K_PRIOR)
-        def_posterior = (n * def_obs + K_PRIOR * prior_def) / (n + K_PRIOR)
- 
-    Con n=0 (nunca jugó en esa condición): resultado = puro prior de jerarquía.
-    Con n→∞: resultado = observado (datos dominan sobre el prior).
-    """
     d_eq   = df[df["Equipo"] == eq]
     d_spec = d_eq[d_eq["Condicion"] == cond]
  
@@ -231,14 +192,12 @@ def _strength(df, eq, cond, league, max_fecha_torneo: int, tabla: pd.DataFrame):
     atk_obs  = (gf_s / ref_f)  if (not np.isnan(gf_s)  and ref_f  > 0) else np.nan
     def_obs  = (gc_s / ref_a)  if (not np.isnan(gc_s)   and ref_a  > 0) else np.nan
  
-    # Prior de jerarquía desde tabla de posiciones
     prior_atk, prior_def = _get_prior(tabla, eq)
  
     n = n_s if n_s > 0 else 0
     atk_obs  = atk_obs  if not np.isnan(atk_obs)  else prior_atk
     def_obs  = def_obs  if not np.isnan(def_obs)  else prior_def
  
-    # [F6] Shrinkage hacia prior de jerarquía (no hacia 1.0)
     atk_post = (n * atk_obs  + K_PRIOR * prior_atk) / (n + K_PRIOR)
     def_post = (n * def_obs  + K_PRIOR * prior_def)  / (n + K_PRIOR)
  
@@ -275,9 +234,7 @@ def montecarlo(la, lb):
         "matrix":   M,
     }
  
-# ── [F8] Figura de matriz de marcadores ──────────────────────────────
 def fig_score_matrix(M, ea, eb, n=5):
-    """Muestra los marcadores más probables como heatmap."""
     sub = M[:n, :n]
     z_text = [[f"{sub[i,j]*100:.1f}%" for j in range(n)] for i in range(n)]
     fig = go.Figure(go.Heatmap(
@@ -295,6 +252,7 @@ def fig_score_matrix(M, ea, eb, n=5):
         yaxis=dict(autorange="reversed"),
     )
     return fig
+ 
 def fig_radar(df, eq_a, eq_b, cond_a, cond_b):
     mets = [m for m in ["Posesión de balón", "Tiros totales", "Tiros al arco",
                          "Goles esperados (xG)", "Pases totales"]
@@ -309,21 +267,18 @@ def fig_radar(df, eq_a, eq_b, cond_a, cond_b):
         
     # 2. Función para buscar el "Techo" (máximo) de la liga en esa métrica
     def get_league_max(m):
-        # Promedio general por equipo para esa métrica, nos quedamos con el mejor
         return df[df["Métrica"] == m].groupby("Equipo")["Propio"].mean().max()
 
-    # Obtenemos los valores reales de los dos equipos
+    # Valores reales de los equipos
     va = [gv(eq_a, cond_a, m) for m in mets]
     vb = [gv(eq_b, cond_b, m) for m in mets]
     
-    # Obtenemos los máximos de la liga (o 1e-6 para evitar dividir por cero)
+    # Máximos de la liga para normalizar
     mx = [max(get_league_max(m), 1e-6) for m in mets]
     
-    # Armamos el texto que se verá al pasar el mouse mostrando el valor real
     text_a = [f"{m}: <b>{v:.1f}</b>" for m, v in zip(mets, va)]
     text_b = [f"{m}: <b>{v:.1f}</b>" for m, v in zip(mets, vb)]
 
-    # Cerramos el polígono repitiendo el primer valor (lógica de radares en Plotly)
     r_a = [a/m for a, m in zip(va, mx)] + [va[0]/mx[0]]
     r_b = [b/m for b, m in zip(vb, mx)] + [vb[0]/mx[0]]
     theta = mets + [mets[0]]
@@ -331,22 +286,11 @@ def fig_radar(df, eq_a, eq_b, cond_a, cond_b):
     txt_b = text_b + [text_b[0]]
 
     fig = go.Figure()
+    fig.add_trace(go.Scatterpolar(r=r_a, theta=theta, fill="toself", name=eq_a, line=dict(color=RED), hoverinfo="text+name", text=txt_a))
+    fig.add_trace(go.Scatterpolar(r=r_b, theta=theta, fill="toself", name=eq_b, line=dict(color=BLUE), hoverinfo="text+name", text=txt_b))
     
-    # Agregamos las trazas inyectando el hovertext
-    fig.add_trace(go.Scatterpolar(
-        r=r_a, theta=theta, fill="toself", name=eq_a, 
-        line=dict(color=RED), hoverinfo="text+name", text=txt_a
-    ))
-    fig.add_trace(go.Scatterpolar(
-        r=r_b, theta=theta, fill="toself", name=eq_b, 
-        line=dict(color=BLUE), hoverinfo="text+name", text=txt_b
-    ))
-    
-    # Mejoramos el layout haciendo visible la red para ubicar mejor los valores
-   # Creamos una copia de tus configuraciones base (PLOT)
+    # Combinamos layouts para no generar error
     layout_args = PLOT.copy()
-    
-    # Sobreescribimos con las propiedades específicas para el radar
     layout_args.update(
         height=400, 
         polar=dict(
@@ -362,13 +306,12 @@ def fig_radar(df, eq_a, eq_b, cond_a, cond_b):
                 linecolor="#1c2a40"
             )
         ),
-        margin=dict(l=40, r=40, t=36, b=40) # Pise el margin por defecto sin generar error
+        margin=dict(l=40, r=40, t=36, b=40)
     )
     
-    # Aplicamos el layout corregido
     fig.update_layout(**layout_args)
-    
     return fig
+ 
 # ──────────────────────────────────────────────────────────────────────
 # NAVEGACIÓN
 # ──────────────────────────────────────────────────────────────────────
@@ -382,7 +325,8 @@ with st.sidebar:
 if not os.path.exists(ruta): st.stop()
 datos  = cargar_excel(ruta)
 df     = construir_df(datos)
-tabla  = calcular_tabla(df)          # [F6] prior de jerarquía
+tabla  = calcular_tabla(df, "General")  # Base general para el motor predictivo
+
 equipos, metricas = sorted(df["Equipo"].unique()), sorted(df["Métrica"].unique())
 st.markdown('<h1>LPF 2026 · Scouting Dashboard</h1>', unsafe_allow_html=True)
  
@@ -403,7 +347,6 @@ if nav == "🔮 Predictor":
         k2.markdown(f'<div class="kpi draw"><div class="lbl">Prob. Empate</div><div class="val">{sim["empate"]*100:.1f}%</div></div>', unsafe_allow_html=True)
         k3.markdown(f'<div class="kpi loss"><div class="lbl">Prob. {eb}</div><div class="val">{sim["derrota"]*100:.1f}%</div></div>', unsafe_allow_html=True)
  
-        # [F7] Auditoría de lambdas y priors
         pa_a, pd_a = _get_prior(tabla, ea)
         pa_b, pd_b = _get_prior(tabla, eb)
         pos_a = int(tabla.loc[ea, "Pos"]) if ea in tabla.index else "?"
@@ -414,7 +357,6 @@ if nav == "🔮 Predictor":
             f'λ {eb} = <b>{lb:.3f}</b> (pos {pos_b}°, prior_atk={pa_b:.2f})'
             f'</div>', unsafe_allow_html=True)
  
-        # [F8] Matriz de marcadores
         st.markdown('<div class="section-title">🎯 Marcadores más probables</div>', unsafe_allow_html=True)
         st.plotly_chart(fig_score_matrix(sim["matrix"], ea, eb), use_container_width=True)
  
@@ -437,16 +379,13 @@ elif nav == "📊 Rankings":
         use_container_width=True)
  
 # ──────────────────────────────────────────────────────────────────────
-# ──────────────────────────────────────────────────────────────────────
 elif nav == "🔄 Head-to-Head":
     st.markdown('<div class="section-title">🔄 Head-to-Head Comparativo</div>', unsafe_allow_html=True)
     
-    # Selección de equipos
     c1, c2 = st.columns(2)
     ea = c1.selectbox("Equipo A", equipos)
     eb = c2.selectbox("Equipo B", equipos, index=min(1, len(equipos)-1))
     
-    # Selección de condición (Local/Visitante/General)
     c3, c4 = st.columns(2)
     cond_a = c3.radio(f"Condición de {ea}", ["General", "Local", "Visitante"], horizontal=True, key="cond_a")
     cond_b = c4.radio(f"Condición de {eb}", ["General", "Local", "Visitante"], horizontal=True, key="cond_b")
@@ -454,25 +393,20 @@ elif nav == "🔄 Head-to-Head":
     t1, t2 = st.tabs(["🕸️ Comparativa Radar", "📊 Datos Crudos"])
     
     with t1:
-        # El radar ya estaba preparado para recibir condiciones, se las pasamos
         st.plotly_chart(fig_radar(df, ea, eb, cond_a, cond_b), use_container_width=True)
         
     with t2:
-        # Filtramos los datos del Equipo A según su condición
         df_a = df[df["Equipo"] == ea]
         if cond_a != "General":
             df_a = df_a[df_a["Condicion"] == cond_a]
             
-        # Filtramos los datos del Equipo B según su condición
         df_b = df[df["Equipo"] == eb]
         if cond_b != "General":
             df_b = df_b[df_b["Condicion"] == cond_b]
 
-        # Calculamos los promedios con los dataframes ya filtrados
         s1 = df_a.groupby("Métrica")[["Propio","Concedido"]].mean().round(2)
         s2 = df_b.groupby("Métrica")[["Propio","Concedido"]].mean().round(2)
         
-        # Armamos la tabla comparativa indicando la condición en los encabezados para mayor claridad
         h2h_df = pd.DataFrame({
             f"{ea} ({cond_a[:3]}) Favor": s1["Propio"], 
             f"{ea} ({cond_a[:3]}) Contra": s1["Concedido"],
@@ -481,6 +415,7 @@ elif nav == "🔄 Head-to-Head":
         }).dropna()
         
         st.dataframe(h2h_df, use_container_width=True)
+ 
 # ──────────────────────────────────────────────────────────────────────
 elif nav == "📖 Perfil Rival":
     eq_p  = st.selectbox("Equipo",  equipos)
@@ -518,14 +453,23 @@ elif nav == "🎭 Estilos":
  
 # ──────────────────────────────────────────────────────────────────────
 elif nav == "📋 Tabla":
-    st.markdown('<div class="section-title">📋 Tabla de Posiciones</div>', unsafe_allow_html=True)
-    if not tabla.empty:
-        t_show = tabla.reset_index()[["Pos","Equipo","PJ","V","E","D","GF","GC","PTS","PPJ","prior_atk","prior_def"]].copy()
+    st.markdown('<div class="section-title">📋 Tablas de Posiciones</div>', unsafe_allow_html=True)
+    
+    vista_tabla = st.radio("Seleccionar vista:", ["General", "Local", "Visitante"], horizontal=True)
+    
+    t_dinamica = calcular_tabla(df, vista_tabla)
+    
+    if not t_dinamica.empty:
+        t_show = t_dinamica.reset_index()[["Pos","Equipo","PJ","V","E","D","GF","GC","PTS","PPJ","prior_atk","prior_def"]].copy()
         t_show.columns = ["Pos","Equipo","PJ","V","E","D","GF","GC","PTS","PPJ","Prior Atk","Prior Def"]
+        
         t_show["GF"] = t_show["GF"].astype(int)
         t_show["GC"] = t_show["GC"].astype(int)
         t_show["PPJ"]        = t_show["PPJ"].round(3)
         t_show["Prior Atk"]  = t_show["Prior Atk"].round(3)
         t_show["Prior Def"]  = t_show["Prior Def"].round(3)
+        
+        st.subheader(f"Clasificación: {vista_tabla}")
         st.dataframe(t_show, use_container_width=True, hide_index=True)
-        st.markdown('<div class="note">Prior Atk > 1 = equipo que históricamente genera más que la media · Prior Def < 1 = equipo que concede menos · Estos priors actúan como "partículas previas" en el shrinkage bayesiano del predictor.</div>', unsafe_allow_html=True)
+        
+        st.markdown(f'<div class="note">Estás viendo la tabla de rendimiento como <b>{vista_tabla}</b>. Los indicadores de Prior Atk/Def se ajustan según la eficacia en esta condición específica.</div>', unsafe_allow_html=True)
