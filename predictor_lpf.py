@@ -381,21 +381,50 @@ elif nav == "📊 Rankings":
         use_container_width=True)
  
 # ──────────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────
 elif nav == "🔄 Head-to-Head":
     st.markdown('<div class="section-title">🔄 Head-to-Head Comparativo</div>', unsafe_allow_html=True)
+    
+    # Selección de equipos
     c1, c2 = st.columns(2)
     ea = c1.selectbox("Equipo A", equipos)
     eb = c2.selectbox("Equipo B", equipos, index=min(1, len(equipos)-1))
+    
+    # Selección de condición (Local/Visitante/General)
+    c3, c4 = st.columns(2)
+    cond_a = c3.radio(f"Condición de {ea}", ["General", "Local", "Visitante"], horizontal=True, key="cond_a")
+    cond_b = c4.radio(f"Condición de {eb}", ["General", "Local", "Visitante"], horizontal=True, key="cond_b")
+
     t1, t2 = st.tabs(["🕸️ Comparativa Radar", "📊 Datos Crudos"])
+    
     with t1:
-        st.plotly_chart(fig_radar(df, ea, eb, "General", "General"), use_container_width=True)
+        # El radar ya estaba preparado para recibir condiciones, se las pasamos
+        st.plotly_chart(fig_radar(df, ea, eb, cond_a, cond_b), use_container_width=True)
+        
     with t2:
-        s1 = df[df["Equipo"]==ea].groupby("Métrica")[["Propio","Concedido"]].mean().round(2)
-        s2 = df[df["Equipo"]==eb].groupby("Métrica")[["Propio","Concedido"]].mean().round(2)
-        h2h_df = pd.DataFrame({f"{ea} Favor": s1["Propio"], f"{ea} Contra": s1["Concedido"],
-                                f"{eb} Favor": s2["Propio"], f"{eb} Contra": s2["Concedido"]}).dropna()
+        # Filtramos los datos del Equipo A según su condición
+        df_a = df[df["Equipo"] == ea]
+        if cond_a != "General":
+            df_a = df_a[df_a["Condicion"] == cond_a]
+            
+        # Filtramos los datos del Equipo B según su condición
+        df_b = df[df["Equipo"] == eb]
+        if cond_b != "General":
+            df_b = df_b[df_b["Condicion"] == cond_b]
+
+        # Calculamos los promedios con los dataframes ya filtrados
+        s1 = df_a.groupby("Métrica")[["Propio","Concedido"]].mean().round(2)
+        s2 = df_b.groupby("Métrica")[["Propio","Concedido"]].mean().round(2)
+        
+        # Armamos la tabla comparativa indicando la condición en los encabezados para mayor claridad
+        h2h_df = pd.DataFrame({
+            f"{ea} ({cond_a[:3]}) Favor": s1["Propio"], 
+            f"{ea} ({cond_a[:3]}) Contra": s1["Concedido"],
+            f"{eb} ({cond_b[:3]}) Favor": s2["Propio"], 
+            f"{eb} ({cond_b[:3]}) Contra": s2["Concedido"]
+        }).dropna()
+        
         st.dataframe(h2h_df, use_container_width=True)
- 
 # ──────────────────────────────────────────────────────────────────────
 elif nav == "📖 Perfil Rival":
     eq_p  = st.selectbox("Equipo",  equipos)
