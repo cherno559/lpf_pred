@@ -343,26 +343,32 @@ def fig_radar(df, eq_a, eq_b, cond_a, cond_b):
     ))
     
     # Mejoramos el layout haciendo visible la red para ubicar mejor los valores
-    fig.update_layout(
-        **PLOT, 
+   # Creamos una copia de tus configuraciones base (PLOT)
+    layout_args = PLOT.copy()
+    
+    # Sobreescribimos con las propiedades específicas para el radar
+    layout_args.update(
         height=400, 
         polar=dict(
             bgcolor="rgba(0,0,0,0)", 
             radialaxis=dict(
                 visible=True, 
-                showticklabels=False, # Oculta los números "0.2, 0.4" de la normalización
-                gridcolor="#1c2a40",  # Color sutil para la grilla
-                range=[0, 1]          # El 1 ahora significa "El máximo de la liga"
+                showticklabels=False, 
+                gridcolor="#1c2a40",  
+                range=[0, 1]          
             ),
             angularaxis=dict(
                 gridcolor="#1c2a40",
                 linecolor="#1c2a40"
             )
         ),
-        margin=dict(l=40, r=40, t=36, b=40)
+        margin=dict(l=40, r=40, t=36, b=40) # Pise el margin por defecto sin generar error
     )
+    
+    # Aplicamos el layout corregido
+    fig.update_layout(**layout_args)
+    
     return fig
- 
 # ──────────────────────────────────────────────────────────────────────
 # NAVEGACIÓN
 # ──────────────────────────────────────────────────────────────────────
