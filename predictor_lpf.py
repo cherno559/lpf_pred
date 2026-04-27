@@ -295,22 +295,72 @@ def fig_score_matrix(M, ea, eb, n=5):
         yaxis=dict(autorange="reversed"),
     )
     return fig
- 
 def fig_radar(df, eq_a, eq_b, cond_a, cond_b):
     mets = [m for m in ["Posesión de balón", "Tiros totales", "Tiros al arco",
                          "Goles esperados (xG)", "Pases totales"]
             if m in df["Métrica"].values]
     if not mets: return go.Figure()
+    
+    # 1. Función para promediar la métrica de un equipo
     def gv(eq, cond, m):
         d = df[(df["Equipo"] == eq) & (df["Métrica"] == m)]
         if cond != "General": d = d[d["Condicion"] == cond]
         return d["Propio"].mean() if not d.empty else 0.0
-    va, vb = [gv(eq_a, cond_a, m) for m in mets], [gv(eq_b, cond_b, m) for m in mets]
-    mx = [max(abs(a), abs(b), 1e-6) for a, b in zip(va, vb)]
+        
+    # 2. Función para buscar el "Techo" (máximo) de la liga en esa métrica
+    def get_league_max(m):
+        # Promedio general por equipo para esa métrica, nos quedamos con el mejor
+        return df[df["Métrica"] == m].groupby("Equipo")["Propio"].mean().max()
+
+    # Obtenemos los valores reales de los dos equipos
+    va = [gv(eq_a, cond_a, m) for m in mets]
+    vb = [gv(eq_b, cond_b, m) for m in mets]
+    
+    # Obtenemos los máximos de la liga (o 1e-6 para evitar dividir por cero)
+    mx = [max(get_league_max(m), 1e-6) for m in mets]
+    
+    # Armamos el texto que se verá al pasar el mouse mostrando el valor real
+    text_a = [f"{m}: <b>{v:.1f}</b>" for m, v in zip(mets, va)]
+    text_b = [f"{m}: <b>{v:.1f}</b>" for m, v in zip(mets, vb)]
+
+    # Cerramos el polígono repitiendo el primer valor (lógica de radares en Plotly)
+    r_a = [a/m for a, m in zip(va, mx)] + [va[0]/mx[0]]
+    r_b = [b/m for b, m in zip(vb, mx)] + [vb[0]/mx[0]]
+    theta = mets + [mets[0]]
+    txt_a = text_a + [text_a[0]]
+    txt_b = text_b + [text_b[0]]
+
     fig = go.Figure()
-    fig.add_trace(go.Scatterpolar(r=[a/m for a,m in zip(va,mx)]+[va[0]/mx[0]], theta=mets+[mets[0]], fill="toself", name=eq_a, line=dict(color=RED)))
-    fig.add_trace(go.Scatterpolar(r=[b/m for b,m in zip(vb,mx)]+[vb[0]/mx[0]], theta=mets+[mets[0]], fill="toself", name=eq_b, line=dict(color=BLUE)))
-    fig.update_layout(**PLOT, height=400, polar=dict(bgcolor="rgba(0,0,0,0)", radialaxis=dict(visible=False)))
+    
+    # Agregamos las trazas inyectando el hovertext
+    fig.add_trace(go.Scatterpolar(
+        r=r_a, theta=theta, fill="toself", name=eq_a, 
+        line=dict(color=RED), hoverinfo="text+name", text=txt_a
+    ))
+    fig.add_trace(go.Scatterpolar(
+        r=r_b, theta=theta, fill="toself", name=eq_b, 
+        line=dict(color=BLUE), hoverinfo="text+name", text=txt_b
+    ))
+    
+    # Mejoramos el layout haciendo visible la red para ubicar mejor los valores
+    fig.update_layout(
+        **PLOT, 
+        height=400, 
+        polar=dict(
+            bgcolor="rgba(0,0,0,0)", 
+            radialaxis=dict(
+                visible=True, 
+                showticklabels=False, # Oculta los números "0.2, 0.4" de la normalización
+                gridcolor="#1c2a40",  # Color sutil para la grilla
+                range=[0, 1]          # El 1 ahora significa "El máximo de la liga"
+            ),
+            angularaxis=dict(
+                gridcolor="#1c2a40",
+                linecolor="#1c2a40"
+            )
+        ),
+        margin=dict(l=40, r=40, t=36, b=40)
+    )
     return fig
  
 # ──────────────────────────────────────────────────────────────────────
