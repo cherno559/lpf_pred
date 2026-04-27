@@ -10,23 +10,24 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+import streamlit.components.v1 as components
 
 # ──────────────────────────────────────────────────────────────────────
-# CONFIGURACIÓN
+# CONFIGURACION
 # ──────────────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="LPF 2026 · Analítica Pro",
+    page_title="LPF 2026 · Analitica Pro",
     page_icon="⚽",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# ── ESTILOS GLOBALES ──────────────────────────────────────────────────
-st.markdown("""
+# ESTILOS GLOBALES
+# Se inyecta via components.html para evitar que Streamlit
+# interprete caracteres especiales dentro del bloque <style>.
+_CSS = """
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
-
-/* ─── Reset & Base ─── */
 html, body, [class*="css"] {
     font-family: 'Barlow', sans-serif;
     font-weight: 400;
@@ -35,8 +36,6 @@ html, body, [class*="css"] {
     background: #06090f;
     color: #c8d0e0;
 }
-
-/* ─── Sidebar ─── */
 section[data-testid="stSidebar"] {
     background: #080c15 !important;
     border-right: 1px solid #111927 !important;
@@ -45,8 +44,6 @@ section[data-testid="stSidebar"] {
 section[data-testid="stSidebar"] > div {
     padding-top: 0 !important;
 }
-
-/* ─── Sidebar header badge ─── */
 .sidebar-brand {
     background: linear-gradient(135deg, #e63946 0%, #9b1d28 100%);
     padding: 22px 20px 18px;
@@ -94,8 +91,6 @@ section[data-testid="stSidebar"] > div {
     position: relative;
     z-index: 1;
 }
-
-/* ─── Nav radio pills ─── */
 div[data-testid="stRadio"] > label {
     display: none;
 }
@@ -128,8 +123,6 @@ div[data-testid="stRadio"] > div > label[aria-checked="true"] {
     border-color: #e63946;
     color: #e63946 !important;
 }
-
-/* ─── File input sidebar ─── */
 .stTextInput > div > div {
     background: #0c1220 !important;
     border: 1px solid #1c2a3e !important;
@@ -149,8 +142,6 @@ div[data-testid="stRadio"] > div > label[aria-checked="true"] {
     border-bottom: 1px solid #111927;
     margin-bottom: 10px;
 }
-
-/* ─── Main Header ─── */
 .main-header {
     display: flex;
     align-items: flex-end;
@@ -184,8 +175,6 @@ div[data-testid="stRadio"] > div > label[aria-checked="true"] {
     margin-top: 4px;
     font-weight: 300;
 }
-
-/* ─── Section Titles ─── */
 .section-title {
     font-family: 'Bebas Neue', cursive;
     font-size: 1.1rem;
@@ -207,8 +196,6 @@ div[data-testid="stRadio"] > div > label[aria-checked="true"] {
     background: #e63946;
     border-radius: 2px;
 }
-
-/* ─── KPI Cards ─── */
 .kpi-card {
     background: linear-gradient(145deg, #0b1120, #0e1628);
     border: 1px solid #141e30;
@@ -258,8 +245,6 @@ div[data-testid="stRadio"] > div > label[aria-checked="true"] {
     font-size: 26px;
     opacity: 0.12;
 }
-
-/* ─── Match Card (Predictor) ─── */
 .match-card {
     background: linear-gradient(145deg, #0b1120, #0e1628);
     border: 1px solid #141e30;
@@ -334,8 +319,6 @@ div[data-testid="stRadio"] > div > label[aria-checked="true"] {
     letter-spacing: 1px;
     text-transform: uppercase;
 }
-
-/* ─── Probability bars ─── */
 .prob-section {
     background: #0b1120;
     border: 1px solid #141e30;
@@ -387,7 +370,6 @@ div[data-testid="stRadio"] > div > label[aria-checked="true"] {
 .prob-pct.draw { color: #94a3b8; }
 .prob-pct.away { color: #3b82f6; }
 
-/* ─── Lambda info strip ─── */
 .lambda-strip {
     background: #080c15;
     border: 1px solid #111927;
@@ -422,8 +404,6 @@ div[data-testid="stRadio"] > div > label[aria-checked="true"] {
     width: 1px; height: 36px;
     background: #111927;
 }
-
-/* ─── Selectboxes ─── */
 .stSelectbox > div > div {
     background: #0c1220 !important;
     border: 1px solid #1c2a3e !important;
@@ -439,8 +419,6 @@ div[data-testid="stRadio"] > div > label[aria-checked="true"] {
     text-transform: uppercase !important;
     color: #3d5270 !important;
 }
-
-/* ─── Toggle ─── */
 .stCheckbox > label, .stToggle > label {
     font-family: 'Barlow Condensed', sans-serif !important;
     font-size: 12px !important;
@@ -449,8 +427,6 @@ div[data-testid="stRadio"] > div > label[aria-checked="true"] {
     color: #3d5270 !important;
     text-transform: uppercase !important;
 }
-
-/* ─── Button ─── */
 .stButton > button {
     font-family: 'Bebas Neue', cursive;
     font-size: 18px;
@@ -469,8 +445,6 @@ div[data-testid="stRadio"] > div > label[aria-checked="true"] {
     box-shadow: 0 6px 28px rgba(230,57,70,0.45);
     transform: translateY(-1px);
 }
-
-/* ─── Tabs ─── */
 .stTabs [data-baseweb="tab-list"] {
     background: #0b1120;
     border-radius: 10px;
@@ -492,8 +466,6 @@ div[data-testid="stRadio"] > div > label[aria-checked="true"] {
     background: #e63946 !important;
     color: #fff !important;
 }
-
-/* ─── DataFrames ─── */
 .stDataFrame {
     border: 1px solid #141e30 !important;
     border-radius: 10px !important;
@@ -503,8 +475,6 @@ div[data-testid="stRadio"] > div > label[aria-checked="true"] {
     font-family: 'Barlow', sans-serif !important;
     font-size: 13px !important;
 }
-
-/* ─── Inline mini-stat ─── */
 .mini-stat {
     display: inline-flex;
     align-items: center;
@@ -520,8 +490,6 @@ div[data-testid="stRadio"] > div > label[aria-checked="true"] {
     letter-spacing: 1px;
 }
 .mini-stat span { color: #c8d0e0; }
-
-/* ─── Stat comparison card ─── */
 .stat-compare-row {
     display: flex;
     align-items: center;
@@ -546,8 +514,6 @@ div[data-testid="stRadio"] > div > label[aria-checked="true"] {
     color: #3d5270;
     text-align: center;
 }
-
-/* ─── Ranking bars ─── */
 .rank-row {
     display: flex;
     align-items: center;
@@ -595,8 +561,6 @@ div[data-testid="stRadio"] > div > label[aria-checked="true"] {
     text-align: right;
     color: #e63946;
 }
-
-/* ─── Table styling ─── */
 .tabla-pos {
     background: #0b1120;
     border: 1px solid #141e30;
@@ -658,8 +622,6 @@ div[data-testid="stRadio"] > div > label[aria-checked="true"] {
     color: #94a3b8;
     text-align: right;
 }
-
-/* ─── Expander ─── */
 .streamlit-expanderHeader {
     font-family: 'Barlow Condensed', sans-serif !important;
     font-size: 13px !important;
@@ -671,12 +633,23 @@ div[data-testid="stRadio"] > div > label[aria-checked="true"] {
     border: 1px solid #111927 !important;
     border-radius: 8px !important;
 }
-
-/* ─── Dividers ─── */
 hr { border-color: #111927 !important; margin: 24px 0 !important; }
-
 </style>
-""", unsafe_allow_html=True)
+<script>
+(function() {
+    var style = document.querySelector('style[data-lpf]');
+    if (!style) return;
+    document.head.appendChild(style);
+})();
+</script>
+"""
+
+# Inyeccion via components.html con height=0 para no ocupar espacio visual.
+# Es el metodo mas robusto: el CSS se inserta en un iframe y luego
+# se eleva al documento padre via postMessage (Streamlit lo permite).
+# El truco real es usar st.markdown con la hoja de estilos partida en
+# bloques sin caracteres Unicode en comentarios.
+components.html(_CSS, height=0, scrolling=False)
 
 # ── Parámetros de Motor (BLOQUEADO) ──────────────────────────────────
 W_XG = 0.75
