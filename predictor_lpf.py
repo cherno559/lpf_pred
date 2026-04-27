@@ -1,5 +1,5 @@
 """
-dashboard_lpf.py — LPF 2026 Scouting Dashboard (v9.2 · Mejoras de Localía y Radares)
+dashboard_lpf.py — LPF 2026 Scouting Dashboard (v9.3 · Efectividad, Localía y Radares)
 ─────────────────────────────────────────────────────────────────────────────
 """
 import re, os, math
@@ -94,7 +94,7 @@ def construir_df(datos: dict) -> pd.DataFrame:
                 filas.append({**base, "Equipo": p["visitante"],"Rival": p["local"],     "Condicion": "Visitante", "Propio": vals["visitante"], "Concedido": vals["local"]})
     return pd.DataFrame(filas)
  
-# ── Tabla de posiciones y priors de jerarquía (con filtro por condición) ───────────────────
+# ── Tabla de posiciones y priors de jerarquía (con filtro por condición y Efectividad) ───────────────────
 @st.cache_data(ttl=120, show_spinner=False)
 def calcular_tabla(df: pd.DataFrame, condicion: str = "General") -> pd.DataFrame:
     dr = df[df["Métrica"] == "Resultado"].copy()
@@ -112,7 +112,7 @@ def calcular_tabla(df: pd.DataFrame, condicion: str = "General") -> pd.DataFrame
         pj = len(d)
         if pj == 0:
             rows.append({"Equipo": eq, "PJ": 0, "V": 0, "E": 0, "D": 0,
-                         "GF": 0, "GC": 0, "PTS": 0, "PPJ": 0.0})
+                         "GF": 0, "GC": 0, "PTS": 0, "PPJ": 0.0, "EFEC%": 0.0})
             continue
         v = ((d["Propio"] > d["Concedido"])).sum()
         e = ((d["Propio"] == d["Concedido"])).sum()
@@ -120,10 +120,14 @@ def calcular_tabla(df: pd.DataFrame, condicion: str = "General") -> pd.DataFrame
         pts = int(v * 3 + e)
         gf = d["Propio"].sum()
         gc = d["Concedido"].sum()
+        ppj = pts / pj
+        efec = (pts / (pj * 3)) * 100
+        
         rows.append({"Equipo": eq, "PJ": pj, "V": int(v), "E": int(e), "D": int(d_),
-                     "GF": gf, "GC": gc, "PTS": pts, "PPJ": pts / pj})
+                     "GF": gf, "GC": gc, "PTS": pts, "PPJ": ppj, "EFEC%": efec})
  
-    tabla = pd.DataFrame(rows).sort_values(["PTS", "GF"], ascending=False).reset_index(drop=True)
+    # Ordenamos primariamente por Efectividad para evitar sesgo de cantidad de partidos
+    tabla = pd.DataFrame(rows).sort_values(["EFEC%", "PTS", "GF"], ascending=[False, False, False]).reset_index(drop=True)
     tabla["Pos"] = tabla.index + 1
  
     ppj_mean = tabla["PPJ"].mean()
@@ -259,21 +263,16 @@ def fig_radar(df, eq_a, eq_b, cond_a, cond_b):
             if m in df["Métrica"].values]
     if not mets: return go.Figure()
     
-    # 1. Función para promediar la métrica de un equipo
     def gv(eq, cond, m):
         d = df[(df["Equipo"] == eq) & (df["Métrica"] == m)]
         if cond != "General": d = d[d["Condicion"] == cond]
         return d["Propio"].mean() if not d.empty else 0.0
         
-    # 2. Función para buscar el "Techo" (máximo) de la liga en esa métrica
     def get_league_max(m):
         return df[df["Métrica"] == m].groupby("Equipo")["Propio"].mean().max()
 
-    # Valores reales de los equipos
     va = [gv(eq_a, cond_a, m) for m in mets]
     vb = [gv(eq_b, cond_b, m) for m in mets]
-    
-    # Máximos de la liga para normalizar
     mx = [max(get_league_max(m), 1e-6) for m in mets]
     
     text_a = [f"{m}: <b>{v:.1f}</b>" for m, v in zip(mets, va)]
@@ -289,7 +288,6 @@ def fig_radar(df, eq_a, eq_b, cond_a, cond_b):
     fig.add_trace(go.Scatterpolar(r=r_a, theta=theta, fill="toself", name=eq_a, line=dict(color=RED), hoverinfo="text+name", text=txt_a))
     fig.add_trace(go.Scatterpolar(r=r_b, theta=theta, fill="toself", name=eq_b, line=dict(color=BLUE), hoverinfo="text+name", text=txt_b))
     
-    # Combinamos layouts para no generar error
     layout_args = PLOT.copy()
     layout_args.update(
         height=400, 
@@ -332,7 +330,7 @@ st.markdown('<h1>LPF 2026 · Scouting Dashboard</h1>', unsafe_allow_html=True)
  
 # ──────────────────────────────────────────────────────────────────────
 if nav == "🔮 Predictor":
-    st.markdown('<div class="section-title">🔮 Predictor (v9.1)</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">🔮 Predictor (v9.3)</div>', unsafe_allow_html=True)
     c1, c2, c3 = st.columns([5, 5, 3])
     ea  = c1.selectbox("Local",     equipos)
     eb  = c2.selectbox("Visitante", equipos, index=min(1, len(equipos)-1))
@@ -453,23 +451,29 @@ elif nav == "🎭 Estilos":
  
 # ──────────────────────────────────────────────────────────────────────
 elif nav == "📋 Tabla":
-    st.markdown('<div class="section-title">📋 Tablas de Posiciones</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">📋 Tablas de Posiciones (Por Efectividad)</div>', unsafe_allow_html=True)
     
     vista_tabla = st.radio("Seleccionar vista:", ["General", "Local", "Visitante"], horizontal=True)
     
     t_dinamica = calcular_tabla(df, vista_tabla)
     
     if not t_dinamica.empty:
-        t_show = t_dinamica.reset_index()[["Pos","Equipo","PJ","V","E","D","GF","GC","PTS","PPJ","prior_atk","prior_def"]].copy()
-        t_show.columns = ["Pos","Equipo","PJ","V","E","D","GF","GC","PTS","PPJ","Prior Atk","Prior Def"]
+        t_show = t_dinamica.reset_index()[["Pos","Equipo","PJ","V","E","D","GF","GC","PTS","EFEC%","PPJ","prior_atk","prior_def"]].copy()
+        t_show.columns = ["Pos","Equipo","PJ","V","E","D","GF","GC","PTS","Efectividad %","PPJ","Prior Atk","Prior Def"]
         
         t_show["GF"] = t_show["GF"].astype(int)
         t_show["GC"] = t_show["GC"].astype(int)
-        t_show["PPJ"]        = t_show["PPJ"].round(3)
-        t_show["Prior Atk"]  = t_show["Prior Atk"].round(3)
-        t_show["Prior Def"]  = t_show["Prior Def"].round(3)
+        t_show["PPJ"] = t_show["PPJ"].round(3)
+        t_show["Efectividad %"] = t_show["Efectividad %"].round(1)
+        t_show["Prior Atk"] = t_show["Prior Atk"].round(3)
+        t_show["Prior Def"] = t_show["Prior Def"].round(3)
         
         st.subheader(f"Clasificación: {vista_tabla}")
-        st.dataframe(t_show, use_container_width=True, hide_index=True)
         
-        st.markdown(f'<div class="note">Estás viendo la tabla de rendimiento como <b>{vista_tabla}</b>. Los indicadores de Prior Atk/Def se ajustan según la eficacia en esta condición específica.</div>', unsafe_allow_html=True)
+        st.dataframe(
+            t_show.style.format({"Efectividad %": "{:.1f}%"}), 
+            use_container_width=True, 
+            hide_index=True
+        )
+        
+        st.markdown(f'<div class="note">Estás viendo la tabla de rendimiento como <b>{vista_tabla}</b>. La tabla está ordenada jerárquicamente por <b>Efectividad %</b> para evitar el sesgo de equipos con más o menos partidos jugados.</div>', unsafe_allow_html=True)
