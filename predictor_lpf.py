@@ -1,5 +1,5 @@
 """
-dashboard_lpf.py — LPF 2026 Scouting Dashboard (v9.3 · Efectividad, Localía y Radares)
+dashboard_lpf.py — LPF 2026 Scouting Dashboard (v10.0 · xG Sintético & Ajuste por Rival)
 ─────────────────────────────────────────────────────────────────────────────
 """
 import re, os, math
@@ -88,13 +88,24 @@ def construir_df(datos: dict) -> pd.DataFrame:
     for fecha, partidos in datos.items():
         nf = int(re.search(r"\d+", fecha).group())
         for p in partidos:
+            
+            # --- CÁLCULO DE xG SINTÉTICO ---
+            tt = p["metricas"].get("Tiros totales", {"local": 0, "visitante": 0})
+            oc = p["metricas"].get("Ocasiones claras", {"local": 0, "visitante": 0})
+            
+            xg_loc = (oc["local"] * 0.38) + (max(0, tt["local"] - oc["local"]) * 0.05)
+            xg_vis = (oc["visitante"] * 0.38) + (max(0, tt["visitante"] - oc["visitante"]) * 0.05)
+            
+            p["metricas"]["xG_Estimado"] = {"local": xg_loc, "visitante": xg_vis}
+            # -------------------------------
+
             for met, vals in p["metricas"].items():
                 base = {"nFecha": nf, "Métrica": met}
                 filas.append({**base, "Equipo": p["local"],    "Rival": p["visitante"], "Condicion": "Local",     "Propio": vals["local"],     "Concedido": vals["visitante"]})
                 filas.append({**base, "Equipo": p["visitante"],"Rival": p["local"],     "Condicion": "Visitante", "Propio": vals["visitante"], "Concedido": vals["local"]})
     return pd.DataFrame(filas)
  
-# ── Tabla de posiciones y priors de jerarquía (con filtro por condición y Efectividad) ───────────────────
+# ── Tabla de posiciones y priors de jerarquía ───────────────────
 @st.cache_data(ttl=120, show_spinner=False)
 def calcular_tabla(df: pd.DataFrame, condicion: str = "General") -> pd.DataFrame:
     dr = df[df["Métrica"] == "Resultado"].copy()
@@ -126,7 +137,6 @@ def calcular_tabla(df: pd.DataFrame, condicion: str = "General") -> pd.DataFrame
         rows.append({"Equipo": eq, "PJ": pj, "V": int(v), "E": int(e), "D": int(d_),
                      "GF": gf, "GC": gc, "PTS": pts, "PPJ": ppj, "EFEC%": efec})
  
-    # Ordenamos primariamente por Efectividad para evitar sesgo de cantidad de partidos
     tabla = pd.DataFrame(rows).sort_values(["EFEC%", "PTS", "GF"], ascending=[False, False, False]).reset_index(drop=True)
     tabla["Pos"] = tabla.index + 1
  
@@ -149,28 +159,34 @@ def _get_prior(tabla: pd.DataFrame, eq: str):
     return float(tabla.loc[eq, "prior_atk"]), float(tabla.loc[eq, "prior_def"])
  
 # ──────────────────────────────────────────────────────────────────────
-# MOTOR PREDICTIVO
+# MOTOR PREDICTIVO (Ajustado por Rival & xG Sintético)
 # ──────────────────────────────────────────────────────────────────────
-def _weighted_mean(values, fechas, max_fecha_torneo: int):
-    if len(values) == 0: return np.nan
+def _adjusted_rate(d_spec, metrica, col, max_fecha_torneo, tabla, is_attack):
+    df_m = d_spec[d_spec["Métrica"] == metrica]
+    if df_m.empty: return np.nan
+
+    fechas = df_m["nFecha"].values
+    valores = df_m[col].values
+    rivales = df_m["Rival"].values
+
+    valores_ajustados = []
+    for v, r in zip(valores, rivales):
+        prior_atk_rival, prior_def_rival = _get_prior(tabla, r)
+        
+        if is_attack:
+            adj = v / prior_def_rival if prior_def_rival > 0 else v
+        else:
+            adj = v / prior_atk_rival if prior_atk_rival > 0 else v
+            
+        valores_ajustados.append(adj)
+
     w = np.where(fechas >= (max_fecha_torneo - N_RECENCIA + 1), PESO_RECIENTE, PESO_NORMAL)
-    return float(np.average(values, weights=w))
- 
-def _effective_rate(sub, col, max_fecha_torneo: int):
-    dr = sub[sub["Métrica"] == "Resultado"]
-    dx = sub[sub["Métrica"] == "Goles esperados (xG)"]
-    g = _weighted_mean(dr[col].values, dr["nFecha"].values, max_fecha_torneo) if not dr.empty else np.nan
-    x = _weighted_mean(dx[col].values, dx["nFecha"].values, max_fecha_torneo) if not dx.empty else np.nan
-    n = len(dr)
-    if np.isnan(g) and np.isnan(x): return np.nan, 0
-    if np.isnan(x): return g, n
-    if np.isnan(g): return x, n
-    return W_XG * x + (1 - W_XG) * g, n
- 
+    return float(np.average(valores_ajustados, weights=w))
+
 @st.cache_data(ttl=120, show_spinner=False)
 def _league_stats(df):
     dr = df[df["Métrica"] == "Resultado"]
-    dx = df[df["Métrica"] == "Goles esperados (xG)"]
+    dx = df[df["Métrica"] == "xG_Estimado"]
     def get_avg(d, cond):
         v = d[d["Condicion"]==cond]["Propio"].mean() if not d.empty else np.nan
         return v if not np.isnan(v) else 1.0
@@ -187,14 +203,28 @@ def _strength(df, eq, cond, league, max_fecha_torneo: int, tabla: pd.DataFrame):
     d_eq   = df[df["Equipo"] == eq]
     d_spec = d_eq[d_eq["Condicion"] == cond]
  
-    gf_s, n_s = _effective_rate(d_spec, "Propio",    max_fecha_torneo)
-    gc_s, _   = _effective_rate(d_spec, "Concedido", max_fecha_torneo)
- 
+    g_atk = _adjusted_rate(d_spec, "Resultado", "Propio", max_fecha_torneo, tabla, is_attack=True)
+    x_atk = _adjusted_rate(d_spec, "xG_Estimado", "Propio", max_fecha_torneo, tabla, is_attack=True)
+    
+    g_def = _adjusted_rate(d_spec, "Resultado", "Concedido", max_fecha_torneo, tabla, is_attack=False)
+    x_def = _adjusted_rate(d_spec, "xG_Estimado", "Concedido", max_fecha_torneo, tabla, is_attack=False)
+
+    n_s = len(d_spec[d_spec["Métrica"] == "Resultado"])
+
+    def combine(g, x):
+        if np.isnan(g) and np.isnan(x): return np.nan
+        if np.isnan(x): return g
+        if np.isnan(g): return x
+        return W_XG * x + (1 - W_XG) * g
+
+    atk_val = combine(g_atk, x_atk)
+    def_val = combine(g_def, x_def)
+
     rh, ra = league["ref_home"], league["ref_away"]
     ref_f, ref_a = (rh, ra) if cond == "Local" else (ra, rh)
  
-    atk_obs  = (gf_s / ref_f)  if (not np.isnan(gf_s)  and ref_f  > 0) else np.nan
-    def_obs  = (gc_s / ref_a)  if (not np.isnan(gc_s)   and ref_a  > 0) else np.nan
+    atk_obs  = (atk_val / ref_f)  if (not np.isnan(atk_val)  and ref_f  > 0) else np.nan
+    def_obs  = (def_val / ref_a)  if (not np.isnan(def_val)  and ref_a  > 0) else np.nan
  
     prior_atk, prior_def = _get_prior(tabla, eq)
  
@@ -330,7 +360,7 @@ st.markdown('<h1>LPF 2026 · Scouting Dashboard</h1>', unsafe_allow_html=True)
  
 # ──────────────────────────────────────────────────────────────────────
 if nav == "🔮 Predictor":
-    st.markdown('<div class="section-title">🔮 Predictor (v9.3)</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">🔮 Predictor (v10.0)</div>', unsafe_allow_html=True)
     c1, c2, c3 = st.columns([5, 5, 3])
     ea  = c1.selectbox("Local",     equipos)
     eb  = c2.selectbox("Visitante", equipos, index=min(1, len(equipos)-1))
