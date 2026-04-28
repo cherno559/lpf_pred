@@ -9,28 +9,102 @@ import plotly.graph_objects as go
 import streamlit as st
  
 # ──────────────────────────────────────────────────────────────────────
-# CONFIGURACIÓN Y ESTILOS
+# CONFIGURACIÓN Y ESTILOS PROFESIONALES
 # ──────────────────────────────────────────────────────────────────────
 st.set_page_config(page_title="LPF 2026 · Analítica Pro", page_icon="⚽", layout="wide", initial_sidebar_state="expanded")
  
 st.markdown("""
-<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Rajdhani:wght@500;700&family=Inter:wght@400;500&display=swap" rel="stylesheet">
 <style>
-html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
-.stApp { background: #080d18; color: #dde3ee; }
-section[data-testid="stSidebar"] { background: #0c1220 !important; border-right: 1px solid #1c2a40; }
-h1 { font-family:'Bebas Neue',cursive !important; font-size:2.6rem !important; color:#e63946 !important; letter-spacing:3px; margin-bottom:0; }
-.section-title { font-family:'Bebas Neue',cursive; font-size:1.3rem; letter-spacing:3px; color:#e63946; border-bottom:1px solid #1c2a40; padding-bottom:8px; margin:28px 0 18px; text-transform:uppercase; }
-.kpi { background:linear-gradient(135deg,#0f1829,#162035); border:1px solid #1c2a40; border-left:4px solid #e63946; border-radius:10px; padding:16px 18px; text-align:center; }
-.kpi.draw { border-left-color:#64748b; } .kpi.loss { border-left-color:#3b82f6; }
-.kpi .lbl { font-family:'Rajdhani'; font-size:10px; font-weight:700; letter-spacing:2px; text-transform:uppercase; color:#64748b; }
-.kpi .val { font-family:'Bebas Neue'; font-size:38px; color:#e63946; line-height:1.05; }
-.stTabs [data-baseweb="tab-list"] { background:#0f1829; border-radius:10px; padding:4px; gap:4px; }
-.stTabs [data-baseweb="tab"] { font-family:'Rajdhani'; font-weight:700; font-size:14px; color:#64748b !important; border-radius:7px; padding:6px 16px; }
-.stTabs [aria-selected="true"] { background:#e63946 !important; color:#fff !important; }
-.stButton>button { font-family:'Bebas Neue'; font-size:17px; letter-spacing:2px; background:linear-gradient(135deg,#e63946,#b91c2c); color:#fff; border:none; border-radius:9px; padding:13px; width:100%; }
-.stSelectbox>div>div, .stTextInput>div>div, .stRadio>div>div { background:#0f1829 !important; border:1px solid #1c2a40 !important; color:#dde3ee !important; border-radius:8px !important; }
-.note { background:#0f1829; border:1px solid #1c2a40; border-radius:8px; padding:10px 14px; font-size:12px; color:#64748b; margin-top:8px; }
+/* ─────────────── Google Fonts Import ─────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
+
+/* ─────────────── Root Variables ─────────────── */
+:root {
+    --bg-primary: #080d18;
+    --bg-secondary: #0f1629;
+    --bg-card: rgba(15, 22, 41, 0.6);
+    --accent-red: #e63946;
+    --accent-red-hover: #ff4d5a;
+    --text-primary: #f1f5f9;
+    --text-secondary: #8892a8;
+    --text-muted: #5a6478;
+    --border-glass: rgba(255, 255, 255, 0.08);
+    --border-highlight: rgba(255, 255, 255, 0.12);
+    --shadow-soft: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+/* ─────────────── Global Styles ─────────────── */
+.stApp {
+    background: linear-gradient(165deg, var(--bg-primary) 0%, #0a1020 25%, #0d1428 50%, var(--bg-secondary) 100%) !important;
+    font-family: 'Inter', sans-serif !important;
+}
+
+h1, .section-title {
+    font-family: 'Chakra Petch', sans-serif !important;
+    color: var(--accent-red) !important;
+    font-weight: 700 !important;
+    letter-spacing: 2px;
+}
+.section-title { font-size: 1.5rem; border-bottom: 1px solid var(--border-highlight); padding-bottom: 8px; margin: 28px 0 18px; text-transform: uppercase; }
+
+p, span, label { font-family: 'Inter', sans-serif !important; color: var(--text-secondary) !important; }
+
+/* ─────────────── Score Container (Marcador TV) ─────────────── */
+.score-container {
+    background: linear-gradient(135deg, rgba(230, 57, 70, 0.15) 0%, rgba(15, 22, 41, 0.9) 50%, rgba(230, 57, 70, 0.1) 100%) !important;
+    backdrop-filter: blur(24px);
+    border: 1px solid rgba(230, 57, 70, 0.3) !important;
+    border-radius: 20px !important;
+    padding: 32px 40px !important;
+    text-align: center;
+    box-shadow: 0 0 60px rgba(230, 57, 70, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+    margin-bottom: 20px;
+}
+
+.score-container .team-name {
+    font-family: 'Chakra Petch', sans-serif !important;
+    font-size: 1.5rem !important;
+    font-weight: 700 !important;
+    color: var(--text-primary) !important;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    margin-bottom: 8px;
+}
+
+.score-container .win-probability {
+    font-family: 'Chakra Petch', sans-serif !important;
+    font-size: 3.5rem !important;
+    font-weight: 700 !important;
+    line-height: 1 !important;
+}
+
+.score-container .probability-label {
+    font-family: 'Inter', sans-serif !important;
+    font-size: 0.8rem !important;
+    font-weight: 500 !important;
+    color: var(--text-muted) !important;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-top: 8px;
+}
+
+/* ─────────────── UI Elements ─────────────── */
+.stTabs [data-baseweb="tab-list"] { background: transparent !important; gap: 8px; }
+.stTabs [data-baseweb="tab"] { font-family: 'Inter', sans-serif !important; background: var(--bg-card) !important; border: 1px solid var(--border-glass) !important; border-radius: 8px !important; color: var(--text-secondary) !important; }
+.stTabs [aria-selected="true"] { background: linear-gradient(135deg, var(--accent-red) 0%, #c41e3a 100%) !important; color: white !important; border-color: var(--accent-red) !important; }
+
+.stButton > button {
+    font-family: 'Inter', sans-serif !important; font-weight: 600 !important;
+    background: linear-gradient(135deg, var(--accent-red) 0%, #c41e3a 100%) !important;
+    color: white !important; border: none !important; border-radius: 10px !important;
+    padding: 12px 28px !important; text-transform: uppercase; letter-spacing: 1px;
+    width: 100%;
+}
+.stButton > button:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(230, 57, 70, 0.5) !important; }
+
+.stSelectbox>div>div, .stTextInput>div>div, .stRadio>div>div { background: var(--bg-card) !important; border: 1px solid var(--border-glass) !important; color: var(--text-primary) !important; border-radius: 10px !important; }
+.note { background: rgba(15, 22, 41, 0.8); border: 1px solid var(--border-glass); border-radius: 8px; padding: 10px 14px; font-size: 12px; color: var(--text-secondary); margin-top: 8px; }
+[data-testid="stSidebar"] { background: linear-gradient(180deg, rgba(8, 13, 24, 0.98) 0%, rgba(15, 22, 41, 0.95) 100%) !important; border-right: 1px solid var(--border-glass) !important; }
 </style>
 """, unsafe_allow_html=True)
  
@@ -45,7 +119,7 @@ MAX_GOALS_MATRIX = 7
 N_RECENCIA, PESO_RECIENTE, PESO_NORMAL = 3, 1.5, 1.0
 LAM_MIN, LAM_MAX = 0.25, 4.50
 RED, BLUE, GRAY = "#e63946", "#3b82f6", "#64748b"
-PLOT = dict(font=dict(family="Rajdhani", size=13, color="#dde3ee"),
+PLOT = dict(font=dict(family="Inter", size=13, color="#dde3ee"),
             paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
             margin=dict(l=10, r=20, t=36, b=10))
  
@@ -344,23 +418,23 @@ def fig_radar(df, eq_a, eq_b, cond_a, cond_b):
 # NAVEGACIÓN
 # ──────────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown("## ⚽ LPF 2026")
+    st.markdown("## LPF ANALYTICS PRO")
     ruta = st.text_input("📂 Excel", "Fecha_x_fecha_lpf.xlsx")
-    nav = st.radio("", ["🔮 Predictor", "📊 Rankings", "🔄 Head-to-Head",
-                        "📖 Perfil Rival", "🎭 Estilos", "📋 Tabla"],
+    nav = st.radio("", ["Predictor", "Rankings", "Head-to-Head",
+                        "Perfil Rival", "Estilos", "Tabla"],
                    label_visibility="collapsed")
  
 if not os.path.exists(ruta): st.stop()
 datos  = cargar_excel(ruta)
 df     = construir_df(datos)
-tabla  = calcular_tabla(df, "General")  # Base general para el motor predictivo
+tabla  = calcular_tabla(df, "General")
 
 equipos, metricas = sorted(df["Equipo"].unique()), sorted(df["Métrica"].unique())
-st.markdown('<h1>LPF 2026 · Scouting Dashboard</h1>', unsafe_allow_html=True)
+st.markdown('<h1>SCOUTING DASHBOARD</h1>', unsafe_allow_html=True)
  
 # ──────────────────────────────────────────────────────────────────────
-if nav == "🔮 Predictor":
-    st.markdown('<div class="section-title">🔮 Predictor (v10.0)</div>', unsafe_allow_html=True)
+if nav == "Predictor":
+    st.markdown('<div class="section-title">Análisis Predictivo</div>', unsafe_allow_html=True)
     c1, c2, c3 = st.columns([5, 5, 3])
     ea  = c1.selectbox("Local",     equipos)
     eb  = c2.selectbox("Visitante", equipos, index=min(1, len(equipos)-1))
@@ -370,27 +444,49 @@ if nav == "🔮 Predictor":
         la, lb = calcular_lambdas(df, ea, eb, loc, tabla)
         sim    = montecarlo(la, lb)
  
-        k1, k2, k3 = st.columns(3)
-        k1.markdown(f'<div class="kpi"><div class="lbl">Prob. {ea}</div><div class="val">{sim["victoria"]*100:.1f}%</div></div>', unsafe_allow_html=True)
-        k2.markdown(f'<div class="kpi draw"><div class="lbl">Prob. Empate</div><div class="val">{sim["empate"]*100:.1f}%</div></div>', unsafe_allow_html=True)
-        k3.markdown(f'<div class="kpi loss"><div class="lbl">Prob. {eb}</div><div class="val">{sim["derrota"]*100:.1f}%</div></div>', unsafe_allow_html=True)
+        # ACÁ APLICAMOS EL NUEVO DISEÑO (SCORE CONTAINER)
+        st.markdown(f"""
+        <div class="score-container">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div style="flex: 1; text-align: center;">
+                    <div class="team-name" style="color: {RED};">{ea}</div>
+                    <div class="win-probability" style="color: {RED};">{sim["victoria"]*100:.1f}%</div>
+                    <div class="probability-label">Victoria Local</div>
+                </div>
+                
+                <div style="flex: 1; text-align: center; border-left: 1px solid rgba(255,255,255,0.1); border-right: 1px solid rgba(255,255,255,0.1);">
+                    <div class="team-name" style="color: {GRAY};">EMPATE</div>
+                    <div class="win-probability" style="color: {GRAY}; font-size: 2.5rem;">{sim["empate"]*100:.1f}%</div>
+                    <div class="probability-label">Probabilidad</div>
+                </div>
+                
+                <div style="flex: 1; text-align: center;">
+                    <div class="team-name" style="color: {BLUE};">{eb}</div>
+                    <div class="win-probability" style="color: {BLUE};">{sim["derrota"]*100:.1f}%</div>
+                    <div class="probability-label">Victoria Visitante</div>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
  
-        pa_a, pd_a = _get_prior(tabla, ea)
-        pa_b, pd_b = _get_prior(tabla, eb)
-        pos_a = int(tabla.loc[ea, "Pos"]) if ea in tabla.index else "?"
-        pos_b = int(tabla.loc[eb, "Pos"]) if eb in tabla.index else "?"
-        st.markdown(
-            f'<div class="note">'
-            f'λ {ea} = <b>{la:.3f}</b> (pos {pos_a}°, prior_atk={pa_a:.2f}) &nbsp;|&nbsp; '
-            f'λ {eb} = <b>{lb:.3f}</b> (pos {pos_b}°, prior_atk={pa_b:.2f})'
-            f'</div>', unsafe_allow_html=True)
+        # Ponemos las métricas técnicas dentro de un expander para limpiar la UI principal
+        with st.expander("Ver Especificaciones Técnicas (Lambdas y Priors)"):
+            pa_a, pd_a = _get_prior(tabla, ea)
+            pa_b, pd_b = _get_prior(tabla, eb)
+            pos_a = int(tabla.loc[ea, "Pos"]) if ea in tabla.index else "?"
+            pos_b = int(tabla.loc[eb, "Pos"]) if eb in tabla.index else "?"
+            st.markdown(
+                f'<div class="note">'
+                f'λ {ea} = <b>{la:.3f}</b> (pos {pos_a}°, prior_atk={pa_a:.2f}) <br>'
+                f'λ {eb} = <b>{lb:.3f}</b> (pos {pos_b}°, prior_atk={pa_b:.2f})'
+                f'</div>', unsafe_allow_html=True)
  
-        st.markdown('<div class="section-title">🎯 Marcadores más probables</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-title">Marcadores más probables</div>', unsafe_allow_html=True)
         st.plotly_chart(fig_score_matrix(sim["matrix"], ea, eb), use_container_width=True)
  
 # ──────────────────────────────────────────────────────────────────────
-elif nav == "📊 Rankings":
-    st.markdown('<div class="section-title">📊 Rankings: Favor vs Concedido</div>', unsafe_allow_html=True)
+elif nav == "Rankings":
+    st.markdown('<div class="section-title">Rankings: Favor vs Concedido</div>', unsafe_allow_html=True)
     c1, c2, c3 = st.columns(3)
     m_sel    = c1.selectbox("Métrica", metricas)
     cond_sel = c2.radio("Condición", ["General", "Local", "Visitante"], horizontal=True)
@@ -407,8 +503,8 @@ elif nav == "📊 Rankings":
         use_container_width=True)
  
 # ──────────────────────────────────────────────────────────────────────
-elif nav == "🔄 Head-to-Head":
-    st.markdown('<div class="section-title">🔄 Head-to-Head Comparativo</div>', unsafe_allow_html=True)
+elif nav == "Head-to-Head":
+    st.markdown('<div class="section-title">Head-to-Head Comparativo</div>', unsafe_allow_html=True)
     
     c1, c2 = st.columns(2)
     ea = c1.selectbox("Equipo A", equipos)
@@ -418,7 +514,7 @@ elif nav == "🔄 Head-to-Head":
     cond_a = c3.radio(f"Condición de {ea}", ["General", "Local", "Visitante"], horizontal=True, key="cond_a")
     cond_b = c4.radio(f"Condición de {eb}", ["General", "Local", "Visitante"], horizontal=True, key="cond_b")
 
-    t1, t2 = st.tabs(["🕸️ Comparativa Radar", "📊 Datos Crudos"])
+    t1, t2 = st.tabs(["Comparativa Radar", "Datos Crudos"])
     
     with t1:
         st.plotly_chart(fig_radar(df, ea, eb, cond_a, cond_b), use_container_width=True)
@@ -445,7 +541,8 @@ elif nav == "🔄 Head-to-Head":
         st.dataframe(h2h_df, use_container_width=True)
  
 # ──────────────────────────────────────────────────────────────────────
-elif nav == "📖 Perfil Rival":
+elif nav == "Perfil Rival":
+    st.markdown('<div class="section-title">Perfil Rival</div>', unsafe_allow_html=True)
     eq_p  = st.selectbox("Equipo",  equipos)
     met_p = st.selectbox("Métrica", metricas)
     d_eq  = df[(df["Equipo"] == eq_p) & (df["Métrica"] == met_p)].sort_values("nFecha")
@@ -457,8 +554,8 @@ elif nav == "📖 Perfil Rival":
         st.plotly_chart(fig.update_layout(**PLOT, barmode="group"), use_container_width=True)
  
 # ──────────────────────────────────────────────────────────────────────
-elif nav == "🎭 Estilos":
-    st.markdown('<div class="section-title">🎭 Análisis de Estilo</div>', unsafe_allow_html=True)
+elif nav == "Estilos":
+    st.markdown('<div class="section-title">Análisis de Estilo</div>', unsafe_allow_html=True)
     mo = "Goles esperados (xG)" if "Goles esperados (xG)" in metricas else "Tiros totales"
     if "Posesión de balón" in metricas:
         df_e = pd.DataFrame({
@@ -480,8 +577,8 @@ elif nav == "🎭 Estilos":
             use_container_width=True)
  
 # ──────────────────────────────────────────────────────────────────────
-elif nav == "📋 Tabla":
-    st.markdown('<div class="section-title">📋 Tablas de Posiciones (Por Efectividad)</div>', unsafe_allow_html=True)
+elif nav == "Tabla":
+    st.markdown('<div class="section-title">Tablas de Posiciones (Por Efectividad)</div>', unsafe_allow_html=True)
     
     vista_tabla = st.radio("Seleccionar vista:", ["General", "Local", "Visitante"], horizontal=True)
     
