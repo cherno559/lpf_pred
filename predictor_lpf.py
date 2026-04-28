@@ -495,26 +495,24 @@ if nav == "Predicción de Partidos":
         la, lb = calcular_lambdas(df, ea, eb, loc, tabla)
         sim    = montecarlo(la, lb)
  
-        st.markdown(f"""
-        <div class="broadcast-board">
-            <div class="team-block home">
-                <div class="t-name">{ea}</div>
-                <div class="t-prob">{sim["victoria"]*100:.1f}%</div>
-                <div class="t-label">Victoria Local</div>
-            </div>
-            
-            <div class="draw-block">
-                <div class="t-label" style="margin-bottom:5px;">Empate</div>
-                <div class="draw-prob">{sim["empate"]*100:.1f}%</div>
-            </div>
-            
-            <div class="team-block away">
-                <div class="t-name">{eb}</div>
-                <div class="t-prob" style="color: #ffffff;">{sim["derrota"]*100:.1f}%</div>
-                <div class="t-label">Victoria Visitante</div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        # ACÁ ESTÁ LA CORRECCIÓN: Sin espacios vacíos para que Streamlit no lo rompa
+        html_marcador = f"""<div class="broadcast-board">
+    <div class="team-block home">
+        <div class="t-name">{ea}</div>
+        <div class="t-prob">{sim['victoria']*100:.1f}%</div>
+        <div class="t-label">Victoria Local</div>
+    </div>
+    <div class="draw-block">
+        <div class="t-label" style="margin-bottom:5px;">Empate</div>
+        <div class="draw-prob">{sim['empate']*100:.1f}%</div>
+    </div>
+    <div class="team-block away">
+        <div class="t-name">{eb}</div>
+        <div class="t-prob" style="color:#ffffff;">{sim['derrota']*100:.1f}%</div>
+        <div class="t-label">Victoria Visitante</div>
+    </div>
+</div>"""
+        st.markdown(html_marcador, unsafe_allow_html=True)
  
         with st.expander("Parámetros del Motor (Lambdas y Priors)"):
             pa_a, pd_a = _get_prior(tabla, ea)
