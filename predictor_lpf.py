@@ -519,9 +519,26 @@ if nav == "Predicción de Partidos":
             pa_b, pd_b = _get_prior(tabla, eb)
             st.code(f"λ {ea}: {la:.3f} (Atk Prior: {pa_a:.2f})\nλ {eb}: {lb:.3f} (Atk Prior: {pa_b:.2f})")
  
-        st.markdown('<div class="section-header">Matriz de Resultados</div>', unsafe_allow_html=True)
+       st.markdown('<div class="section-header">Matriz de Resultados</div>', unsafe_allow_html=True)
         st.plotly_chart(fig_score_matrix(sim["matrix"], ea, eb), use_container_width=True)
- 
+
+        # Marcador más probable
+        M = sim["matrix"]
+        i_max, j_max = np.unravel_index(np.argmax(M), M.shape)
+        prob_max = M[i_max, j_max] * 100
+        st.markdown(
+            f"""<div style="background:#141417;border:1px solid #2a2a30;border-radius:8px;
+                padding:20px 30px;text-align:center;margin-top:10px;">
+                <div style="color:#888890;font-size:0.8rem;text-transform:uppercase;
+                    letter-spacing:3px;margin-bottom:8px;">Resultado Más Probable</div>
+                <div style="font-family:'Bebas Neue',sans-serif;font-size:3.5rem;
+                    color:#ED1A3B;line-height:1;">{ea} {i_max} – {j_max} {eb}</div>
+                <div style="color:#888890;font-size:0.85rem;margin-top:5px;">
+                    Probabilidad individual: <b style="color:#ffffff;">{prob_max:.1f}%</b>
+                </div>
+            </div>""",
+            unsafe_allow_html=True
+        )
 # ──────────────────────────────────────────────────────────────────────
 elif nav == "Métricas Globales":
     st.markdown('<div class="section-header">Rankings de Rendimiento</div>', unsafe_allow_html=True)
