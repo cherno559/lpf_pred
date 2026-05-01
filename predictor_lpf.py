@@ -495,7 +495,6 @@ if nav == "Predicción de Partidos":
         la, lb = calcular_lambdas(df, ea, eb, loc, tabla)
         sim    = montecarlo(la, lb)
  
-        # ACÁ ESTÁ LA CORRECCIÓN: Sin espacios vacíos para que Streamlit no lo rompa
         html_marcador = f"""<div class="broadcast-board">
     <div class="team-block home">
         <div class="t-name">{ea}</div>
@@ -519,10 +518,10 @@ if nav == "Predicción de Partidos":
             pa_b, pd_b = _get_prior(tabla, eb)
             st.code(f"λ {ea}: {la:.3f} (Atk Prior: {pa_a:.2f})\nλ {eb}: {lb:.3f} (Atk Prior: {pa_b:.2f})")
  
-       st.markdown('<div class="section-header">Matriz de Resultados</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-header">Matriz de Resultados</div>', unsafe_allow_html=True)
         st.plotly_chart(fig_score_matrix(sim["matrix"], ea, eb), use_container_width=True)
 
-        # Marcador más probable
+        # ── MARCADOR MÁS PROBABLE ─────────────────────────────────────
         M = sim["matrix"]
         i_max, j_max = np.unravel_index(np.argmax(M), M.shape)
         prob_max = M[i_max, j_max] * 100
@@ -539,6 +538,8 @@ if nav == "Predicción de Partidos":
             </div>""",
             unsafe_allow_html=True
         )
+        # ─────────────────────────────────────────────────────────────
+ 
 # ──────────────────────────────────────────────────────────────────────
 elif nav == "Métricas Globales":
     st.markdown('<div class="section-header">Rankings de Rendimiento</div>', unsafe_allow_html=True)
@@ -630,11 +631,9 @@ elif nav == "Análisis de Estilos":
             textfont=dict(family="Manrope", size=11, color="#ffffff")
         ))
         
-        # Líneas promedio (Cuadrantes)
         fig.add_vline(x=mp, line=dict(color=GRAY, dash="dash", width=1))
         fig.add_hline(y=mo_m, line=dict(color=GRAY, dash="dash", width=1))
         
-        # Anotaciones visuales sutiles para entender el gráfico
         fig.add_annotation(x=df_e["P"].max(), y=df_e["O"].max(), text="DOMINIO & ATAQUE", showarrow=False, font=dict(color=GRAY, size=10), xanchor="right", yanchor="bottom")
         fig.add_annotation(x=df_e["P"].min(), y=df_e["O"].min(), text="REACTIVO & DEFENSIVO", showarrow=False, font=dict(color=GRAY, size=10), xanchor="left", yanchor="top")
 
