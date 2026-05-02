@@ -23,7 +23,7 @@ html, body, [class*="css"] {
     color: #e0e0e0;
 }
 .stApp { background-color: #0a0a0c; }
-#MainMenu, footer, header {visibility: hidden;}
+#MainMenu, footer,{visibility: hidden;}
 
 .hero-banner {
     background: linear-gradient(to right, rgba(10,10,12,1) 0%, rgba(10,10,12,0.4) 50%, rgba(10,10,12,1) 100%),
