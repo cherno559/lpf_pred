@@ -163,21 +163,20 @@ html, body, [class*="css"] {
 """, unsafe_allow_html=True)
  
 # ── Parámetros de Motor ───────────────────────────────────────────────
-W_XG = 0.75
+# AJUSTES IMPLEMENTADOS:
+W_XG = 0.60  # Reducido de 0.75 para dar un 40% de peso a los goles reales (menos sesgo hacia equipos que atacan pero no definen).
 
-# K_PRIOR más bajo → los datos observados pesan más,
-# los lambdas se diferencian más entre equipos fuertes y débiles
 K_SHRINK = 6.0
-K_PRIOR  = 2.0          # era 4.0
+K_PRIOR  = 5.0  # Subido de 2.0 a 5.0 para necesitar más muestras reales antes de considerar a un equipo como favorito sólido.
 
-# Escalas de prior más amplias → más spread entre equipos
-PRIOR_ATK_SCALE = 0.55  # era 0.35
-PRIOR_DEF_SCALE = 0.40  # era 0.25
+# Escalas reducidas para que los equipos racha no se despeguen tan drásticamente del promedio
+PRIOR_ATK_SCALE = 0.40  
+PRIOR_DEF_SCALE = 0.30  
 
 DC_RHO = -0.10
 MAX_GOALS_MATRIX = 7
-N_RECENCIA, PESO_RECIENTE, PESO_NORMAL = 3, 1.8, 1.0  # recencia más pronunciada
-LAM_MIN, LAM_MAX = 0.30, 5.00  # rango más amplio
+N_RECENCIA, PESO_RECIENTE, PESO_NORMAL = 3, 1.8, 1.0  
+LAM_MIN, LAM_MAX = 0.30, 5.00  
 
 RED, BLUE, GRAY = "#ED1A3B", "#ffffff", "#4a4a52"
 PLOT = dict(font=dict(family="Manrope", size=12, color="#a0a0a8"),
