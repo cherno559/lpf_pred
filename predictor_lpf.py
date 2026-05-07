@@ -1,5 +1,5 @@
 """
-Plataforma de Scouting LPF 2026
+Plataforma de Scouting LPF 2026 — CON MÓDULO CAZADOR DE VALUE BETS
 ─────────────────────────────────────────────────────────────────────────────
 """
 import re, os, math
@@ -7,12 +7,12 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
- 
+
 # ──────────────────────────────────────────────────────────────────────
 # CONFIGURACIÓN Y ESTILOS PROFESIONALES (CUSTOM UI)
 # ──────────────────────────────────────────────────────────────────────
 st.set_page_config(page_title="LPF Analytics | Scouting", layout="wide", initial_sidebar_state="expanded")
- 
+
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Manrope:wght@400;600;800&display=swap');
@@ -159,30 +159,186 @@ html, body, [class*="css"] {
 .stTabs [data-baseweb="tab-list"] { background: transparent !important; gap: 8px; }
 .stTabs [data-baseweb="tab"] { font-family: 'Manrope', sans-serif !important; background: #141417 !important; border: 1px solid #2a2a30 !important; border-radius: 4px !important; color: #888890 !important; }
 .stTabs [aria-selected="true"] { background: #ED1A3B !important; color: white !important; border-color: #ED1A3B !important; }
+
+/* ── Cazador de Value Bets ─────────────────────────────────────── */
+.vb-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+    gap: 14px;
+    margin-top: 18px;
+}
+.vb-card {
+    background: #111115;
+    border: 1px solid #2a2a35;
+    border-radius: 10px;
+    padding: 20px 22px 16px;
+    position: relative;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+.vb-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+.vb-card.value {
+    border-color: #ED1A3B;
+    background: linear-gradient(135deg, #1a0a0d 0%, #111115 60%);
+    box-shadow: 0 0 20px rgba(237, 26, 59, 0.15);
+}
+.vb-badge {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    font-size: 0.62rem;
+    font-weight: 800;
+    letter-spacing: 2px;
+    padding: 3px 8px;
+    border-radius: 3px;
+    text-transform: uppercase;
+}
+.vb-badge.value { background: #ED1A3B; color: #fff; }
+.vb-badge.neutral { background: #2a2a35; color: #888890; }
+.vb-cat {
+    font-size: 0.68rem;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: #555560;
+    margin-bottom: 4px;
+}
+.vb-name {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.55rem;
+    color: #e8e8e8;
+    letter-spacing: 1px;
+    line-height: 1.1;
+    margin-bottom: 14px;
+}
+.vb-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 8px;
+}
+.vb-col { flex: 1; text-align: center; }
+.vb-col-label {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: #55555f;
+    margin-bottom: 4px;
+}
+.vb-col-value {
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: #c0c0c8;
+    line-height: 1;
+}
+.vb-col-value.justa { color: #888890; font-size: 1.1rem; font-weight: 600; }
+.vb-col-value.casa  { color: #e0e0e0; }
+.vb-col-value.ev-pos { color: #3ecf6b; font-size: 1.45rem; }
+.vb-col-value.ev-neg { color: #555560; font-size: 1.1rem; font-weight: 600; }
+.vb-divider {
+    width: 1px;
+    height: 36px;
+    background: #2a2a35;
+    align-self: center;
+}
+.vb-prob-bar-wrap {
+    margin-top: 14px;
+    height: 4px;
+    background: #1e1e24;
+    border-radius: 2px;
+    overflow: hidden;
+}
+.vb-prob-bar {
+    height: 100%;
+    border-radius: 2px;
+    background: #ED1A3B;
+    transition: width 0.5s ease;
+}
+.vb-prob-bar.neutral-bar { background: #3a3a44; }
+.vb-alert {
+    border-radius: 8px;
+    padding: 16px 22px;
+    margin-bottom: 20px;
+    border-left: 4px solid;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+.vb-alert.found { border-color: #ED1A3B; background: rgba(237,26,59,0.08); }
+.vb-alert.none  { border-color: #2a2a35; background: #111115; }
+.vb-alert-icon { font-size: 1.8rem; }
+.vb-alert-text { flex: 1; }
+.vb-alert-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.3rem;
+    letter-spacing: 1.5px;
+    color: #fff;
+    line-height: 1;
+}
+.vb-alert-sub { font-size: 0.8rem; color: #888890; margin-top: 3px; }
+.corner-summary {
+    background: #111115;
+    border: 1px solid #2a2a35;
+    border-radius: 10px;
+    padding: 22px 28px;
+    display: flex;
+    align-items: center;
+    gap: 30px;
+    margin-bottom: 20px;
+}
+.corner-team { flex: 1; text-align: center; }
+.corner-team-name {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: #555560;
+    margin-bottom: 4px;
+}
+.corner-lambda {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 3rem;
+    color: #ED1A3B;
+    line-height: 1;
+}
+.corner-sep {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.5rem;
+    color: #2a2a35;
+}
+.corner-total { text-align: center; }
+.corner-total-label {
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: #555560;
+    margin-bottom: 4px;
+}
+.corner-total-val {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 2rem;
+    color: #ffffff;
+    line-height: 1;
+}
 </style>
 """, unsafe_allow_html=True)
- 
+
 # ── Parámetros de Motor ───────────────────────────────────────────────
-# AJUSTES IMPLEMENTADOS:
-W_XG = 0.60  # Reducido de 0.75 para dar un 40% de peso a los goles reales (menos sesgo hacia equipos que atacan pero no definen).
-
+W_XG = 0.60
 K_SHRINK = 6.0
-K_PRIOR  = 5.0  # Subido de 2.0 a 5.0 para necesitar más muestras reales antes de considerar a un equipo como favorito sólido.
-
-# Escalas reducidas para que los equipos racha no se despeguen tan drásticamente del promedio
-PRIOR_ATK_SCALE = 0.40  
-PRIOR_DEF_SCALE = 0.30  
-
+K_PRIOR  = 5.0
+PRIOR_ATK_SCALE = 0.40
+PRIOR_DEF_SCALE = 0.30
 DC_RHO = -0.10
 MAX_GOALS_MATRIX = 7
-N_RECENCIA, PESO_RECIENTE, PESO_NORMAL = 3, 1.8, 1.0  
-LAM_MIN, LAM_MAX = 0.30, 5.00  
+N_RECENCIA, PESO_RECIENTE, PESO_NORMAL = 3, 1.8, 1.0
+LAM_MIN, LAM_MAX = 0.30, 5.00
 
 RED, BLUE, GRAY = "#ED1A3B", "#ffffff", "#4a4a52"
 PLOT = dict(font=dict(family="Manrope", size=12, color="#a0a0a8"),
             paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
             margin=dict(l=10, r=20, t=36, b=10))
- 
+
 # ──────────────────────────────────────────────────────────────────────
 # PROCESAMIENTO
 # ──────────────────────────────────────────────────────────────────────
@@ -190,7 +346,7 @@ def num(v) -> float:
     if isinstance(v, str): v = v.replace('%', '').replace(',', '.').strip()
     try: return float(v)
     except: return 0.0
- 
+
 @st.cache_data(ttl=120, show_spinner=False)
 def cargar_excel(ruta: str):
     if not os.path.exists(ruta): return {}
@@ -216,7 +372,7 @@ def cargar_excel(ruta: str):
             else: i += 1
         res[hoja] = partidos
     return res
- 
+
 def construir_df(datos: dict) -> pd.DataFrame:
     filas = []
     for fecha, partidos in datos.items():
@@ -232,7 +388,7 @@ def construir_df(datos: dict) -> pd.DataFrame:
                 filas.append({**base, "Equipo": p["local"],    "Rival": p["visitante"], "Condicion": "Local",     "Propio": vals["local"],     "Concedido": vals["visitante"]})
                 filas.append({**base, "Equipo": p["visitante"],"Rival": p["local"],     "Condicion": "Visitante", "Propio": vals["visitante"], "Concedido": vals["local"]})
     return pd.DataFrame(filas)
- 
+
 @st.cache_data(ttl=120, show_spinner=False)
 def calcular_tabla(df: pd.DataFrame, condicion: str = "General") -> pd.DataFrame:
     dr = df[df["Métrica"] == "Resultado"].copy()
@@ -266,11 +422,11 @@ def calcular_tabla(df: pd.DataFrame, condicion: str = "General") -> pd.DataFrame
     tabla["prior_atk"] = (1.0 + (tabla["PPJ_norm"] - 1.0) * PRIOR_ATK_SCALE).clip(0.4, 2.5)
     tabla["prior_def"] = (1.0 - (tabla["PPJ_norm"] - 1.0) * PRIOR_DEF_SCALE).clip(0.4, 2.5)
     return tabla.set_index("Equipo")
- 
+
 def _get_prior(tabla: pd.DataFrame, eq: str):
     if tabla is None or eq not in tabla.index: return 1.0, 1.0
     return float(tabla.loc[eq, "prior_atk"]), float(tabla.loc[eq, "prior_def"])
- 
+
 def _adjusted_rate(d_spec, metrica, col, max_fecha_torneo, tabla, is_attack):
     df_m = d_spec[d_spec["Métrica"] == metrica]
     if df_m.empty: return np.nan
@@ -297,7 +453,7 @@ def _league_stats(df):
     if dx.empty: rh, rv = gh, gv
     else: rh, rv = W_XG * xh + (1-W_XG) * gh, W_XG * xv + (1-W_XG) * gv
     return {"ref_home": rh, "ref_away": rv, "ref_all": (rh+rv)/2}
- 
+
 def _strength(df, eq, cond, league, max_fecha_torneo: int, tabla: pd.DataFrame):
     d_eq   = df[df["Equipo"] == eq]
     d_spec = d_eq[d_eq["Condicion"] == cond]
@@ -325,7 +481,7 @@ def _strength(df, eq, cond, league, max_fecha_torneo: int, tabla: pd.DataFrame):
     atk_post = (n * atk_obs  + K_PRIOR * prior_atk) / (n + K_PRIOR)
     def_post = (n * def_obs  + K_PRIOR * prior_def)  / (n + K_PRIOR)
     return atk_post, def_post, n
- 
+
 def calcular_lambdas(df, eq_a, eq_b, es_loc, tabla):
     l = _league_stats(df)
     max_fecha_torneo = int(df["nFecha"].max())
@@ -336,7 +492,7 @@ def calcular_lambdas(df, eq_a, eq_b, es_loc, tabla):
     lb = (l["ref_home"] if cb == "Local" else l["ref_away"]) * ab * da
     return (round(float(np.clip(la, LAM_MIN, LAM_MAX)), 3),
             round(float(np.clip(lb, LAM_MIN, LAM_MAX)), 3))
- 
+
 def montecarlo(la, lb):
     def _pmf(lam, kmax):
         k = np.arange(kmax + 1)
@@ -358,7 +514,6 @@ def montecarlo(la, lb):
     }
 
 def top3_marcadores(M, ea, eb):
-    """Devuelve HTML con los 3 marcadores más probables."""
     flat = [(M[i,j], i, j) for i in range(M.shape[0]) for j in range(M.shape[1])]
     flat.sort(reverse=True)
     top3 = flat[:3]
@@ -373,7 +528,247 @@ def top3_marcadores(M, ea, eb):
             <div class="score-pct">{prob*100:.1f}%</div>
         </div>"""
     return f'<div class="top3-container">{cards}</div>'
- 
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  ★ NUEVAS FUNCIONES MATEMÁTICAS — MÓDULO VALUE BETS ★
+# ══════════════════════════════════════════════════════════════════════════════
+
+def calcular_mercados_matriz(M: np.ndarray) -> dict:
+    """
+    Extrae probabilidades para Over/Under 2.5 y BTTS directamente
+    de la matriz de probabilidades conjunta de Poisson–Dixon-Coles.
+    """
+    n = M.shape[0]
+    total_goals = np.zeros_like(M)
+    for i in range(n):
+        for j in range(n):
+            total_goals[i, j] = i + j
+
+    over25  = float(M[total_goals > 2.5].sum())
+    under25 = float(M[total_goals <= 2.5].sum())
+
+    # BTTS: Goles_Local > 0 AND Goles_Visitante > 0
+    btts_yes = float(M[1:, 1:].sum())
+    btts_no  = 1.0 - btts_yes
+
+    return {
+        "over25":   round(over25,  4),
+        "under25":  round(under25, 4),
+        "btts_yes": round(btts_yes, 4),
+        "btts_no":  round(btts_no,  4),
+    }
+
+
+def calcular_lambdas_corners(df: pd.DataFrame, eq_a: str, eq_b: str,
+                              es_loc: bool, tabla: pd.DataFrame) -> tuple:
+    """
+    Replica la lógica Fuerza_Ataque / Fuerza_Defensa del motor de goles
+    pero aplicada exclusivamente a la métrica de Córners.
+
+    Devuelve (lambda_corners_local, lambda_corners_visitante).
+    """
+    LAM_C_MIN, LAM_C_MAX = 1.0, 15.0
+    W_RECIENTE_C = 1.8
+    W_NORMAL_C   = 1.0
+    N_RECENCIA_C = 3
+    K_C          = 4.0   # Prior más relajado: córners tienen más varianza
+
+    # ── Detectar nombre real de la métrica ────────────────────────────────
+    candidatos = ["Córners", "Corners", "Córners a favor", "Tiros de esquina",
+                  "córners", "corners"]
+    metrica_usada = next((c for c in candidatos if c in df["Métrica"].values), None)
+
+    if metrica_usada is None:
+        # Sin datos de córners → estimación league-average conservadora
+        return (5.5, 4.5)
+
+    max_fecha = int(df["nFecha"].max())
+    df_c = df[df["Métrica"] == metrica_usada]
+
+    # ── Promedios de liga por condición ───────────────────────────────────
+    ref_loc = df_c[df_c["Condicion"] == "Local"]["Propio"].mean()
+    ref_vis = df_c[df_c["Condicion"] == "Visitante"]["Propio"].mean()
+    if np.isnan(ref_loc) or ref_loc == 0: ref_loc = 5.5
+    if np.isnan(ref_vis) or ref_vis == 0: ref_vis = 4.5
+
+    def weighted_avg_c(equipo: str, condicion: str, col: str) -> float:
+        d = df_c[(df_c["Equipo"] == equipo) & (df_c["Condicion"] == condicion)]
+        if d.empty:
+            d = df_c[df_c["Equipo"] == equipo]   # Fallback general
+        if d.empty:
+            return np.nan
+        fechas  = d["nFecha"].values
+        valores = d[col].values
+        w = np.where(fechas >= (max_fecha - N_RECENCIA_C + 1), W_RECIENTE_C, W_NORMAL_C)
+        return float(np.average(valores, weights=w))
+
+    def strength_c(equipo: str, condicion: str, ref_atk: float, ref_def: float):
+        atk_raw = weighted_avg_c(equipo, condicion, "Propio")
+        def_raw = weighted_avg_c(equipo, condicion, "Concedido")
+        n = len(df_c[(df_c["Equipo"] == equipo) & (df_c["Condicion"] == condicion)])
+
+        atk_norm = (atk_raw / ref_atk) if (not np.isnan(atk_raw) and ref_atk > 0) else 1.0
+        def_norm = (def_raw / ref_def) if (not np.isnan(def_raw) and ref_def > 0) else 1.0
+
+        # Bayesian shrinkage hacia prior neutro (1.0)
+        atk_post = (n * atk_norm + K_C * 1.0) / (n + K_C)
+        def_post = (n * def_norm + K_C * 1.0) / (n + K_C)
+        return atk_post, def_post
+
+    ca, cb = ("Local", "Visitante") if es_loc else ("Visitante", "Local")
+
+    atk_a, def_a = strength_c(eq_a, ca,
+                               ref_loc if ca == "Local" else ref_vis,
+                               ref_vis if ca == "Local" else ref_loc)
+    atk_b, def_b = strength_c(eq_b, cb,
+                               ref_loc if cb == "Local" else ref_vis,
+                               ref_vis if cb == "Local" else ref_loc)
+
+    lc_a = (ref_loc if ca == "Local" else ref_vis) * atk_a * def_b
+    lc_b = (ref_loc if cb == "Local" else ref_vis) * atk_b * def_a
+
+    return (round(float(np.clip(lc_a, LAM_C_MIN, LAM_C_MAX)), 2),
+            round(float(np.clip(lc_b, LAM_C_MIN, LAM_C_MAX)), 2))
+
+
+def prob_corners_mercados(lc_a: float, lc_b: float) -> dict:
+    """
+    Con los córners esperados de cada equipo (Poisson independiente),
+    calcula Over/Under para umbrales 8.5 y 9.5 córners totales.
+    """
+    MAX_C = 25
+
+    def pmf_poisson(lam: float, kmax: int) -> np.ndarray:
+        k = np.arange(kmax + 1)
+        return np.exp(k * np.log(max(lam, 1e-9)) - lam -
+                      np.array([math.log(math.factorial(x)) for x in k]))
+
+    pa = pmf_poisson(lc_a, MAX_C)
+    pb = pmf_poisson(lc_b, MAX_C)
+
+    # Distribución del total (convolución de las dos Poisson)
+    total_probs = np.convolve(pa, pb)[: MAX_C * 2 + 1]
+    total_probs /= total_probs.sum()   # renormalizar
+
+    # índice k → total = k córners
+    over85  = float(sum(total_probs[k] for k in range(len(total_probs)) if k > 8.5))
+    under85 = 1.0 - over85
+    over95  = float(sum(total_probs[k] for k in range(len(total_probs)) if k > 9.5))
+    under95 = 1.0 - over95
+
+    return {
+        "lc_a":     lc_a,
+        "lc_b":     lc_b,
+        "lc_total": round(lc_a + lc_b, 2),
+        "over85":   round(over85,  4),
+        "under85":  round(under85, 4),
+        "over95":   round(over95,  4),
+        "under95":  round(under95, 4),
+    }
+
+
+def calcular_ev(prob_modelo: float, cuota_casa: float) -> float:
+    """
+    EV = (Prob_Modelo × Cuota_Casa) − 1
+    Positivo → Value Bet.
+    """
+    if cuota_casa <= 1.0 or prob_modelo <= 0.0:
+        return -999.0
+    return round((prob_modelo * cuota_casa) - 1.0, 4)
+
+
+def cuota_justa(prob: float) -> float:
+    """Cuota decimal sin margen a partir de la probabilidad del modelo."""
+    if prob <= 0.0:
+        return 999.0
+    return round(1.0 / prob, 3)
+
+
+def analizar_mercado_completo(prob_1, prob_x, prob_2,
+                               cuota_1, cuota_x, cuota_2,
+                               mercados_extra, cuotas_extra) -> list:
+    """
+    Construye la lista completa de análisis de mercados.
+    Devuelve lista de dicts listos para renderizar en UI.
+    """
+    resultados = []
+
+    # ── 1X2 ────────────────────────────────────────────────────────────
+    for etiqueta, prob, cuota in [
+        ("Victoria Local (1)",       prob_1, cuota_1),
+        ("Empate (X)",               prob_x, cuota_x),
+        ("Victoria Visitante (2)",   prob_2, cuota_2),
+    ]:
+        ev = calcular_ev(prob, cuota)
+        resultados.append({
+            "Mercado":     etiqueta,
+            "Prob Modelo": prob,
+            "Cuota Justa": cuota_justa(prob),
+            "Cuota Casa":  cuota,
+            "EV":          ev,
+            "Value Bet":   ev > 0.0,
+            "Categoria":   "1X2",
+        })
+
+    # ── Over/Under 2.5 ─────────────────────────────────────────────────
+    for etiqueta, clave in [("Over 2.5 Goles", "over25"), ("Under 2.5 Goles", "under25")]:
+        prob  = mercados_extra.get(clave, 0.0)
+        cuota = cuotas_extra.get(clave, 0.0)
+        ev    = calcular_ev(prob, cuota) if cuota > 1.0 else -999.0
+        resultados.append({
+            "Mercado":     etiqueta,
+            "Prob Modelo": prob,
+            "Cuota Justa": cuota_justa(prob),
+            "Cuota Casa":  cuota,
+            "EV":          ev,
+            "Value Bet":   ev > 0.0,
+            "Categoria":   "Goles",
+        })
+
+    # ── BTTS ───────────────────────────────────────────────────────────
+    for etiqueta, clave in [("BTTS — Ambos Marcan", "btts_yes"),
+                             ("BTTS — No Ambos",     "btts_no")]:
+        prob  = mercados_extra.get(clave, 0.0)
+        cuota = cuotas_extra.get(clave, 0.0)
+        ev    = calcular_ev(prob, cuota) if cuota > 1.0 else -999.0
+        resultados.append({
+            "Mercado":     etiqueta,
+            "Prob Modelo": prob,
+            "Cuota Justa": cuota_justa(prob),
+            "Cuota Casa":  cuota,
+            "EV":          ev,
+            "Value Bet":   ev > 0.0,
+            "Categoria":   "BTTS",
+        })
+
+    # ── Córners ────────────────────────────────────────────────────────
+    for etiqueta, clave in [
+        ("Córners Over 8.5",  "over85"),
+        ("Córners Under 8.5", "under85"),
+        ("Córners Over 9.5",  "over95"),
+        ("Córners Under 9.5", "under95"),
+    ]:
+        prob  = mercados_extra.get(clave, 0.0)
+        cuota = cuotas_extra.get(clave, 0.0)
+        ev    = calcular_ev(prob, cuota) if cuota > 1.0 else -999.0
+        resultados.append({
+            "Mercado":     etiqueta,
+            "Prob Modelo": prob,
+            "Cuota Justa": cuota_justa(prob),
+            "Cuota Casa":  cuota,
+            "EV":          ev,
+            "Value Bet":   ev > 0.0,
+            "Categoria":   "Córners",
+        })
+
+    return resultados
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  FIN DE NUEVAS FUNCIONES MATEMÁTICAS
+# ══════════════════════════════════════════════════════════════════════════════
+
 def fig_score_matrix(M, ea, eb, n=5):
     sub = M[:n, :n]
     z_text = [[f"{sub[i,j]*100:.1f}%" for j in range(n)] for i in range(n)]
@@ -419,7 +814,7 @@ def fig_radar_pro(df, eq_a, eq_b, cond_a, cond_b):
         margin=dict(l=40, r=40, t=36, b=40))
     fig.update_layout(**layout_args)
     return fig
- 
+
 # ──────────────────────────────────────────────────────────────────────
 # NAVEGACIÓN Y ESTRUCTURA
 # ──────────────────────────────────────────────────────────────────────
@@ -429,9 +824,10 @@ with st.sidebar:
     st.markdown("<br>", unsafe_allow_html=True)
     nav = st.radio("MÓDULOS DE ANÁLISIS",
                    ["Predicción de Partidos", "Métricas Globales", "Comparativa H2H",
-                    "Análisis de Rival", "Análisis de Estilos", "Posiciones"],
+                    "Análisis de Rival", "Análisis de Estilos", "Posiciones",
+                    "Cazador de Value Bets"],   # ← NUEVO
                    label_visibility="collapsed")
- 
+
 if not os.path.exists(ruta): st.stop()
 datos  = cargar_excel(ruta)
 df     = construir_df(datos)
@@ -444,7 +840,7 @@ st.markdown("""
     <h1 class="hero-title">PLATAFORMA DE RENDIMIENTO</h1>
 </div>
 """, unsafe_allow_html=True)
- 
+
 # ──────────────────────────────────────────────────────────────────────
 if nav == "Predicción de Partidos":
     st.markdown('<div class="section-header">Módulo Predictivo</div>', unsafe_allow_html=True)
@@ -459,7 +855,6 @@ if nav == "Predicción de Partidos":
         la, lb = calcular_lambdas(df, ea, eb, loc, tabla)
         sim    = montecarlo(la, lb)
 
-        # Marcador de probabilidades
         st.markdown(f"""<div class="broadcast-board">
     <div class="team-block home">
         <div class="t-name">{ea}</div>
@@ -477,10 +872,8 @@ if nav == "Predicción de Partidos":
     </div>
 </div>""", unsafe_allow_html=True)
 
-        # ── TOP 3 MARCADORES MÁS PROBABLES ───────────────────────────
         st.markdown('<div class="section-header">Marcadores Más Probables</div>', unsafe_allow_html=True)
         st.markdown(top3_marcadores(sim["matrix"], ea, eb), unsafe_allow_html=True)
-        # ─────────────────────────────────────────────────────────────
 
         with st.expander("Parámetros del Motor (Lambdas y Priors)"):
             pa_a, pd_a = _get_prior(tabla, ea)
@@ -489,7 +882,7 @@ if nav == "Predicción de Partidos":
 
         st.markdown('<div class="section-header">Matriz de Resultados</div>', unsafe_allow_html=True)
         st.plotly_chart(fig_score_matrix(sim["matrix"], ea, eb), use_container_width=True)
- 
+
 # ──────────────────────────────────────────────────────────────────────
 elif nav == "Métricas Globales":
     st.markdown('<div class="section-header">Rankings de Rendimiento</div>', unsafe_allow_html=True)
@@ -507,7 +900,7 @@ elif nav == "Métricas Globales":
                          marker_color=RED if col_data == "Propio" else GRAY))
           .update_layout(**PLOT, height=700),
         use_container_width=True)
- 
+
 # ──────────────────────────────────────────────────────────────────────
 elif nav == "Comparativa H2H":
     st.markdown('<div class="section-header">Head-to-Head (H2H)</div>', unsafe_allow_html=True)
@@ -588,3 +981,277 @@ elif nav == "Posiciones":
         t_show["Efectividad %"] = t_show["Efectividad %"].round(1)
         st.dataframe(t_show.style.format({"Efectividad %": "{:.1f}%"}),
                      use_container_width=True, hide_index=True)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  ★ MÓDULO: CAZADOR DE VALUE BETS ★
+# ══════════════════════════════════════════════════════════════════════════════
+elif nav == "Cazador de Value Bets":
+
+    st.markdown('<div class="section-header">Cazador de Value Bets</div>', unsafe_allow_html=True)
+
+    # ── Selección del partido ──────────────────────────────────────────
+    c1, c2, c3 = st.columns([4, 4, 2])
+    ea_vb  = c1.selectbox("Equipo Local",     equipos, key="vb_ea")
+    eb_vb  = c2.selectbox("Equipo Visitante", equipos,
+                           index=min(1, len(equipos)-1), key="vb_eb")
+    loc_vb = c3.selectbox("Localía", ["Aplicar Ventaja", "Terreno Neutral"],
+                           key="vb_loc") == "Aplicar Ventaja"
+
+    st.markdown("---")
+
+    # ── Fuente de cuotas ──────────────────────────────────────────────
+    fuente = st.radio("Fuente de Cuotas",
+                      ["Ingresar Manualmente", "Subir CSV (cuotas_fecha.csv)"],
+                      horizontal=True, key="vb_fuente")
+
+    cuotas_validas = False
+    cuota_1 = cuota_x = cuota_2 = 0.0
+    cuotas_extra = {}
+
+    if fuente == "Ingresar Manualmente":
+        st.markdown("#### Cuotas 1X2")
+        c1, c2, c3 = st.columns(3)
+        cuota_1 = c1.number_input(f"Cuota Local ({ea_vb[:15]})",
+                                   min_value=1.01, value=2.20, step=0.05, key="q1")
+        cuota_x = c2.number_input("Cuota Empate",
+                                   min_value=1.01, value=3.10, step=0.05, key="qx")
+        cuota_2 = c3.number_input(f"Cuota Visitante ({eb_vb[:12]})",
+                                   min_value=1.01, value=3.50, step=0.05, key="q2")
+
+        with st.expander("➕ Cuotas de Goles y Córners (opcional — dejar en 0 si no disponés)"):
+            cg1, cg2 = st.columns(2)
+            cuotas_extra["over25"]  = cg1.number_input("Over 2.5 Goles",  min_value=0.0, value=0.0, step=0.05, key="qo25")
+            cuotas_extra["under25"] = cg2.number_input("Under 2.5 Goles", min_value=0.0, value=0.0, step=0.05, key="qu25")
+            cb1, cb2 = st.columns(2)
+            cuotas_extra["btts_yes"] = cb1.number_input("BTTS — Ambos Marcan", min_value=0.0, value=0.0, step=0.05, key="qby")
+            cuotas_extra["btts_no"]  = cb2.number_input("BTTS — No Ambos",     min_value=0.0, value=0.0, step=0.05, key="qbn")
+            cc1, cc2, cc3, cc4 = st.columns(4)
+            cuotas_extra["over85"]  = cc1.number_input("Córners O 8.5", min_value=0.0, value=0.0, step=0.05, key="qco85")
+            cuotas_extra["under85"] = cc2.number_input("Córners U 8.5", min_value=0.0, value=0.0, step=0.05, key="qcu85")
+            cuotas_extra["over95"]  = cc3.number_input("Córners O 9.5", min_value=0.0, value=0.0, step=0.05, key="qco95")
+            cuotas_extra["under95"] = cc4.number_input("Córners U 9.5", min_value=0.0, value=0.0, step=0.05, key="qcu95")
+
+        cuotas_validas = (cuota_1 > 1.0 and cuota_x > 1.0 and cuota_2 > 1.0)
+
+    else:  # CSV
+        st.markdown("""
+        **Formato del CSV esperado** — dos columnas: `mercado` y `cuota`:
+        ```
+        mercado,cuota
+        1,2.20
+        X,3.10
+        2,3.50
+        over25,1.85
+        under25,1.95
+        btts_yes,1.80
+        btts_no,2.05
+        over85,1.90
+        under85,1.90
+        over95,2.10
+        under95,1.72
+        ```
+        """)
+        csv_file = st.file_uploader("Subir cuotas_fecha.csv", type=["csv"])
+        if csv_file:
+            try:
+                df_csv = pd.read_csv(csv_file)
+                mapping = df_csv.set_index(df_csv.columns[0])[df_csv.columns[1]].to_dict()
+                cuota_1 = float(mapping.get("1",   mapping.get("local",    0.0)))
+                cuota_x = float(mapping.get("X",   mapping.get("empate",   0.0)))
+                cuota_2 = float(mapping.get("2",   mapping.get("visitante",0.0)))
+                for clave in ["over25","under25","btts_yes","btts_no",
+                               "over85","under85","over95","under95"]:
+                    cuotas_extra[clave] = float(mapping.get(clave, 0.0))
+                cuotas_validas = (cuota_1 > 1.0 and cuota_x > 1.0 and cuota_2 > 1.0)
+                if cuotas_validas:
+                    st.success(f"✔ CSV cargado | 1 = {cuota_1} | X = {cuota_x} | 2 = {cuota_2}")
+            except Exception as e:
+                st.error(f"Error al leer el CSV: {e}")
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    if st.button("🔍 ANALIZAR VALUE BETS", key="vb_run"):
+        if not cuotas_validas:
+            st.error("Ingresá cuotas válidas (> 1.00) para los tres resultados (1, X, 2).")
+            st.stop()
+
+        # ── Calcular modelo base ───────────────────────────────────────
+        la_vb, lb_vb = calcular_lambdas(df, ea_vb, eb_vb, loc_vb, tabla)
+        sim_vb       = montecarlo(la_vb, lb_vb)
+        M_vb         = sim_vb["matrix"]
+
+        prob_1_vb = sim_vb["victoria"]
+        prob_x_vb = sim_vb["empate"]
+        prob_2_vb = sim_vb["derrota"]
+
+        # ── Mercados derivados de goles ────────────────────────────────
+        mercados_goles = calcular_mercados_matriz(M_vb)
+
+        # ── Motor de Córners ───────────────────────────────────────────
+        lc_a, lc_b = calcular_lambdas_corners(df, ea_vb, eb_vb, loc_vb, tabla)
+        corner_data = prob_corners_mercados(lc_a, lc_b)
+        mercados_todos = {
+            **mercados_goles,
+            "over85":  corner_data["over85"],
+            "under85": corner_data["under85"],
+            "over95":  corner_data["over95"],
+            "under95": corner_data["under95"],
+        }
+
+        # ── Análisis completo ──────────────────────────────────────────
+        analisis   = analizar_mercado_completo(
+            prob_1_vb, prob_x_vb, prob_2_vb,
+            cuota_1, cuota_x, cuota_2,
+            mercados_todos, cuotas_extra
+        )
+        value_bets = [r for r in analisis if r["Value Bet"]]
+        n_value    = len(value_bets)
+
+        # ── Banner de resumen ──────────────────────────────────────────
+        if n_value > 0:
+            st.markdown(f"""
+            <div class="vb-alert found">
+                <div class="vb-alert-icon">🎯</div>
+                <div class="vb-alert-text">
+                    <div class="vb-alert-title">
+                        {n_value} VALUE BET{"S" if n_value > 1 else ""} DETECTADA{"S" if n_value > 1 else ""}
+                    </div>
+                    <div class="vb-alert-sub">
+                        El mercado está subestimando estas probabilidades vs. tu modelo.
+                        EV positivo indica ventaja estadística a largo plazo — no garantía de ganancia inmediata.
+                    </div>
+                </div>
+            </div>""", unsafe_allow_html=True)
+        else:
+            st.markdown("""
+            <div class="vb-alert none">
+                <div class="vb-alert-icon">📊</div>
+                <div class="vb-alert-text">
+                    <div class="vb-alert-title">SIN VALUE BETS EN ESTE PARTIDO</div>
+                    <div class="vb-alert-sub">
+                        Las cuotas del mercado reflejan o superan las probabilidades del modelo.
+                        El mercado parece eficiente para este encuentro.
+                    </div>
+                </div>
+            </div>""", unsafe_allow_html=True)
+
+        # ── Helper de renderizado de cards ─────────────────────────────
+        def render_cards(items):
+            cards_html = '<div class="vb-grid">'
+            for r in items:
+                is_value  = r["Value Bet"]
+                ev_pct    = r["EV"] * 100
+                ev_class  = "ev-pos" if is_value else "ev-neg"
+                ev_str    = f"+{ev_pct:.1f}%" if is_value else (
+                             f"{ev_pct:.1f}%" if r["EV"] > -99 else "—")
+                badge_cls = "value" if is_value else "neutral"
+                badge_txt = "✦ VALUE BET" if is_value else "SIN VALUE"
+                bar_pct   = min(r["Prob Modelo"] * 100, 100)
+                bar_cls   = "" if is_value else "neutral-bar"
+                cuota_str = f'{r["Cuota Casa"]:.2f}' if r["Cuota Casa"] > 1.0 else "—"
+
+                cards_html += f"""
+                <div class="vb-card {"value" if is_value else ""}">
+                    <span class="vb-badge {badge_cls}">{badge_txt}</span>
+                    <div class="vb-cat">{r["Categoria"]}</div>
+                    <div class="vb-name">{r["Mercado"]}</div>
+                    <div class="vb-row">
+                        <div class="vb-col">
+                            <div class="vb-col-label">Prob Modelo</div>
+                            <div class="vb-col-value">{r["Prob Modelo"]*100:.1f}%</div>
+                        </div>
+                        <div class="vb-divider"></div>
+                        <div class="vb-col">
+                            <div class="vb-col-label">Cuota Justa</div>
+                            <div class="vb-col-value justa">{r["Cuota Justa"]:.2f}</div>
+                        </div>
+                        <div class="vb-divider"></div>
+                        <div class="vb-col">
+                            <div class="vb-col-label">Cuota Casa</div>
+                            <div class="vb-col-value casa">{cuota_str}</div>
+                        </div>
+                        <div class="vb-divider"></div>
+                        <div class="vb-col">
+                            <div class="vb-col-label">EV</div>
+                            <div class="vb-col-value {ev_class}">{ev_str}</div>
+                        </div>
+                    </div>
+                    <div class="vb-prob-bar-wrap">
+                        <div class="vb-prob-bar {bar_cls}" style="width:{bar_pct:.1f}%"></div>
+                    </div>
+                </div>"""
+            cards_html += "</div>"
+            st.markdown(cards_html, unsafe_allow_html=True)
+
+        # ── Tabs por categoría ─────────────────────────────────────────
+        tab_labels = ["📋 Todos", "🏆 1X2", "⚽ Goles", "🔄 BTTS", "📐 Córners"]
+        tabs_ui    = st.tabs(tab_labels)
+
+        categorias_filtro = [None, "1X2", "Goles", "BTTS", "Córners"]
+        for i, cat in enumerate(categorias_filtro):
+            with tabs_ui[i]:
+                items = analisis if cat is None else [r for r in analisis if r["Categoria"] == cat]
+                render_cards(items)
+
+        # ── Panel de detalle de Córners ────────────────────────────────
+        st.markdown('<div class="section-header">Motor de Córners — Detalle</div>',
+                    unsafe_allow_html=True)
+        st.markdown(f"""
+        <div class="corner-summary">
+            <div class="corner-team">
+                <div class="corner-team-name">{ea_vb}</div>
+                <div class="corner-lambda">{lc_a:.1f}</div>
+                <div class="corner-team-name" style="margin-top:4px;">córners esperados</div>
+            </div>
+            <div class="corner-sep">VS</div>
+            <div class="corner-team">
+                <div class="corner-team-name">{eb_vb}</div>
+                <div class="corner-lambda" style="color:#ffffff;">{lc_b:.1f}</div>
+                <div class="corner-team-name" style="margin-top:4px;">córners esperados</div>
+            </div>
+            <div class="corner-sep">│</div>
+            <div class="corner-total">
+                <div class="corner-total-label">Total Esperado</div>
+                <div class="corner-total-val">{corner_data["lc_total"]:.1f}</div>
+            </div>
+            <div class="corner-sep">│</div>
+            <div class="corner-total">
+                <div class="corner-total-label">Prob Over 8.5</div>
+                <div class="corner-total-val" style="color:#ED1A3B;">{corner_data["over85"]*100:.1f}%</div>
+            </div>
+            <div class="corner-total">
+                <div class="corner-total-label">Prob Over 9.5</div>
+                <div class="corner-total-val" style="color:#888890;">{corner_data["over95"]*100:.1f}%</div>
+            </div>
+        </div>""", unsafe_allow_html=True)
+
+        # ── Tabla exportable ───────────────────────────────────────────
+        with st.expander("📥 Tabla Resumen Completa (exportable)"):
+            df_out = pd.DataFrame(analisis).copy()
+            df_out["Prob Modelo"] = (df_out["Prob Modelo"] * 100).round(2).astype(str) + "%"
+            df_out["EV"]          = df_out["EV"].apply(
+                lambda x: f"+{x*100:.2f}%" if x > 0 else (f"{x*100:.2f}%" if x > -99 else "—"))
+            df_out["Value Bet"]   = df_out["Value Bet"].map({True: "✦ SÍ", False: "No"})
+            st.dataframe(
+                df_out[["Categoria", "Mercado", "Prob Modelo",
+                         "Cuota Justa", "Cuota Casa", "EV", "Value Bet"]],
+                use_container_width=True, hide_index=True
+            )
+
+        # ── Lambdas debug ──────────────────────────────────────────────
+        with st.expander("⚙ Parámetros del Motor (debug)"):
+            pa_a, pd_a = _get_prior(tabla, ea_vb)
+            pa_b, pd_b = _get_prior(tabla, eb_vb)
+            st.code(
+                f"GOLES\n"
+                f"  λ {ea_vb}: {la_vb:.3f}  (Prior Atk: {pa_a:.2f} | Prior Def: {pd_a:.2f})\n"
+                f"  λ {eb_vb}: {lb_vb:.3f}  (Prior Atk: {pa_b:.2f} | Prior Def: {pd_b:.2f})\n\n"
+                f"CÓRNERS\n"
+                f"  λc {ea_vb}: {lc_a:.2f}\n"
+                f"  λc {eb_vb}: {lc_b:.2f}\n"
+                f"  Total esperado: {corner_data['lc_total']:.2f}\n\n"
+                f"MERCADOS DERIVADOS DE LA MATRIZ\n"
+                f"  Over 2.5:  {mercados_goles['over25']*100:.1f}%  |  Under 2.5: {mercados_goles['under25']*100:.1f}%\n"
+                f"  BTTS Sí:   {mercados_goles['btts_yes']*100:.1f}%  |  BTTS No:   {mercados_goles['btts_no']*100:.1f}%"
+            )
