@@ -353,7 +353,8 @@ def cargar_excel(ruta: str):
     xl = pd.ExcelFile(ruta, engine="openpyxl")
     res = {}
     for hoja in xl.sheet_names:
-        if not re.search(r"fecha\s*\d+", hoja, re.IGNORECASE): continue
+        # AÑADIDO: Permite leer pestañas de "octavos" además de las "fecha"
+        if not re.search(r"fecha\s*\d+|octavos", hoja, re.IGNORECASE): continue
         df = pd.read_excel(ruta, sheet_name=hoja, header=None)
         partidos, i = [], 0
         while i < len(df):
@@ -375,8 +376,24 @@ def cargar_excel(ruta: str):
 
 def construir_df(datos: dict) -> pd.DataFrame:
     filas = []
+    
+    # MODIFICADO: Identificar cuál fue la última fecha regular
+    max_fecha_reg = 0
+    for f in datos.keys():
+        m = re.search(r"\d+", f)
+        if m: 
+            max_fecha_reg = max(max_fecha_reg, int(m.group()))
+
     for fecha, partidos in datos.items():
-        nf = int(re.search(r"\d+", fecha).group())
+        # MODIFICADO: Asignar Fase y un número secuencial para que siga la recencia
+        match_fecha = re.search(r"\d+", fecha)
+        if match_fecha:
+            nf = int(match_fecha.group())
+            fase = "Regular"
+        else:
+            nf = max_fecha_reg + 1
+            fase = "Playoff"
+
         for p in partidos:
             tt = p["metricas"].get("Tiros totales", {"local": 0, "visitante": 0})
             oc = p["metricas"].get("Ocasiones claras", {"local": 0, "visitante": 0})
@@ -384,7 +401,7 @@ def construir_df(datos: dict) -> pd.DataFrame:
             xg_vis = (oc["visitante"] * 0.38) + (max(0, tt["visitante"] - oc["visitante"]) * 0.05)
             p["metricas"]["xG_Estimado"] = {"local": xg_loc, "visitante": xg_vis}
             for met, vals in p["metricas"].items():
-                base = {"nFecha": nf, "Métrica": met}
+                base = {"nFecha": nf, "Fase": fase, "Métrica": met}
                 filas.append({**base, "Equipo": p["local"],    "Rival": p["visitante"], "Condicion": "Local",     "Propio": vals["local"],     "Concedido": vals["visitante"]})
                 filas.append({**base, "Equipo": p["visitante"],"Rival": p["local"],     "Condicion": "Visitante", "Propio": vals["visitante"], "Concedido": vals["local"]})
     return pd.DataFrame(filas)
@@ -392,6 +409,11 @@ def construir_df(datos: dict) -> pd.DataFrame:
 @st.cache_data(ttl=120, show_spinner=False)
 def calcular_tabla(df: pd.DataFrame, condicion: str = "General") -> pd.DataFrame:
     dr = df[df["Métrica"] == "Resultado"].copy()
+    
+    # MODIFICADO: Excluir "Playoff" del armado de la tabla
+    if "Fase" in dr.columns:
+        dr = dr[dr["Fase"] == "Regular"]
+        
     if condicion != "General":
         dr = dr[dr["Condicion"] == condicion]
     if dr.empty:
@@ -535,10 +557,6 @@ def top3_marcadores(M, ea, eb):
 # ══════════════════════════════════════════════════════════════════════════════
 
 def calcular_mercados_matriz(M: np.ndarray) -> dict:
-    """
-    Extrae probabilidades para Over/Under 2.5 y BTTS directamente
-    de la matriz de probabilidades conjunta de Poisson–Dixon-Coles.
-    """
     n = M.shape[0]
     total_goals = np.zeros_like(M)
     for i in range(n):
@@ -548,7 +566,6 @@ def calcular_mercados_matriz(M: np.ndarray) -> dict:
     over25  = float(M[total_goals > 2.5].sum())
     under25 = float(M[total_goals <= 2.5].sum())
 
-    # BTTS: Goles_Local > 0 AND Goles_Visitante > 0
     btts_yes = float(M[1:, 1:].sum())
     btts_no  = 1.0 - btts_yes
 
@@ -559,34 +576,24 @@ def calcular_mercados_matriz(M: np.ndarray) -> dict:
         "btts_no":  round(btts_no,  4),
     }
 
-
 def calcular_lambdas_corners(df: pd.DataFrame, eq_a: str, eq_b: str,
                               es_loc: bool, tabla: pd.DataFrame) -> tuple:
-    """
-    Replica la lógica Fuerza_Ataque / Fuerza_Defensa del motor de goles
-    pero aplicada exclusivamente a la métrica de Córners.
-
-    Devuelve (lambda_corners_local, lambda_corners_visitante).
-    """
     LAM_C_MIN, LAM_C_MAX = 1.0, 15.0
     W_RECIENTE_C = 1.8
     W_NORMAL_C   = 1.0
     N_RECENCIA_C = 3
-    K_C          = 4.0   # Prior más relajado: córners tienen más varianza
+    K_C          = 4.0
 
-    # ── Detectar nombre real de la métrica ────────────────────────────────
     candidatos = ["Córners", "Corners", "Córners a favor", "Tiros de esquina",
                   "córners", "corners"]
     metrica_usada = next((c for c in candidatos if c in df["Métrica"].values), None)
 
     if metrica_usada is None:
-        # Sin datos de córners → estimación league-average conservadora
         return (5.5, 4.5)
 
     max_fecha = int(df["nFecha"].max())
     df_c = df[df["Métrica"] == metrica_usada]
 
-    # ── Promedios de liga por condición ───────────────────────────────────
     ref_loc = df_c[df_c["Condicion"] == "Local"]["Propio"].mean()
     ref_vis = df_c[df_c["Condicion"] == "Visitante"]["Propio"].mean()
     if np.isnan(ref_loc) or ref_loc == 0: ref_loc = 5.5
@@ -595,7 +602,7 @@ def calcular_lambdas_corners(df: pd.DataFrame, eq_a: str, eq_b: str,
     def weighted_avg_c(equipo: str, condicion: str, col: str) -> float:
         d = df_c[(df_c["Equipo"] == equipo) & (df_c["Condicion"] == condicion)]
         if d.empty:
-            d = df_c[df_c["Equipo"] == equipo]   # Fallback general
+            d = df_c[df_c["Equipo"] == equipo]
         if d.empty:
             return np.nan
         fechas  = d["nFecha"].values
@@ -611,7 +618,6 @@ def calcular_lambdas_corners(df: pd.DataFrame, eq_a: str, eq_b: str,
         atk_norm = (atk_raw / ref_atk) if (not np.isnan(atk_raw) and ref_atk > 0) else 1.0
         def_norm = (def_raw / ref_def) if (not np.isnan(def_raw) and ref_def > 0) else 1.0
 
-        # Bayesian shrinkage hacia prior neutro (1.0)
         atk_post = (n * atk_norm + K_C * 1.0) / (n + K_C)
         def_post = (n * def_norm + K_C * 1.0) / (n + K_C)
         return atk_post, def_post
@@ -633,10 +639,6 @@ def calcular_lambdas_corners(df: pd.DataFrame, eq_a: str, eq_b: str,
 
 
 def prob_corners_mercados(lc_a: float, lc_b: float) -> dict:
-    """
-    Con los córners esperados de cada equipo (Poisson independiente),
-    calcula Over/Under para umbrales 8.5 y 9.5 córners totales.
-    """
     MAX_C = 25
 
     def pmf_poisson(lam: float, kmax: int) -> np.ndarray:
@@ -647,11 +649,9 @@ def prob_corners_mercados(lc_a: float, lc_b: float) -> dict:
     pa = pmf_poisson(lc_a, MAX_C)
     pb = pmf_poisson(lc_b, MAX_C)
 
-    # Distribución del total (convolución de las dos Poisson)
     total_probs = np.convolve(pa, pb)[: MAX_C * 2 + 1]
-    total_probs /= total_probs.sum()   # renormalizar
+    total_probs /= total_probs.sum()
 
-    # índice k → total = k córners
     over85  = float(sum(total_probs[k] for k in range(len(total_probs)) if k > 8.5))
     under85 = 1.0 - over85
     over95  = float(sum(total_probs[k] for k in range(len(total_probs)) if k > 9.5))
@@ -667,34 +667,21 @@ def prob_corners_mercados(lc_a: float, lc_b: float) -> dict:
         "under95":  round(under95, 4),
     }
 
-
 def calcular_ev(prob_modelo: float, cuota_casa: float) -> float:
-    """
-    EV = (Prob_Modelo × Cuota_Casa) − 1
-    Positivo → Value Bet.
-    """
     if cuota_casa <= 1.0 or prob_modelo <= 0.0:
         return -999.0
     return round((prob_modelo * cuota_casa) - 1.0, 4)
 
-
 def cuota_justa(prob: float) -> float:
-    """Cuota decimal sin margen a partir de la probabilidad del modelo."""
     if prob <= 0.0:
         return 999.0
     return round(1.0 / prob, 3)
 
-
 def analizar_mercado_completo(prob_1, prob_x, prob_2,
                                cuota_1, cuota_x, cuota_2,
                                mercados_extra, cuotas_extra) -> list:
-    """
-    Construye la lista completa de análisis de mercados.
-    Devuelve lista de dicts listos para renderizar en UI.
-    """
     resultados = []
 
-    # ── 1X2 ────────────────────────────────────────────────────────────
     for etiqueta, prob, cuota in [
         ("Victoria Local (1)",       prob_1, cuota_1),
         ("Empate (X)",               prob_x, cuota_x),
@@ -711,7 +698,6 @@ def analizar_mercado_completo(prob_1, prob_x, prob_2,
             "Categoria":   "1X2",
         })
 
-    # ── Over/Under 2.5 ─────────────────────────────────────────────────
     for etiqueta, clave in [("Over 2.5 Goles", "over25"), ("Under 2.5 Goles", "under25")]:
         prob  = mercados_extra.get(clave, 0.0)
         cuota = cuotas_extra.get(clave, 0.0)
@@ -726,7 +712,6 @@ def analizar_mercado_completo(prob_1, prob_x, prob_2,
             "Categoria":   "Goles",
         })
 
-    # ── BTTS ───────────────────────────────────────────────────────────
     for etiqueta, clave in [("BTTS — Ambos Marcan", "btts_yes"),
                              ("BTTS — No Ambos",     "btts_no")]:
         prob  = mercados_extra.get(clave, 0.0)
@@ -742,7 +727,6 @@ def analizar_mercado_completo(prob_1, prob_x, prob_2,
             "Categoria":   "BTTS",
         })
 
-    # ── Córners ────────────────────────────────────────────────────────
     for etiqueta, clave in [
         ("Córners Over 8.5",  "over85"),
         ("Córners Under 8.5", "under85"),
@@ -763,7 +747,6 @@ def analizar_mercado_completo(prob_1, prob_x, prob_2,
         })
 
     return resultados
-
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  FIN DE NUEVAS FUNCIONES MATEMÁTICAS
@@ -825,7 +808,7 @@ with st.sidebar:
     nav = st.radio("MÓDULOS DE ANÁLISIS",
                    ["Predicción de Partidos", "Métricas Globales", "Comparativa H2H",
                     "Análisis de Rival", "Análisis de Estilos", "Posiciones",
-                    "Cazador de Value Bets"],   # ← NUEVO
+                    "Cazador de Value Bets"],
                    label_visibility="collapsed")
 
 if not os.path.exists(ruta): st.stop()
@@ -981,7 +964,6 @@ elif nav == "Posiciones":
         t_show["Efectividad %"] = t_show["Efectividad %"].round(1)
         st.dataframe(t_show.style.format({"Efectividad %": "{:.1f}%"}),
                      use_container_width=True, hide_index=True)
-
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  ★ MÓDULO: CAZADOR DE VALUE BETS ★
