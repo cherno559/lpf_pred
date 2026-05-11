@@ -342,78 +342,123 @@ PLOT = dict(font=dict(family="Manrope", size=12, color="#a0a0a8"),
 # ──────────────────────────────────────────────────────────────────────
 # PROCESAMIENTO
 # ──────────────────────────────────────────────────────────────────────
+
 def num(v) -> float:
-    if isinstance(v, str): v = v.replace('%', '').replace(',', '.').strip()
-    try: return float(v)
-    except: return 0.0
+    """
+    Convierte un valor a float de forma robusta.
+    Maneja casos especiales:
+      - Porcentajes: "56%" → 56.0
+      - Penales/alargues: "2(4)" → 2.0  (toma el gol reglamentario, ignora penales)
+      - Fracciones de regates: "7/18 (39%)" → 0.0 (no es métrica numérica simple)
+      - Guiones "-" → 0.0
+    """
+    if isinstance(v, str):
+        v = v.strip()
+        # Penales o alargue: "2(4)", "1(3)" → extraer el primer número
+        m = re.match(r'^(-?\d+(?:\.\d+)?)\s*\(', v)
+        if m:
+            return float(m.group(1))
+        v = v.replace('%', '').replace(',', '.').strip()
+    try:
+        return float(v)
+    except:
+        return 0.0
+
+
+# Sentinel que marca el inicio de la sección de métricas derivadas (no cargar)
+_SENTINEL_DERIVADAS = re.compile(r'métricas derivadas|métrica calculada', re.IGNORECASE)
+
 
 @st.cache_data(ttl=120, show_spinner=False)
 def cargar_excel(ruta: str):
-    if not os.path.exists(ruta): return {}
+    if not os.path.exists(ruta):
+        return {}
     xl = pd.ExcelFile(ruta, engine="openpyxl")
     res = {}
     for hoja in xl.sheet_names:
-        # AÑADIDO: Permite leer pestañas de "octavos" además de las "fecha"
-        if not re.search(r"fecha\s*\d+|octavos", hoja, re.IGNORECASE): continue
+        if not re.search(r"fecha\s*\d+|octavos", hoja, re.IGNORECASE):
+            continue
         df = pd.read_excel(ruta, sheet_name=hoja, header=None)
         partidos, i = [], 0
         while i < len(df):
-            c0 = str(df.iloc[i,0]).strip() if pd.notna(df.iloc[i,0]) else ""
+            c0 = str(df.iloc[i, 0]).strip() if pd.notna(df.iloc[i, 0]) else ""
             if re.search(r"\s+vs\s+", c0, re.IGNORECASE):
                 p = re.split(r"\s+vs\s+", c0, flags=re.IGNORECASE)
-                loc, vis, stats, j = p[0].strip(), p[1].strip(), {}, i+1
+                loc, vis, stats, j = p[0].strip(), p[1].strip(), {}, i + 1
                 while j < len(df):
-                    r0 = str(df.iloc[j,0]).strip() if pd.notna(df.iloc[j,0]) else ""
-                    if r0=="" or re.search(r"\s+vs\s+", r0, re.IGNORECASE): break
-                    if r0.lower() in ("métrica", "metrica") or r0 == loc: j += 1; continue
-                    if pd.notna(df.iloc[j,1]): stats[r0] = {"local": num(df.iloc[j,1]), "visitante": num(df.iloc[j,2])}
+                    r0 = str(df.iloc[j, 0]).strip() if pd.notna(df.iloc[j, 0]) else ""
+                    # Parar al encontrar otro partido o fila vacía
+                    if re.search(r"\s+vs\s+", r0, re.IGNORECASE):
+                        break
+                    if r0 == "":
+                        j += 1
+                        continue
+                    # Parar al encontrar la sección de métricas derivadas
+                    if _SENTINEL_DERIVADAS.search(r0):
+                        # Avanzar hasta la siguiente fila vacía o nuevo partido
+                        j += 1
+                        while j < len(df):
+                            r_check = str(df.iloc[j, 0]).strip() if pd.notna(df.iloc[j, 0]) else ""
+                            if r_check == "" or re.search(r"\s+vs\s+", r_check, re.IGNORECASE):
+                                break
+                            j += 1
+                        break
+                    # Saltar encabezados de columnas
+                    if r0.lower() in ("métrica", "metrica") or r0 == loc:
+                        j += 1
+                        continue
+                    if pd.notna(df.iloc[j, 1]):
+                        stats[r0] = {
+                            "local":     num(df.iloc[j, 1]),
+                            "visitante": num(df.iloc[j, 2]) if pd.notna(df.iloc[j, 2]) else 0.0,
+                        }
                     j += 1
                 partidos.append({"local": loc, "visitante": vis, "metricas": stats})
                 i = j
-            else: i += 1
+            else:
+                i += 1
         res[hoja] = partidos
     return res
 
+
 def construir_df(datos: dict) -> pd.DataFrame:
     filas = []
-    
-    # MODIFICADO: Identificar cuál fue la última fecha regular
+
+    # Identificar cuál fue la última fecha regular
     max_fecha_reg = 0
     for f in datos.keys():
         m = re.search(r"\d+", f)
-        if m: 
+        if m:
             max_fecha_reg = max(max_fecha_reg, int(m.group()))
 
     for fecha, partidos in datos.items():
-        # MODIFICADO: Asignar Fase y un número secuencial para que siga la recencia
         match_fecha = re.search(r"\d+", fecha)
         if match_fecha:
-            nf = int(match_fecha.group())
+            nf   = int(match_fecha.group())
             fase = "Regular"
         else:
-            nf = max_fecha_reg + 1
+            nf   = max_fecha_reg + 1
             fase = "Playoff"
 
         for p in partidos:
-            tt = p["metricas"].get("Tiros totales", {"local": 0, "visitante": 0})
+            tt = p["metricas"].get("Tiros totales",    {"local": 0, "visitante": 0})
             oc = p["metricas"].get("Ocasiones claras", {"local": 0, "visitante": 0})
-            xg_loc = (oc["local"] * 0.38) + (max(0, tt["local"] - oc["local"]) * 0.05)
+            xg_loc = (oc["local"]     * 0.38) + (max(0, tt["local"]     - oc["local"])     * 0.05)
             xg_vis = (oc["visitante"] * 0.38) + (max(0, tt["visitante"] - oc["visitante"]) * 0.05)
             p["metricas"]["xG_Estimado"] = {"local": xg_loc, "visitante": xg_vis}
             for met, vals in p["metricas"].items():
                 base = {"nFecha": nf, "Fase": fase, "Métrica": met}
-                filas.append({**base, "Equipo": p["local"],    "Rival": p["visitante"], "Condicion": "Local",     "Propio": vals["local"],     "Concedido": vals["visitante"]})
-                filas.append({**base, "Equipo": p["visitante"],"Rival": p["local"],     "Condicion": "Visitante", "Propio": vals["visitante"], "Concedido": vals["local"]})
+                filas.append({**base, "Equipo": p["local"],     "Rival": p["visitante"], "Condicion": "Local",     "Propio": vals["local"],     "Concedido": vals["visitante"]})
+                filas.append({**base, "Equipo": p["visitante"], "Rival": p["local"],     "Condicion": "Visitante", "Propio": vals["visitante"], "Concedido": vals["local"]})
     return pd.DataFrame(filas)
+
 
 @st.cache_data(ttl=120, show_spinner=False)
 def calcular_tabla(df: pd.DataFrame, condicion: str = "General") -> pd.DataFrame:
     dr = df[df["Métrica"] == "Resultado"].copy()
-    
-    # MODIFICADO: Excluir "Playoff" del armado de la tabla
+    # Excluir playoffs de la tabla
     if "Fase" in dr.columns:
         dr = dr[dr["Fase"] == "Regular"]
-        
     if condicion != "General":
         dr = dr[dr["Condicion"] == condicion]
     if dr.empty:
@@ -427,34 +472,38 @@ def calcular_tabla(df: pd.DataFrame, condicion: str = "General") -> pd.DataFrame
             rows.append({"Equipo": eq, "PJ": 0, "V": 0, "E": 0, "D": 0,
                          "GF": 0, "GC": 0, "PTS": 0, "PPJ": 0.0, "EFEC%": 0.0})
             continue
-        v  = ((d["Propio"] > d["Concedido"])).sum()
-        e  = ((d["Propio"] == d["Concedido"])).sum()
-        d_ = ((d["Propio"] < d["Concedido"])).sum()
+        v   = (d["Propio"] > d["Concedido"]).sum()
+        e   = (d["Propio"] == d["Concedido"]).sum()
+        d_  = (d["Propio"] < d["Concedido"]).sum()
         pts = int(v * 3 + e)
         gf  = d["Propio"].sum()
         gc  = d["Concedido"].sum()
-        ppj = pts / pj
+        ppj  = pts / pj
         efec = (pts / (pj * 3)) * 100
         rows.append({"Equipo": eq, "PJ": pj, "V": int(v), "E": int(e), "D": int(d_),
                      "GF": gf, "GC": gc, "PTS": pts, "PPJ": ppj, "EFEC%": efec})
     tabla = pd.DataFrame(rows).sort_values(["EFEC%", "PTS", "GF"], ascending=[False, False, False]).reset_index(drop=True)
     tabla["Pos"] = tabla.index + 1
     ppj_mean = tabla["PPJ"].mean()
-    tabla["PPJ_norm"] = tabla["PPJ"] / ppj_mean if ppj_mean > 0 else 1.0
+    tabla["PPJ_norm"]  = tabla["PPJ"] / ppj_mean if ppj_mean > 0 else 1.0
     tabla["prior_atk"] = (1.0 + (tabla["PPJ_norm"] - 1.0) * PRIOR_ATK_SCALE).clip(0.4, 2.5)
     tabla["prior_def"] = (1.0 - (tabla["PPJ_norm"] - 1.0) * PRIOR_DEF_SCALE).clip(0.4, 2.5)
     return tabla.set_index("Equipo")
 
+
 def _get_prior(tabla: pd.DataFrame, eq: str):
-    if tabla is None or eq not in tabla.index: return 1.0, 1.0
+    if tabla is None or eq not in tabla.index:
+        return 1.0, 1.0
     return float(tabla.loc[eq, "prior_atk"]), float(tabla.loc[eq, "prior_def"])
+
 
 def _adjusted_rate(d_spec, metrica, col, max_fecha_torneo, tabla, is_attack):
     df_m = d_spec[d_spec["Métrica"] == metrica]
-    if df_m.empty: return np.nan
-    fechas  = df_m["nFecha"].values
-    valores = df_m[col].values
-    rivales = df_m["Rival"].values
+    if df_m.empty:
+        return np.nan
+    fechas   = df_m["nFecha"].values
+    valores  = df_m[col].values
+    rivales  = df_m["Rival"].values
     valores_ajustados = []
     for v, r in zip(valores, rivales):
         pa_r, pd_r = _get_prior(tabla, r)
@@ -463,26 +512,30 @@ def _adjusted_rate(d_spec, metrica, col, max_fecha_torneo, tabla, is_attack):
     w = np.where(fechas >= (max_fecha_torneo - N_RECENCIA + 1), PESO_RECIENTE, PESO_NORMAL)
     return float(np.average(valores_ajustados, weights=w))
 
+
 @st.cache_data(ttl=120, show_spinner=False)
 def _league_stats(df):
     dr = df[df["Métrica"] == "Resultado"]
     dx = df[df["Métrica"] == "xG_Estimado"]
     def get_avg(d, cond):
-        v = d[d["Condicion"]==cond]["Propio"].mean() if not d.empty else np.nan
+        v = d[d["Condicion"] == cond]["Propio"].mean() if not d.empty else np.nan
         return v if not np.isnan(v) else 1.0
     gh, gv = get_avg(dr, "Local"), get_avg(dr, "Visitante")
     xh, xv = get_avg(dx, "Local"), get_avg(dx, "Visitante")
-    if dx.empty: rh, rv = gh, gv
-    else: rh, rv = W_XG * xh + (1-W_XG) * gh, W_XG * xv + (1-W_XG) * gv
-    return {"ref_home": rh, "ref_away": rv, "ref_all": (rh+rv)/2}
+    if dx.empty:
+        rh, rv = gh, gv
+    else:
+        rh, rv = W_XG * xh + (1 - W_XG) * gh, W_XG * xv + (1 - W_XG) * gv
+    return {"ref_home": rh, "ref_away": rv, "ref_all": (rh + rv) / 2}
+
 
 def _strength(df, eq, cond, league, max_fecha_torneo: int, tabla: pd.DataFrame):
     d_eq   = df[df["Equipo"] == eq]
     d_spec = d_eq[d_eq["Condicion"] == cond]
-    g_atk = _adjusted_rate(d_spec, "Resultado",    "Propio",    max_fecha_torneo, tabla, is_attack=True)
-    x_atk = _adjusted_rate(d_spec, "xG_Estimado",  "Propio",    max_fecha_torneo, tabla, is_attack=True)
-    g_def = _adjusted_rate(d_spec, "Resultado",    "Concedido", max_fecha_torneo, tabla, is_attack=False)
-    x_def = _adjusted_rate(d_spec, "xG_Estimado",  "Concedido", max_fecha_torneo, tabla, is_attack=False)
+    g_atk = _adjusted_rate(d_spec, "Resultado",   "Propio",    max_fecha_torneo, tabla, is_attack=True)
+    x_atk = _adjusted_rate(d_spec, "xG_Estimado", "Propio",    max_fecha_torneo, tabla, is_attack=True)
+    g_def = _adjusted_rate(d_spec, "Resultado",   "Concedido", max_fecha_torneo, tabla, is_attack=False)
+    x_def = _adjusted_rate(d_spec, "xG_Estimado", "Concedido", max_fecha_torneo, tabla, is_attack=False)
     n_s   = len(d_spec[d_spec["Métrica"] == "Resultado"])
 
     def combine(g, x):
@@ -504,6 +557,7 @@ def _strength(df, eq, cond, league, max_fecha_torneo: int, tabla: pd.DataFrame):
     def_post = (n * def_obs  + K_PRIOR * prior_def)  / (n + K_PRIOR)
     return atk_post, def_post, n
 
+
 def calcular_lambdas(df, eq_a, eq_b, es_loc, tabla):
     l = _league_stats(df)
     max_fecha_torneo = int(df["nFecha"].max())
@@ -515,6 +569,7 @@ def calcular_lambdas(df, eq_a, eq_b, es_loc, tabla):
     return (round(float(np.clip(la, LAM_MIN, LAM_MAX)), 3),
             round(float(np.clip(lb, LAM_MIN, LAM_MAX)), 3))
 
+
 def montecarlo(la, lb):
     def _pmf(lam, kmax):
         k = np.arange(kmax + 1)
@@ -523,10 +578,10 @@ def montecarlo(la, lb):
     pa, pb = _pmf(la, MAX_GOALS_MATRIX), _pmf(lb, MAX_GOALS_MATRIX)
     M = np.outer(pa, pb)
     rho = max(DC_RHO, -0.9 / max(la * lb, 0.01))
-    M[0,0] = max(M[0,0] * (1 - la * lb * rho), 0.0)
-    M[0,1] = max(M[0,1] * (1 + la * rho),       0.0)
-    M[1,0] = max(M[1,0] * (1 + lb * rho),        0.0)
-    M[1,1] = max(M[1,1] * (1 - rho),             0.0)
+    M[0, 0] = max(M[0, 0] * (1 - la * lb * rho), 0.0)
+    M[0, 1] = max(M[0, 1] * (1 + la * rho),       0.0)
+    M[1, 0] = max(M[1, 0] * (1 + lb * rho),        0.0)
+    M[1, 1] = max(M[1, 1] * (1 - rho),             0.0)
     M /= M.sum()
     return {
         "victoria": float(np.tril(M, -1).sum()),
@@ -535,8 +590,9 @@ def montecarlo(la, lb):
         "matrix":   M,
     }
 
+
 def top3_marcadores(M, ea, eb):
-    flat = [(M[i,j], i, j) for i in range(M.shape[0]) for j in range(M.shape[1])]
+    flat = [(M[i, j], i, j) for i in range(M.shape[0]) for j in range(M.shape[1])]
     flat.sort(reverse=True)
     top3 = flat[:3]
     medallas = ["🥇 MÁS PROBABLE", "🥈 2°", "🥉 3°"]
@@ -547,13 +603,13 @@ def top3_marcadores(M, ea, eb):
         <div class="score-card {clases[idx]}">
             <div class="score-rank">{medallas[idx]}</div>
             <div class="score-result">{ea[:3].upper()} {i} – {j} {eb[:3].upper()}</div>
-            <div class="score-pct">{prob*100:.1f}%</div>
+            <div class="score-pct">{prob * 100:.1f}%</div>
         </div>"""
     return f'<div class="top3-container">{cards}</div>'
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  ★ NUEVAS FUNCIONES MATEMÁTICAS — MÓDULO VALUE BETS ★
+#  ★ MÓDULO VALUE BETS — FUNCIONES MATEMÁTICAS ★
 # ══════════════════════════════════════════════════════════════════════════════
 
 def calcular_mercados_matriz(M: np.ndarray) -> dict:
@@ -562,16 +618,13 @@ def calcular_mercados_matriz(M: np.ndarray) -> dict:
     for i in range(n):
         for j in range(n):
             total_goals[i, j] = i + j
-
-    over25  = float(M[total_goals > 2.5].sum())
-    under25 = float(M[total_goals <= 2.5].sum())
-
+    over25   = float(M[total_goals > 2.5].sum())
+    under25  = 1.0 - over25
     btts_yes = float(M[1:, 1:].sum())
     btts_no  = 1.0 - btts_yes
-
     return {
-        "over25":   round(over25,  4),
-        "under25":  round(under25, 4),
+        "over25":   round(over25,   4),
+        "under25":  round(under25,  4),
         "btts_yes": round(btts_yes, 4),
         "btts_no":  round(btts_no,  4),
     }
@@ -615,10 +668,8 @@ def calcular_lambdas_corners(df: pd.DataFrame, eq_a: str, eq_b: str,
         atk_raw = weighted_avg_c(equipo, condicion, "Propio")
         def_raw = weighted_avg_c(equipo, condicion, "Concedido")
         n = len(df_c[(df_c["Equipo"] == equipo) & (df_c["Condicion"] == condicion)])
-
         atk_norm = (atk_raw / ref_atk) if (not np.isnan(atk_raw) and ref_atk > 0) else 1.0
         def_norm = (def_raw / ref_def) if (not np.isnan(def_raw) and ref_def > 0) else 1.0
-
         atk_post = (n * atk_norm + K_C * 1.0) / (n + K_C)
         def_post = (n * def_norm + K_C * 1.0) / (n + K_C)
         return atk_post, def_post
@@ -649,8 +700,7 @@ def prob_corners_mercados(lc_a: float, lc_b: float) -> dict:
 
     pa = pmf_poisson(lc_a, MAX_C)
     pb = pmf_poisson(lc_b, MAX_C)
-
-    total_probs = np.convolve(pa, pb)[: MAX_C * 2 + 1]
+    total_probs = np.convolve(pa, pb)[:MAX_C * 2 + 1]
     total_probs /= total_probs.sum()
 
     over85  = float(sum(total_probs[k] for k in range(len(total_probs)) if k > 8.5))
@@ -687,9 +737,9 @@ def analizar_mercado_completo(prob_1, prob_x, prob_2,
     resultados = []
 
     for etiqueta, prob, cuota in [
-        ("Victoria Local (1)",       prob_1, cuota_1),
-        ("Empate (X)",               prob_x, cuota_x),
-        ("Victoria Visitante (2)",   prob_2, cuota_2),
+        ("Victoria Local (1)",      prob_1, cuota_1),
+        ("Empate (X)",              prob_x, cuota_x),
+        ("Victoria Visitante (2)",  prob_2, cuota_2),
     ]:
         ev = calcular_ev(prob, cuota)
         resultados.append({
@@ -753,17 +803,15 @@ def analizar_mercado_completo(prob_1, prob_x, prob_2,
     return resultados
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  FIN DE NUEVAS FUNCIONES MATEMÁTICAS
-# ══════════════════════════════════════════════════════════════════════════════
+# ── Gráficos ─────────────────────────────────────────────────────────
 
 def fig_score_matrix(M, ea, eb, n=5):
-    sub = M[:n, :n]
-    z_text = [[f"{sub[i,j]*100:.1f}%" for j in range(n)] for i in range(n)]
+    sub    = M[:n, :n]
+    z_text = [[f"{sub[i, j]*100:.1f}%" for j in range(n)] for i in range(n)]
     fig = go.Figure(go.Heatmap(
         z=sub, x=[str(j) for j in range(n)], y=[str(i) for i in range(n)],
         text=z_text, texttemplate="%{text}",
-        colorscale=[[0,"#0a0a0c"],[0.5,"#590f19"],[1,"#ED1A3B"]],
+        colorscale=[[0, "#0a0a0c"], [0.5, "#590f19"], [1, "#ED1A3B"]],
         showscale=False,
     ))
     fig.update_layout(**PLOT, height=350,
@@ -772,36 +820,43 @@ def fig_score_matrix(M, ea, eb, n=5):
         yaxis=dict(autorange="reversed"))
     return fig
 
+
 def fig_radar_pro(df, eq_a, eq_b, cond_a, cond_b):
     mets = [m for m in ["Posesión de balón", "Tiros totales", "Tiros al arco",
                          "Goles esperados (xG)", "Pases totales"]
             if m in df["Métrica"].values]
-    if not mets: return go.Figure()
+    if not mets:
+        return go.Figure()
+
     def gv(eq, cond, m):
         d = df[(df["Equipo"] == eq) & (df["Métrica"] == m)]
-        if cond != "General": d = d[d["Condicion"] == cond]
+        if cond != "General":
+            d = d[d["Condicion"] == cond]
         return d["Propio"].mean() if not d.empty else 0.0
+
     def get_league_max(m):
         return df[df["Métrica"] == m].groupby("Equipo")["Propio"].mean().max()
+
     va = [gv(eq_a, cond_a, m) for m in mets]
     vb = [gv(eq_b, cond_b, m) for m in mets]
     mx = [max(get_league_max(m), 1e-6) for m in mets]
     text_a = [f"{m}: <b>{v:.1f}</b>" for m, v in zip(mets, va)]
     text_b = [f"{m}: <b>{v:.1f}</b>" for m, v in zip(mets, vb)]
-    r_a = [a/m for a, m in zip(va, mx)] + [va[0]/mx[0]]
-    r_b = [b/m for b, m in zip(vb, mx)] + [vb[0]/mx[0]]
+    r_a   = [a / m for a, m in zip(va, mx)] + [va[0] / mx[0]]
+    r_b   = [b / m for b, m in zip(vb, mx)] + [vb[0] / mx[0]]
     theta = mets + [mets[0]]
     fig = go.Figure()
-    fig.add_trace(go.Scatterpolar(r=r_a, theta=theta, fill="toself", name=eq_a, line=dict(color="#ED1A3B"), hoverinfo="text+name", text=text_a+[text_a[0]]))
-    fig.add_trace(go.Scatterpolar(r=r_b, theta=theta, fill="toself", name=eq_b, line=dict(color="#ffffff"), hoverinfo="text+name", text=text_b+[text_b[0]]))
+    fig.add_trace(go.Scatterpolar(r=r_a, theta=theta, fill="toself", name=eq_a, line=dict(color="#ED1A3B"), hoverinfo="text+name", text=text_a + [text_a[0]]))
+    fig.add_trace(go.Scatterpolar(r=r_b, theta=theta, fill="toself", name=eq_b, line=dict(color="#ffffff"), hoverinfo="text+name", text=text_b + [text_b[0]]))
     layout_args = PLOT.copy()
     layout_args.update(height=400,
         polar=dict(bgcolor="rgba(0,0,0,0)",
-            radialaxis=dict(visible=True, showticklabels=False, gridcolor="#2a2a30", range=[0,1]),
+            radialaxis=dict(visible=True, showticklabels=False, gridcolor="#2a2a30", range=[0, 1]),
             angularaxis=dict(gridcolor="#2a2a30", linecolor="#2a2a30")),
         margin=dict(l=40, r=40, t=36, b=40))
     fig.update_layout(**layout_args)
     return fig
+
 
 # ──────────────────────────────────────────────────────────────────────
 # NAVEGACIÓN Y ESTRUCTURA
@@ -816,11 +871,17 @@ with st.sidebar:
                     "Cazador de Value Bets"],
                    label_visibility="collapsed")
 
-if not os.path.exists(ruta): st.stop()
-datos  = cargar_excel(ruta)
-df     = construir_df(datos)
-tabla  = calcular_tabla(df, "General")
-equipos, metricas = sorted(df["Equipo"].unique()), sorted(df["Métrica"].unique())
+if not os.path.exists(ruta):
+    st.stop()
+
+datos   = cargar_excel(ruta)
+df      = construir_df(datos)
+tabla   = calcular_tabla(df, "General")
+equipos = sorted(df["Equipo"].unique())
+metricas = sorted(df["Métrica"].unique())
+
+# DataFrame filtrado sólo con datos de fase Regular (para módulos que no deben ver playoffs)
+df_regular = df[df["Fase"] == "Regular"].copy()
 
 st.markdown("""
 <div class="hero-banner">
@@ -835,7 +896,7 @@ if nav == "Predicción de Partidos":
     idx_river = equipos.index("River Plate") if "River Plate" in equipos else 0
     c1, c2, c3 = st.columns([4, 4, 2])
     ea  = c1.selectbox("Equipo Local",     equipos, index=idx_river)
-    eb  = c2.selectbox("Equipo Visitante", equipos, index=min(1, len(equipos)-1))
+    eb  = c2.selectbox("Equipo Visitante", equipos, index=min(1, len(equipos) - 1))
     loc = c3.selectbox("Ajuste Localía",   ["Aplicar Ventaja", "Terreno Neutral"]) == "Aplicar Ventaja"
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -893,9 +954,9 @@ elif nav == "Métricas Globales":
 elif nav == "Comparativa H2H":
     st.markdown('<div class="section-header">Head-to-Head (H2H)</div>', unsafe_allow_html=True)
     c1, c2 = st.columns(2)
-    ea = c1.selectbox("Escuadra A", equipos)
+    ea     = c1.selectbox("Escuadra A", equipos)
     cond_a = c1.selectbox(f"Condición de {ea}", ["General", "Local", "Visitante"])
-    eb = c2.selectbox("Escuadra B", equipos, index=min(1, len(equipos)-1))
+    eb     = c2.selectbox("Escuadra B", equipos, index=min(1, len(equipos) - 1))
     cond_b = c2.selectbox(f"Condición de {eb}", ["General", "Local", "Visitante"])
     t1, t2 = st.tabs(["Comparativa Visual (Radar)", "Métricas Crudas"])
     with t1:
@@ -905,13 +966,13 @@ elif nav == "Comparativa H2H":
         if cond_a != "General": df_a = df_a[df_a["Condicion"] == cond_a]
         df_b = df[df["Equipo"] == eb]
         if cond_b != "General": df_b = df_b[df_b["Condicion"] == cond_b]
-        s1 = df_a.groupby("Métrica")[["Propio","Concedido"]].mean().round(2)
-        s2 = df_b.groupby("Métrica")[["Propio","Concedido"]].mean().round(2)
+        s1 = df_a.groupby("Métrica")[["Propio", "Concedido"]].mean().round(2)
+        s2 = df_b.groupby("Métrica")[["Propio", "Concedido"]].mean().round(2)
         h2h_df = pd.DataFrame({
-            f"{ea} ({cond_a[:3]}) Favor": s1["Propio"],
+            f"{ea} ({cond_a[:3]}) Favor":  s1["Propio"],
             f"{ea} ({cond_a[:3]}) Contra": s1["Concedido"],
-            f"{eb} ({cond_b[:3]}) Favor": s2["Propio"],
-            f"{eb} ({cond_b[:3]}) Contra": s2["Concedido"]
+            f"{eb} ({cond_b[:3]}) Favor":  s2["Propio"],
+            f"{eb} ({cond_b[:3]}) Contra": s2["Concedido"],
         }).dropna()
         st.dataframe(h2h_df, use_container_width=True)
 
@@ -930,12 +991,13 @@ elif nav == "Análisis de Rival":
 
 # ──────────────────────────────────────────────────────────────────────
 elif nav == "Análisis de Estilos":
+    # FIX: usar df_regular para que los playoffs no distorsionen la matriz de estilos
     st.markdown('<div class="section-header">Matriz de Estilos de Juego</div>', unsafe_allow_html=True)
-    mo = "Goles esperados (xG)" if "Goles esperados (xG)" in metricas else "Tiros totales"
-    if "Posesión de balón" in metricas:
+    mo = "Goles esperados (xG)" if "Goles esperados (xG)" in df_regular["Métrica"].values else "Tiros totales"
+    if "Posesión de balón" in df_regular["Métrica"].values:
         df_e = pd.DataFrame({
-            "P": df[df["Métrica"] == "Posesión de balón"].groupby("Equipo")["Propio"].mean(),
-            "O": df[df["Métrica"] == mo].groupby("Equipo")["Propio"].mean(),
+            "P": df_regular[df_regular["Métrica"] == "Posesión de balón"].groupby("Equipo")["Propio"].mean(),
+            "O": df_regular[df_regular["Métrica"] == mo].groupby("Equipo")["Propio"].mean(),
         }).dropna()
         mp, mo_m = df_e["P"].mean(), df_e["O"].mean()
         fig = go.Figure(go.Scatter(
@@ -962,8 +1024,8 @@ elif nav == "Posiciones":
     vista_tabla = st.selectbox("Escenario de Tabla", ["General", "Local", "Visitante"])
     t_dinamica  = calcular_tabla(df, vista_tabla)
     if not t_dinamica.empty:
-        t_show = t_dinamica.reset_index()[["Pos","Equipo","PJ","V","E","D","GF","GC","PTS","EFEC%"]].copy()
-        t_show.columns = ["#","Equipo","PJ","V","E","D","GF","GC","PTS","Efectividad %"]
+        t_show = t_dinamica.reset_index()[["Pos", "Equipo", "PJ", "V", "E", "D", "GF", "GC", "PTS", "EFEC%"]].copy()
+        t_show.columns = ["#", "Equipo", "PJ", "V", "E", "D", "GF", "GC", "PTS", "Efectividad %"]
         t_show["GF"] = t_show["GF"].astype(int)
         t_show["GC"] = t_show["GC"].astype(int)
         t_show["Efectividad %"] = t_show["Efectividad %"].round(1)
@@ -978,17 +1040,15 @@ elif nav == "Cazador de Value Bets":
 
     st.markdown('<div class="section-header">Cazador de Value Bets</div>', unsafe_allow_html=True)
 
-    # ── Selección del partido ──────────────────────────────────────────
     c1, c2, c3 = st.columns([4, 4, 2])
     ea_vb  = c1.selectbox("Equipo Local",     equipos, key="vb_ea")
     eb_vb  = c2.selectbox("Equipo Visitante", equipos,
-                           index=min(1, len(equipos)-1), key="vb_eb")
+                           index=min(1, len(equipos) - 1), key="vb_eb")
     loc_vb = c3.selectbox("Localía", ["Aplicar Ventaja", "Terreno Neutral"],
                            key="vb_loc") == "Aplicar Ventaja"
 
     st.markdown("---")
 
-    # ── Fuente de cuotas ──────────────────────────────────────────────
     fuente = st.radio("Fuente de Cuotas",
                       ["Ingresar Manualmente", "Subir CSV (cuotas_fecha.csv)"],
                       horizontal=True, key="vb_fuente")
@@ -1022,7 +1082,7 @@ elif nav == "Cazador de Value Bets":
 
         cuotas_validas = (cuota_1 > 1.0 and cuota_x > 1.0 and cuota_2 > 1.0)
 
-    else:  # CSV
+    else:
         st.markdown("""
         **Formato del CSV esperado** — dos columnas: `mercado` y `cuota`:
         ```
@@ -1043,13 +1103,13 @@ elif nav == "Cazador de Value Bets":
         csv_file = st.file_uploader("Subir cuotas_fecha.csv", type=["csv"])
         if csv_file:
             try:
-                df_csv = pd.read_csv(csv_file)
+                df_csv  = pd.read_csv(csv_file)
                 mapping = df_csv.set_index(df_csv.columns[0])[df_csv.columns[1]].to_dict()
-                cuota_1 = float(mapping.get("1",   mapping.get("local",    0.0)))
-                cuota_x = float(mapping.get("X",   mapping.get("empate",   0.0)))
-                cuota_2 = float(mapping.get("2",   mapping.get("visitante",0.0)))
-                for clave in ["over25","under25","btts_yes","btts_no",
-                               "over85","under85","over95","under95"]:
+                cuota_1 = float(mapping.get("1", mapping.get("local",     0.0)))
+                cuota_x = float(mapping.get("X", mapping.get("empate",    0.0)))
+                cuota_2 = float(mapping.get("2", mapping.get("visitante", 0.0)))
+                for clave in ["over25", "under25", "btts_yes", "btts_no",
+                               "over85", "under85", "over95",  "under95"]:
                     cuotas_extra[clave] = float(mapping.get(clave, 0.0))
                 cuotas_validas = (cuota_1 > 1.0 and cuota_x > 1.0 and cuota_2 > 1.0)
                 if cuotas_validas:
@@ -1064,7 +1124,6 @@ elif nav == "Cazador de Value Bets":
             st.error("Ingresá cuotas válidas (> 1.00) para los tres resultados (1, X, 2).")
             st.stop()
 
-        # ── Calcular modelo base ───────────────────────────────────────
         la_vb, lb_vb = calcular_lambdas(df, ea_vb, eb_vb, loc_vb, tabla)
         sim_vb       = montecarlo(la_vb, lb_vb)
         M_vb         = sim_vb["matrix"]
@@ -1073,11 +1132,9 @@ elif nav == "Cazador de Value Bets":
         prob_x_vb = sim_vb["empate"]
         prob_2_vb = sim_vb["derrota"]
 
-        # ── Mercados derivados de goles ────────────────────────────────
         mercados_goles = calcular_mercados_matriz(M_vb)
 
-        # ── Motor de Córners ───────────────────────────────────────────
-        lc_a, lc_b = calcular_lambdas_corners(df, ea_vb, eb_vb, loc_vb, tabla)
+        lc_a, lc_b  = calcular_lambdas_corners(df, ea_vb, eb_vb, loc_vb, tabla)
         corner_data = prob_corners_mercados(lc_a, lc_b)
         mercados_todos = {
             **mercados_goles,
@@ -1087,7 +1144,6 @@ elif nav == "Cazador de Value Bets":
             "under95": corner_data["under95"],
         }
 
-        # ── Análisis completo ──────────────────────────────────────────
         analisis   = analizar_mercado_completo(
             prob_1_vb, prob_x_vb, prob_2_vb,
             cuota_1, cuota_x, cuota_2,
@@ -1096,7 +1152,6 @@ elif nav == "Cazador de Value Bets":
         value_bets = [r for r in analisis if r["Value Bet"]]
         n_value    = len(value_bets)
 
-        # ── Banner de resumen ──────────────────────────────────────────
         if n_value > 0:
             st.markdown(f"""
             <div class="vb-alert found">
@@ -1124,7 +1179,6 @@ elif nav == "Cazador de Value Bets":
                 </div>
             </div>""", unsafe_allow_html=True)
 
-        # ── Helper de renderizado de cards ─────────────────────────────
         def render_cards(items):
             cards_html = '<div class="vb-grid">'
             for r in items:
@@ -1172,7 +1226,6 @@ elif nav == "Cazador de Value Bets":
             cards_html += "</div>"
             st.markdown(cards_html, unsafe_allow_html=True)
 
-        # ── Tabs por categoría ─────────────────────────────────────────
         tab_labels = ["📋 Todos", "🏆 1X2", "⚽ Goles", "🔄 BTTS", "📐 Córners"]
         tabs_ui    = st.tabs(tab_labels)
 
@@ -1182,7 +1235,6 @@ elif nav == "Cazador de Value Bets":
                 items = analisis if cat is None else [r for r in analisis if r["Categoria"] == cat]
                 render_cards(items)
 
-        # ── Panel de detalle de Córners ────────────────────────────────
         st.markdown('<div class="section-header">Motor de Córners — Detalle</div>',
                     unsafe_allow_html=True)
         st.markdown(f"""
@@ -1214,7 +1266,6 @@ elif nav == "Cazador de Value Bets":
             </div>
         </div>""", unsafe_allow_html=True)
 
-        # ── Tabla exportable ───────────────────────────────────────────
         with st.expander("📥 Tabla Resumen Completa (exportable)"):
             df_out = pd.DataFrame(analisis).copy()
             df_out["Prob Modelo"] = (df_out["Prob Modelo"] * 100).round(2).astype(str) + "%"
@@ -1227,7 +1278,6 @@ elif nav == "Cazador de Value Bets":
                 use_container_width=True, hide_index=True
             )
 
-        # ── Lambdas debug ──────────────────────────────────────────────
         with st.expander("⚙ Parámetros del Motor (debug)"):
             pa_a, pd_a = _get_prior(tabla, ea_vb)
             pa_b, pd_b = _get_prior(tabla, eb_vb)
