@@ -576,6 +576,7 @@ def calcular_mercados_matriz(M: np.ndarray) -> dict:
         "btts_no":  round(btts_no,  4),
     }
 
+
 def calcular_lambdas_corners(df: pd.DataFrame, eq_a: str, eq_b: str,
                               es_loc: bool, tabla: pd.DataFrame) -> tuple:
     LAM_C_MIN, LAM_C_MAX = 1.0, 15.0
@@ -667,15 +668,18 @@ def prob_corners_mercados(lc_a: float, lc_b: float) -> dict:
         "under95":  round(under95, 4),
     }
 
+
 def calcular_ev(prob_modelo: float, cuota_casa: float) -> float:
     if cuota_casa <= 1.0 or prob_modelo <= 0.0:
         return -999.0
     return round((prob_modelo * cuota_casa) - 1.0, 4)
 
+
 def cuota_justa(prob: float) -> float:
     if prob <= 0.0:
         return 999.0
     return round(1.0 / prob, 3)
+
 
 def analizar_mercado_completo(prob_1, prob_x, prob_2,
                                cuota_1, cuota_x, cuota_2,
@@ -747,6 +751,7 @@ def analizar_mercado_completo(prob_1, prob_x, prob_2,
         })
 
     return resultados
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  FIN DE NUEVAS FUNCIONES MATEMÁTICAS
@@ -964,6 +969,7 @@ elif nav == "Posiciones":
         t_show["Efectividad %"] = t_show["Efectividad %"].round(1)
         st.dataframe(t_show.style.format({"Efectividad %": "{:.1f}%"}),
                      use_container_width=True, hide_index=True)
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  ★ MÓDULO: CAZADOR DE VALUE BETS ★
