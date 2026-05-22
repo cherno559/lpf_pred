@@ -310,7 +310,8 @@ def cargar_excel(ruta: str):
     xl = pd.ExcelFile(ruta, engine="openpyxl")
     res = {}
     for hoja in xl.sheet_names:
-        if not re.search(r"fecha\s*\d+|octavos", hoja, re.IGNORECASE):
+        # Detectamos explícitamente fases de playoff además de "fecha X"
+        if not re.search(r"fecha\s*\d+|octavo|cuarto|semi|final|playoff", hoja, re.IGNORECASE):
             continue
         df = pd.read_excel(ruta, sheet_name=hoja, header=None)
         partidos, i = [], 0
@@ -353,19 +354,20 @@ def cargar_excel(ruta: str):
 
 def construir_df(datos: dict) -> pd.DataFrame:
     filas = []
-    max_fecha_reg = 0
-    for f in datos.keys():
-        m = re.search(r"\d+", f)
-        if m:
-            max_fecha_reg = max(max_fecha_reg, int(m.group()))
+    # Hardcodeamos el tope de la fase regular según tu indicación
+    MAX_FECHAS_REGULARES = 16 
 
     for fecha, partidos in datos.items():
         match_fecha = re.search(r"\d+", fecha)
-        if match_fecha:
-            nf   = int(match_fecha.group())
-            fase = "Regular"
+        es_playoff_txt = re.search(r"(octavo|cuarto|semi|final|playoff)", fecha, re.IGNORECASE)
+        
+        # Clasificamos como Regular SÓLO si el n° es <= 16 y NO dice explícitamente "octavos", etc.
+        if match_fecha and not es_playoff_txt:
+            nf = int(match_fecha.group())
+            fase = "Regular" if nf <= MAX_FECHAS_REGULARES else "Playoff"
         else:
-            nf   = max_fecha_reg + 1
+            # Asignamos la fecha si la tiene (ej. "Fecha 17"), o un 17 por defecto para mantener orden
+            nf = int(match_fecha.group()) if match_fecha else (MAX_FECHAS_REGULARES + 1)
             fase = "Playoff"
 
         for p in partidos:
@@ -384,6 +386,7 @@ def construir_df(datos: dict) -> pd.DataFrame:
 @st.cache_data(ttl=120, show_spinner=False)
 def calcular_tabla(df: pd.DataFrame, condicion: str = "General") -> pd.DataFrame:
     dr = df[df["Métrica"] == "Resultado"].copy()
+    # Este filtro ahora sí garantiza tope de 16 PJ porque construir_df lo encapsula
     if "Fase" in dr.columns:
         dr = dr[dr["Fase"] == "Regular"]
     if condicion != "General":
@@ -413,6 +416,7 @@ def calcular_tabla(df: pd.DataFrame, condicion: str = "General") -> pd.DataFrame
     tabla["Pos"] = tabla.index + 1
     ppj_mean = tabla["PPJ"].mean()
     tabla["PPJ_norm"]  = tabla["PPJ"] / ppj_mean if ppj_mean > 0 else 1.0
+    # Protegemos contra equipos con 0 PJ si se consulta algo vacío
     tabla["prior_atk"] = (1.0 + (tabla["PPJ_norm"] - 1.0) * PRIOR_ATK_SCALE).clip(0.4, 2.5)
     tabla["prior_def"] = (1.0 - (tabla["PPJ_norm"] - 1.0) * PRIOR_DEF_SCALE).clip(0.4, 2.5)
     return tabla.set_index("Equipo")
@@ -551,14 +555,6 @@ def _safe_mean(df, equipo, metrica, col="Propio", condicion=None):
 def calcular_adn_tactico(df: pd.DataFrame) -> pd.DataFrame:
     """
     Calcula métricas tácticas por equipo y asigna etiquetas de perfil.
-
-    Dimensiones analizadas:
-      · Pressing:        Posesión cedida vs Tiros concedidos
-      · Transición:      xG_Estimado concedido vs Posesión propia (equipos que
-                         conceden mucho sin posesión baja = juegan en transición)
-      · Volumen ofensivo: Tiros totales propios
-      · Control:         Posesión propia
-      · Eficiencia:      xG / tiro
     """
     equipos = sorted(df["Equipo"].unique())
     rows = []
@@ -621,9 +617,6 @@ def calcular_adn_tactico(df: pd.DataFrame) -> pd.DataFrame:
         xgc_p  = pct_xgc.get(eq,  0.5)
         ef_p   = pct_efic.get(eq,  0.5)
 
-        pos_val = adn.loc[eq, "Posesion"]
-        xgc_val = adn.loc[eq, "xGConc"]
-
         # Posesión
         if pos_p >= 0.70:
             tags.append(("POSESIÓN DOMINANTE", "tag-posesion"))
@@ -641,7 +634,6 @@ def calcular_adn_tactico(df: pd.DataFrame) -> pd.DataFrame:
             frases.append("Defiende replegado, concede muchos intentos al rival.")
 
         # Transiciones / contraataque
-        # Equipos con poca posesión pero alta amenaza ofensiva = transición
         if pos_p <= 0.40 and tp_p >= 0.55:
             tags.append(("CONTRA / TRANSICIÓN", "tag-contra"))
             frases.append("Peligroso en transición: genera volumen ofensivo con poca pelota.")
@@ -1137,9 +1129,6 @@ elif nav == "Análisis de Rival":
 elif nav == "Análisis de Estilos":
     st.markdown('<div class="section-header">Matriz de Estilos de Juego</div>', unsafe_allow_html=True)
     
-    # [MODIFICADO]: Cambiamos df_regular por df (data completa) para incluir playoffs.
-    # Al usar df y aplicar .mean(), todos los equipos aparecen en el gráfico; 
-    # pero quienes jugaron playoffs sumarán esos partidos extra a su promedio.
     mo = "Goles esperados (xG)" if "Goles esperados (xG)" in df["Métrica"].values else "Tiros totales"
     if "Posesión de balón" in df["Métrica"].values:
         df_e = pd.DataFrame({
@@ -1173,8 +1162,6 @@ elif nav == "Análisis de Estilos":
 # ══════════════════════════════════════════════════════════════════════════════
 elif nav == "Posiciones":
     st.markdown('<div class="section-header">Clasificación por Efectividad</div>', unsafe_allow_html=True)
-    # El código subyacente calcular_tabla(df) ya filtra "dr = dr[dr["Fase"] == "Regular"]"
-    # asegurando que nadie tenga distorsionada su cantidad de partidos en la clasificación.
     vista_tabla = st.selectbox("Escenario de Tabla", ["General", "Local", "Visitante"])
     t_dinamica  = calcular_tabla(df, vista_tabla)
     if not t_dinamica.empty:
