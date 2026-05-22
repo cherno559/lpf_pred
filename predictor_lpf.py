@@ -354,20 +354,23 @@ def cargar_excel(ruta: str):
 
 def construir_df(datos: dict) -> pd.DataFrame:
     filas = []
-    # Hardcodeamos el tope de la fase regular según tu indicación
     MAX_FECHAS_REGULARES = 16 
+    
+    # Contador para asegurar que las hojas de playoffs sigan un orden cronológico en el gráfico (17, 18, 19...)
+    current_playoff_nf = MAX_FECHAS_REGULARES + 1
 
     for fecha, partidos in datos.items():
         match_fecha = re.search(r"\d+", fecha)
         es_playoff_txt = re.search(r"(octavo|cuarto|semi|final|playoff)", fecha, re.IGNORECASE)
         
-        # Clasificamos como Regular SÓLO si el n° es <= 16 y NO dice explícitamente "octavos", etc.
+        # Si tiene número y NO dice explícitamente "playoff/cuartos/etc", lo evaluamos
         if match_fecha and not es_playoff_txt:
             nf = int(match_fecha.group())
             fase = "Regular" if nf <= MAX_FECHAS_REGULARES else "Playoff"
         else:
-            # Asignamos la fecha si la tiene (ej. "Fecha 17"), o un 17 por defecto para mantener orden
-            nf = int(match_fecha.group()) if match_fecha else (MAX_FECHAS_REGULARES + 1)
+            # Es un playoff sin número en el nombre de la hoja (ej: "Octavos")
+            nf = current_playoff_nf
+            current_playoff_nf += 1  # Incrementamos para que la siguiente hoja de playoff sea la fecha 18
             fase = "Playoff"
 
         for p in partidos:
@@ -386,13 +389,17 @@ def construir_df(datos: dict) -> pd.DataFrame:
 @st.cache_data(ttl=120, show_spinner=False)
 def calcular_tabla(df: pd.DataFrame, condicion: str = "General") -> pd.DataFrame:
     dr = df[df["Métrica"] == "Resultado"].copy()
-    # Este filtro ahora sí garantiza tope de 16 PJ porque construir_df lo encapsula
+    
+    # === LA MAGIA PARA LA TABLA DE POSICIONES ===
+    # Filtra EXCLUSIVAMENTE los partidos marcados como "Regular"
     if "Fase" in dr.columns:
         dr = dr[dr["Fase"] == "Regular"]
+        
     if condicion != "General":
         dr = dr[dr["Condicion"] == condicion]
     if dr.empty:
         return pd.DataFrame()
+        
     equipos = sorted(df["Equipo"].unique())
     rows = []
     for eq in equipos:
@@ -416,7 +423,6 @@ def calcular_tabla(df: pd.DataFrame, condicion: str = "General") -> pd.DataFrame
     tabla["Pos"] = tabla.index + 1
     ppj_mean = tabla["PPJ"].mean()
     tabla["PPJ_norm"]  = tabla["PPJ"] / ppj_mean if ppj_mean > 0 else 1.0
-    # Protegemos contra equipos con 0 PJ si se consulta algo vacío
     tabla["prior_atk"] = (1.0 + (tabla["PPJ_norm"] - 1.0) * PRIOR_ATK_SCALE).clip(0.4, 2.5)
     tabla["prior_def"] = (1.0 - (tabla["PPJ_norm"] - 1.0) * PRIOR_DEF_SCALE).clip(0.4, 2.5)
     return tabla.set_index("Equipo")
@@ -553,9 +559,6 @@ def _safe_mean(df, equipo, metrica, col="Propio", condicion=None):
 
 
 def calcular_adn_tactico(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Calcula métricas tácticas por equipo y asigna etiquetas de perfil.
-    """
     equipos = sorted(df["Equipo"].unique())
     rows = []
 
@@ -590,7 +593,6 @@ def calcular_adn_tactico(df: pd.DataFrame) -> pd.DataFrame:
 
     adn = pd.DataFrame(rows).set_index("Equipo")
 
-    # ── Percentiles de liga para contextualizar ─────────────────────
     def pct(col):
         s = adn[col].dropna()
         if s.empty:
@@ -603,7 +605,6 @@ def calcular_adn_tactico(df: pd.DataFrame) -> pd.DataFrame:
     pct_xgc   = pct("xGConc")
     pct_efic  = pct("EficOfens")
 
-    # ── Etiquetado táctico ──────────────────────────────────────────
     tags_dict = {}
     insights  = {}
 
@@ -617,7 +618,6 @@ def calcular_adn_tactico(df: pd.DataFrame) -> pd.DataFrame:
         xgc_p  = pct_xgc.get(eq,  0.5)
         ef_p   = pct_efic.get(eq,  0.5)
 
-        # Posesión
         if pos_p >= 0.70:
             tags.append(("POSESIÓN DOMINANTE", "tag-posesion"))
             frases.append("Controla el juego con posesión elevada.")
@@ -625,7 +625,6 @@ def calcular_adn_tactico(df: pd.DataFrame) -> pd.DataFrame:
             tags.append(("JUEGO DIRECTO", "tag-directo"))
             frases.append("Cede la pelota y busca aprovechar los espacios.")
 
-        # Pressing / intensidad defensiva
         if tc_p <= 0.30 and pos_p <= 0.55:
             tags.append(("PRESSING ALTO", "tag-pressing"))
             frases.append("Asfixia al rival sin necesitar posesión: concede pocos tiros.")
@@ -633,12 +632,10 @@ def calcular_adn_tactico(df: pd.DataFrame) -> pd.DataFrame:
             tags.append(("BLOQUE BAJO", "tag-bloque"))
             frases.append("Defiende replegado, concede muchos intentos al rival.")
 
-        # Transiciones / contraataque
         if pos_p <= 0.40 and tp_p >= 0.55:
             tags.append(("CONTRA / TRANSICIÓN", "tag-contra"))
             frases.append("Peligroso en transición: genera volumen ofensivo con poca pelota.")
 
-        # Eficiencia ofensiva
         if ef_p >= 0.70:
             tags.append(("ALTA EFICIENCIA", "tag-posesion"))
             frases.append("Alta relación xG/tiro: genera ocasiones de calidad.")
@@ -646,7 +643,6 @@ def calcular_adn_tactico(df: pd.DataFrame) -> pd.DataFrame:
             tags.append(("VOLUMEN SIN PRECISIÓN", "tag-directo"))
             frases.append("Tira mucho pero con bajo xG por remate.")
 
-        # Vulnerabilidad defensiva
         if xgc_p >= 0.75:
             tags.append(("DÉFICIT DEFENSIVO", "tag-bloque"))
             frases.append("Concede mucho xG: línea defensiva con espacios.")
@@ -671,7 +667,6 @@ def render_tags_html(tags: list) -> str:
 
 
 def contexto_tactica_clash(adn: pd.DataFrame, eq_a: str, eq_b: str) -> str:
-    """Genera el bloque de contexto táctico para el predictor."""
     if adn is None or eq_a not in adn.index or eq_b not in adn.index:
         return ""
 
@@ -683,7 +678,6 @@ def contexto_tactica_clash(adn: pd.DataFrame, eq_a: str, eq_b: str) -> str:
     tags_a_txt = set(t for t, _ in tags_a)
     tags_b_txt = set(t for t, _ in tags_b)
 
-    # Generar insight del choque
     clash_lines = []
     if "PRESSING ALTO" in tags_a_txt and "JUEGO DIRECTO" in tags_b_txt:
         clash_lines.append("⚡ <b>Pressing vs Juego Directo</b>: el local intentará robar alto, el visitante buscará saltar líneas.")
@@ -727,10 +721,6 @@ def contexto_tactica_clash(adn: pd.DataFrame, eq_a: str, eq_b: str) -> str:
 # ══════════════════════════════════════════════════════════════════════════════
 
 def calcular_rachas(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Por equipo: calcula racha de resultados (últimas N fechas),
-    tendencia de xG (momentum ofensivo) y una puntuación de momentum.
-    """
     dr = df[df["Métrica"] == "Resultado"].copy()
     dx = df[df["Métrica"] == "xG_Estimado"].copy()
     equipos = sorted(dr["Equipo"].unique())
@@ -750,14 +740,10 @@ def calcular_rachas(df: pd.DataFrame) -> pd.DataFrame:
             else:
                 resultados.append("D")
 
-        # Últimas 6 fechas
         ultimas6 = resultados[-6:]
-
-        # Puntos últimas 6
         pts6 = sum(3 if r == "V" else (1 if r == "E" else 0) for r in ultimas6)
         pts3 = sum(3 if r == "V" else (1 if r == "E" else 0) for r in resultados[-3:])
 
-        # Tendencia xG ofensivo (últimas 3 vs anteriores 3)
         dxg = dx[dx["Equipo"] == eq].sort_values("nFecha")
         xg_vals = dxg["Propio"].values
         if len(xg_vals) >= 6:
@@ -773,7 +759,6 @@ def calcular_rachas(df: pd.DataFrame) -> pd.DataFrame:
             xg_ant   = xg_rec
             delta_xg = 0.0
 
-        # Score de momentum: combina pts recientes y xG
         momentum_score = pts3 / 9.0 * 0.6 + (min(max(delta_xg / 1.0, -1), 1) * 0.5 + 0.5) * 0.4
 
         if momentum_score >= 0.65:
@@ -812,7 +797,6 @@ def render_racha_dots(ultimas6: list) -> str:
 
 
 def fig_momentum_timeline(df: pd.DataFrame, equipo: str) -> go.Figure:
-    """Gráfico de puntos acumulados y xG por fecha para un equipo."""
     dr = df[(df["Equipo"] == equipo) & (df["Métrica"] == "Resultado")].sort_values("nFecha")
     dx = df[(df["Equipo"] == equipo) & (df["Métrica"] == "xG_Estimado")].sort_values("nFecha")
 
@@ -973,19 +957,18 @@ df       = construir_df(datos)
 tabla    = calcular_tabla(df, "General")
 equipos  = sorted(df["Equipo"].unique())
 metricas = sorted(df["Métrica"].unique())
-df_regular = df[df["Fase"] == "Regular"].copy()
 
-# Precalcular ADN y Rachas (se usan en varios módulos)
+# PRECALCULAR TODO CON EL DF COMPLETO (Incluye playoffs)
 @st.cache_data(ttl=120, show_spinner=False)
 def _cached_adn(df_hash):
     return calcular_adn_tactico(df)
 
 @st.cache_data(ttl=120, show_spinner=False)
 def _cached_rachas(df_hash):
-    return calcular_rachas(df_regular)
+    return calcular_rachas(df)
 
-adn_df    = calcular_adn_tactico(df_regular)
-rachas_df = calcular_rachas(df_regular)
+adn_df    = calcular_adn_tactico(df)
+rachas_df = calcular_rachas(df)
 
 # ── Hero Banner ──────────────────────────────────────────────────────
 st.markdown("""
@@ -1030,12 +1013,10 @@ if nav == "Predicción de Partidos":
         st.markdown('<div class="section-header">Marcadores Más Probables</div>', unsafe_allow_html=True)
         st.markdown(top3_marcadores(sim["matrix"], ea, eb), unsafe_allow_html=True)
 
-        # ── Contexto Táctico ────────────────────────────────────────
         ctx = contexto_tactica_clash(adn_df, ea, eb)
         if ctx:
             st.markdown(ctx, unsafe_allow_html=True)
 
-        # ── Momentum de ambos equipos ───────────────────────────────
         if not rachas_df.empty and ea in rachas_df.index and eb in rachas_df.index:
             st.markdown('<div class="section-header">Forma Reciente</div>', unsafe_allow_html=True)
             mc1, mc2 = st.columns(2)
@@ -1196,7 +1177,6 @@ elif nav == "ADN Táctico":
         if adn_df.empty:
             st.warning("No hay suficientes métricas para calcular el ADN táctico.")
         else:
-            # Ordenar por posesión para agrupar visualmente los estilos
             adn_sorted = adn_df.sort_values("Posesion", ascending=False, na_position="last")
             cards_html = ""
             for eq, row in adn_sorted.iterrows():
@@ -1240,7 +1220,6 @@ elif nav == "ADN Táctico":
         if eq_sel in adn_df.index:
             row = adn_df.loc[eq_sel]
 
-            # Tags
             tags_html = render_tags_html(row["Tags"]) if isinstance(row["Tags"], list) else ""
             st.markdown(f"""
             <div class="adn-card" style="margin-bottom:20px;">
@@ -1249,14 +1228,12 @@ elif nav == "ADN Táctico":
                 <div class="tactica-insight" style="margin-top:14px;">{row["Insight"]}</div>
             </div>""", unsafe_allow_html=True)
 
-            # Radar comparativo: equipo vs media de liga
             mets_adn = ["Posesion", "TirosProp", "xGProp", "xGConc", "EficOfens"]
             labels_adn = ["Posesión", "Tiros Prop.", "xG Generado", "xG Concedido", "Efic. Ofens."]
             liga_means = adn_df[mets_adn].mean()
             liga_stds  = adn_df[mets_adn].std().replace(0, 1)
 
             eq_vals  = [(row[m] - liga_means[m]) / liga_stds[m] if not np.isnan(row[m]) else 0.0 for m in mets_adn]
-            # Normalizar a [0,1] para el radar
             eq_norm  = [(v + 3) / 6 for v in eq_vals]
             lig_norm = [0.5] * len(mets_adn)
 
@@ -1314,7 +1291,6 @@ elif nav == "Rachas y Momentum":
         st.markdown('<div class="section-header">Racha de Todos los Equipos</div>',
                     unsafe_allow_html=True)
 
-        # Cards de racha en grid
         rachas_sorted = rachas_df.sort_values("MomentumScore", ascending=False)
         cards_html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;margin-top:10px;">'
         for eq, row in rachas_sorted.iterrows():
@@ -1384,7 +1360,8 @@ elif nav == "Rachas y Momentum":
             </div>""", unsafe_allow_html=True)
 
             st.markdown('<div class="section-header">Evolución Temporal</div>', unsafe_allow_html=True)
-            st.plotly_chart(fig_momentum_timeline(df_regular, eq_m), use_container_width=True)
+            # Acá también cambiamos df_regular por df para ver la línea de tiempo completa
+            st.plotly_chart(fig_momentum_timeline(df, eq_m), use_container_width=True)
             st.caption("Barras = puntos obtenidos por fecha. Línea blanca = xG generado. Rojo = victoria · Gris = empate · Oscuro = derrota.")
         else:
             st.info("Seleccioná un equipo para ver el detalle.")
