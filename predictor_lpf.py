@@ -8,8 +8,8 @@ Módulos:
   · Análisis de Rival
   · Análisis de Estilos
   · Posiciones
-  · ADN Táctico             ★ NUEVO
-  · Rachas y Momentum       ★ NUEVO
+  · ADN Táctico            ★ NUEVO
+  · Rachas y Momentum      ★ NUEVO
 """
 import re, os, math
 import numpy as np
@@ -1136,11 +1136,15 @@ elif nav == "Análisis de Rival":
 # ══════════════════════════════════════════════════════════════════════════════
 elif nav == "Análisis de Estilos":
     st.markdown('<div class="section-header">Matriz de Estilos de Juego</div>', unsafe_allow_html=True)
-    mo = "Goles esperados (xG)" if "Goles esperados (xG)" in df_regular["Métrica"].values else "Tiros totales"
-    if "Posesión de balón" in df_regular["Métrica"].values:
+    
+    # [MODIFICADO]: Cambiamos df_regular por df (data completa) para incluir playoffs.
+    # Al usar df y aplicar .mean(), todos los equipos aparecen en el gráfico; 
+    # pero quienes jugaron playoffs sumarán esos partidos extra a su promedio.
+    mo = "Goles esperados (xG)" if "Goles esperados (xG)" in df["Métrica"].values else "Tiros totales"
+    if "Posesión de balón" in df["Métrica"].values:
         df_e = pd.DataFrame({
-            "P": df_regular[df_regular["Métrica"] == "Posesión de balón"].groupby("Equipo")["Propio"].mean(),
-            "O": df_regular[df_regular["Métrica"] == mo].groupby("Equipo")["Propio"].mean(),
+            "P": df[df["Métrica"] == "Posesión de balón"].groupby("Equipo")["Propio"].mean(),
+            "O": df[df["Métrica"] == mo].groupby("Equipo")["Propio"].mean(),
         }).dropna()
         mp, mo_m = df_e["P"].mean(), df_e["O"].mean()
         fig = go.Figure(go.Scatter(
@@ -1169,6 +1173,8 @@ elif nav == "Análisis de Estilos":
 # ══════════════════════════════════════════════════════════════════════════════
 elif nav == "Posiciones":
     st.markdown('<div class="section-header">Clasificación por Efectividad</div>', unsafe_allow_html=True)
+    # El código subyacente calcular_tabla(df) ya filtra "dr = dr[dr["Fase"] == "Regular"]"
+    # asegurando que nadie tenga distorsionada su cantidad de partidos en la clasificación.
     vista_tabla = st.selectbox("Escenario de Tabla", ["General", "Local", "Visitante"])
     t_dinamica  = calcular_tabla(df, vista_tabla)
     if not t_dinamica.empty:
