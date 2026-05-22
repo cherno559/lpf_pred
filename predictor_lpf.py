@@ -1,17 +1,31 @@
 """
-Plataforma de Scouting LPF 2026 — CON MÓDULO CAZADOR DE VALUE BETS
+Plataforma de Scouting LPF 2026
 ─────────────────────────────────────────────────────────────────────────────
+Módulos:
+  · Predicción de Partidos  (con contexto táctico)
+  · Métricas Globales
+  · Comparativa H2H
+  · Análisis de Rival
+  · Análisis de Estilos
+  · Posiciones
+  · ADN Táctico             ★ NUEVO
+  · Rachas y Momentum       ★ NUEVO
 """
 import re, os, math
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
+import plotly.express as px
 import streamlit as st
 
 # ──────────────────────────────────────────────────────────────────────
-# CONFIGURACIÓN Y ESTILOS PROFESIONALES (CUSTOM UI)
+# CONFIGURACIÓN Y ESTILOS
 # ──────────────────────────────────────────────────────────────────────
-st.set_page_config(page_title="LPF Analytics | Scouting", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(
+    page_title="LPF Analytics | Scouting",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
 st.markdown("""
 <style>
@@ -23,7 +37,7 @@ html, body, [class*="css"] {
     color: #e0e0e0;
 }
 .stApp { background-color: #0a0a0c; }
-#MainMenu, footer,{visibility: hidden;}
+#MainMenu, footer { visibility: hidden; }
 
 .hero-banner {
     background: linear-gradient(to right, rgba(10,10,12,1) 0%, rgba(10,10,12,0.4) 50%, rgba(10,10,12,1) 100%),
@@ -74,53 +88,23 @@ html, body, [class*="css"] {
 .team-block { flex: 1; text-align: center; }
 .team-block.home { border-right: 1px solid #2a2a30; }
 .team-block.away { border-left: 1px solid #2a2a30; }
-.t-name {
-    font-family: 'Bebas Neue', sans-serif;
-    font-size: 2.2rem;
-    color: #ffffff;
-    letter-spacing: 1px;
-    margin-bottom: 5px;
-}
+.t-name { font-family: 'Bebas Neue', sans-serif; font-size: 2.2rem; color: #ffffff; letter-spacing: 1px; margin-bottom: 5px; }
 .t-prob { font-size: 3.5rem; font-weight: 800; color: #ED1A3B; line-height: 1; }
 .t-label { font-size: 0.8rem; color: #888890; text-transform: uppercase; letter-spacing: 2px; margin-top: 5px; }
 .draw-block { flex: 0.8; text-align: center; }
 .draw-prob { font-size: 2.2rem; font-weight: 800; color: #888890; }
 
-/* TOP 3 marcadores */
-.top3-container {
-    display: flex;
-    gap: 12px;
-    margin-top: 14px;
-}
+.top3-container { display: flex; gap: 12px; margin-top: 14px; }
 .score-card {
-    flex: 1;
-    background: #141417;
-    border: 1px solid #2a2a30;
-    border-radius: 8px;
-    padding: 18px 12px;
-    text-align: center;
+    flex: 1; background: #141417; border: 1px solid #2a2a30;
+    border-radius: 8px; padding: 18px 12px; text-align: center;
 }
 .score-card.first { border-color: #ED1A3B; }
-.score-rank {
-    font-size: 0.7rem;
-    color: #888890;
-    text-transform: uppercase;
-    letter-spacing: 2px;
-    margin-bottom: 6px;
-}
+.score-rank { font-size: 0.7rem; color: #888890; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 6px; }
 .score-card.first .score-rank { color: #ED1A3B; }
-.score-result {
-    font-family: 'Bebas Neue', sans-serif;
-    font-size: 2.4rem;
-    color: #ffffff;
-    line-height: 1;
-}
+.score-result { font-family: 'Bebas Neue', sans-serif; font-size: 2.4rem; color: #ffffff; line-height: 1; }
 .score-card.first .score-result { color: #ED1A3B; font-size: 2.8rem; }
-.score-pct {
-    font-size: 0.85rem;
-    color: #888890;
-    margin-top: 4px;
-}
+.score-pct { font-size: 0.85rem; color: #888890; margin-top: 4px; }
 .score-card.first .score-pct { color: #ffffff; font-weight: 600; }
 
 .stButton>button {
@@ -160,170 +144,127 @@ html, body, [class*="css"] {
 .stTabs [data-baseweb="tab"] { font-family: 'Manrope', sans-serif !important; background: #141417 !important; border: 1px solid #2a2a30 !important; border-radius: 4px !important; color: #888890 !important; }
 .stTabs [aria-selected="true"] { background: #ED1A3B !important; color: white !important; border-color: #ED1A3B !important; }
 
-/* ── Cazador de Value Bets ─────────────────────────────────────── */
-.vb-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
-    gap: 14px;
-    margin-top: 18px;
+/* ── ADN Táctico ─────────────────────────────────────────── */
+.tag-badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 800;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    margin: 3px 4px;
 }
-.vb-card {
+.tag-pressing   { background: #2d1a1e; color: #ED1A3B; border: 1px solid #ED1A3B; }
+.tag-bloque     { background: #1a1d2d; color: #6b8cff; border: 1px solid #6b8cff; }
+.tag-posesion   { background: #1d2a1a; color: #5ecf6b; border: 1px solid #5ecf6b; }
+.tag-directo    { background: #2a2a1a; color: #cfb45e; border: 1px solid #cfb45e; }
+.tag-neutral    { background: #1e1e24; color: #888890; border: 1px solid #2a2a35; }
+.tag-contra     { background: #2a1a2a; color: #cf5ead; border: 1px solid #cf5ead; }
+
+.adn-card {
     background: #111115;
     border: 1px solid #2a2a35;
     border-radius: 10px;
-    padding: 20px 22px 16px;
-    position: relative;
-    transition: transform 0.2s, box-shadow 0.2s;
+    padding: 20px 24px;
+    margin-bottom: 12px;
+    transition: box-shadow 0.2s;
 }
-.vb-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
-}
-.vb-card.value {
-    border-color: #ED1A3B;
-    background: linear-gradient(135deg, #1a0a0d 0%, #111115 60%);
-    box-shadow: 0 0 20px rgba(237, 26, 59, 0.15);
-}
-.vb-badge {
-    position: absolute;
-    top: 14px;
-    right: 14px;
-    font-size: 0.62rem;
-    font-weight: 800;
-    letter-spacing: 2px;
-    padding: 3px 8px;
-    border-radius: 3px;
-    text-transform: uppercase;
-}
-.vb-badge.value { background: #ED1A3B; color: #fff; }
-.vb-badge.neutral { background: #2a2a35; color: #888890; }
-.vb-cat {
-    font-size: 0.68rem;
-    letter-spacing: 3px;
-    text-transform: uppercase;
-    color: #555560;
-    margin-bottom: 4px;
-}
-.vb-name {
+.adn-card:hover { box-shadow: 0 6px 20px rgba(0,0,0,0.4); }
+.adn-team-name {
     font-family: 'Bebas Neue', sans-serif;
-    font-size: 1.55rem;
-    color: #e8e8e8;
+    font-size: 1.6rem;
+    color: #ffffff;
     letter-spacing: 1px;
-    line-height: 1.1;
-    margin-bottom: 14px;
+    margin-bottom: 10px;
 }
-.vb-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-end;
-    gap: 8px;
-}
-.vb-col { flex: 1; text-align: center; }
-.vb-col-label {
-    font-size: 0.65rem;
-    text-transform: uppercase;
-    letter-spacing: 1.5px;
-    color: #55555f;
-    margin-bottom: 4px;
-}
-.vb-col-value {
-    font-size: 1.25rem;
-    font-weight: 800;
-    color: #c0c0c8;
-    line-height: 1;
-}
-.vb-col-value.justa { color: #888890; font-size: 1.1rem; font-weight: 600; }
-.vb-col-value.casa  { color: #e0e0e0; }
-.vb-col-value.ev-pos { color: #3ecf6b; font-size: 1.45rem; }
-.vb-col-value.ev-neg { color: #555560; font-size: 1.1rem; font-weight: 600; }
-.vb-divider {
-    width: 1px;
-    height: 36px;
-    background: #2a2a35;
-    align-self: center;
-}
-.vb-prob-bar-wrap {
-    margin-top: 14px;
-    height: 4px;
-    background: #1e1e24;
-    border-radius: 2px;
-    overflow: hidden;
-}
-.vb-prob-bar {
-    height: 100%;
-    border-radius: 2px;
-    background: #ED1A3B;
-    transition: width 0.5s ease;
-}
-.vb-prob-bar.neutral-bar { background: #3a3a44; }
-.vb-alert {
-    border-radius: 8px;
-    padding: 16px 22px;
-    margin-bottom: 20px;
-    border-left: 4px solid;
-    display: flex;
-    align-items: center;
-    gap: 16px;
-}
-.vb-alert.found { border-color: #ED1A3B; background: rgba(237,26,59,0.08); }
-.vb-alert.none  { border-color: #2a2a35; background: #111115; }
-.vb-alert-icon { font-size: 1.8rem; }
-.vb-alert-text { flex: 1; }
-.vb-alert-title {
-    font-family: 'Bebas Neue', sans-serif;
-    font-size: 1.3rem;
-    letter-spacing: 1.5px;
-    color: #fff;
-    line-height: 1;
-}
-.vb-alert-sub { font-size: 0.8rem; color: #888890; margin-top: 3px; }
-.corner-summary {
-    background: #111115;
-    border: 1px solid #2a2a35;
-    border-radius: 10px;
-    padding: 22px 28px;
-    display: flex;
-    align-items: center;
-    gap: 30px;
-    margin-bottom: 20px;
-}
-.corner-team { flex: 1; text-align: center; }
-.corner-team-name {
+.adn-perfil {
     font-size: 0.72rem;
     text-transform: uppercase;
     letter-spacing: 2px;
     color: #555560;
-    margin-bottom: 4px;
+    margin-bottom: 6px;
 }
-.corner-lambda {
+
+/* ── Rachas ──────────────────────────────────────────────── */
+.racha-dot {
+    display: inline-block;
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    text-align: center;
+    line-height: 28px;
+    font-size: 0.75rem;
+    font-weight: 800;
+    margin: 2px;
+}
+.racha-v { background: #ED1A3B; color: #fff; }
+.racha-e { background: #2a2a35; color: #888890; }
+.racha-d { background: #141417; color: #555560; border: 1px solid #2a2a35; }
+
+.momentum-card {
+    background: #111115;
+    border: 1px solid #2a2a35;
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin-bottom: 10px;
+}
+.momentum-team {
     font-family: 'Bebas Neue', sans-serif;
-    font-size: 3rem;
-    color: #ED1A3B;
-    line-height: 1;
+    font-size: 1.4rem;
+    color: #fff;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
 }
-.corner-sep {
-    font-family: 'Bebas Neue', sans-serif;
-    font-size: 1.5rem;
-    color: #2a2a35;
-}
-.corner-total { text-align: center; }
-.corner-total-label {
+.momentum-label {
     font-size: 0.68rem;
     text-transform: uppercase;
     letter-spacing: 2px;
     color: #555560;
     margin-bottom: 4px;
 }
-.corner-total-val {
+.momentum-alza  { color: #5ecf6b; font-weight: 800; font-size: 0.9rem; }
+.momentum-caida { color: #ED1A3B; font-weight: 800; font-size: 0.9rem; }
+.momentum-estable { color: #888890; font-weight: 800; font-size: 0.9rem; }
+
+/* ── Contexto táctico (predictor) ──────────────────────── */
+.tactica-clash {
+    background: #111115;
+    border: 1px solid #2a2a35;
+    border-radius: 10px;
+    padding: 24px 28px;
+    margin-top: 20px;
+}
+.tactica-title {
     font-family: 'Bebas Neue', sans-serif;
-    font-size: 2rem;
-    color: #ffffff;
-    line-height: 1;
+    font-size: 1.4rem;
+    color: #ED1A3B;
+    letter-spacing: 1.5px;
+    margin-bottom: 16px;
+}
+.tactica-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 20px;
+    margin-bottom: 14px;
+}
+.tactica-team-col { flex: 1; }
+.tactica-vs-col { color: #2a2a35; font-family: 'Bebas Neue', sans-serif; font-size: 1.2rem; padding-top: 4px; }
+.tactica-insight {
+    background: #0f0f12;
+    border-left: 3px solid #ED1A3B;
+    border-radius: 0 6px 6px 0;
+    padding: 10px 14px;
+    margin-top: 10px;
+    font-size: 0.82rem;
+    color: #a0a0a8;
+    line-height: 1.5;
 }
 </style>
 """, unsafe_allow_html=True)
 
-# ── Parámetros de Motor ───────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────
+# PARÁMETROS DEL MOTOR
+# ──────────────────────────────────────────────────────────────────────
 W_XG = 0.60
 K_SHRINK = 6.0
 K_PRIOR  = 5.0
@@ -334,27 +275,21 @@ MAX_GOALS_MATRIX = 7
 N_RECENCIA, PESO_RECIENTE, PESO_NORMAL = 3, 1.8, 1.0
 LAM_MIN, LAM_MAX = 0.30, 5.00
 
-RED, BLUE, GRAY = "#ED1A3B", "#ffffff", "#4a4a52"
-PLOT = dict(font=dict(family="Manrope", size=12, color="#a0a0a8"),
-            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-            margin=dict(l=10, r=20, t=36, b=10))
+RED, WHITE, GRAY = "#ED1A3B", "#ffffff", "#4a4a52"
+PLOT = dict(
+    font=dict(family="Manrope", size=12, color="#a0a0a8"),
+    paper_bgcolor="rgba(0,0,0,0)",
+    plot_bgcolor="rgba(0,0,0,0)",
+    margin=dict(l=10, r=20, t=36, b=10),
+)
 
 # ──────────────────────────────────────────────────────────────────────
-# PROCESAMIENTO
+# PROCESAMIENTO DE DATOS
 # ──────────────────────────────────────────────────────────────────────
 
 def num(v) -> float:
-    """
-    Convierte un valor a float de forma robusta.
-    Maneja casos especiales:
-      - Porcentajes: "56%" → 56.0
-      - Penales/alargues: "2(4)" → 2.0  (toma el gol reglamentario, ignora penales)
-      - Fracciones de regates: "7/18 (39%)" → 0.0 (no es métrica numérica simple)
-      - Guiones "-" → 0.0
-    """
     if isinstance(v, str):
         v = v.strip()
-        # Penales o alargue: "2(4)", "1(3)" → extraer el primer número
         m = re.match(r'^(-?\d+(?:\.\d+)?)\s*\(', v)
         if m:
             return float(m.group(1))
@@ -365,7 +300,6 @@ def num(v) -> float:
         return 0.0
 
 
-# Sentinel que marca el inicio de la sección de métricas derivadas (no cargar)
 _SENTINEL_DERIVADAS = re.compile(r'métricas derivadas|métrica calculada', re.IGNORECASE)
 
 
@@ -387,15 +321,12 @@ def cargar_excel(ruta: str):
                 loc, vis, stats, j = p[0].strip(), p[1].strip(), {}, i + 1
                 while j < len(df):
                     r0 = str(df.iloc[j, 0]).strip() if pd.notna(df.iloc[j, 0]) else ""
-                    # Parar al encontrar otro partido o fila vacía
                     if re.search(r"\s+vs\s+", r0, re.IGNORECASE):
                         break
                     if r0 == "":
                         j += 1
                         continue
-                    # Parar al encontrar la sección de métricas derivadas
                     if _SENTINEL_DERIVADAS.search(r0):
-                        # Avanzar hasta la siguiente fila vacía o nuevo partido
                         j += 1
                         while j < len(df):
                             r_check = str(df.iloc[j, 0]).strip() if pd.notna(df.iloc[j, 0]) else ""
@@ -403,7 +334,6 @@ def cargar_excel(ruta: str):
                                 break
                             j += 1
                         break
-                    # Saltar encabezados de columnas
                     if r0.lower() in ("métrica", "metrica") or r0 == loc:
                         j += 1
                         continue
@@ -423,8 +353,6 @@ def cargar_excel(ruta: str):
 
 def construir_df(datos: dict) -> pd.DataFrame:
     filas = []
-
-    # Identificar cuál fue la última fecha regular
     max_fecha_reg = 0
     for f in datos.keys():
         m = re.search(r"\d+", f)
@@ -456,7 +384,6 @@ def construir_df(datos: dict) -> pd.DataFrame:
 @st.cache_data(ttl=120, show_spinner=False)
 def calcular_tabla(df: pd.DataFrame, condicion: str = "General") -> pd.DataFrame:
     dr = df[df["Métrica"] == "Resultado"].copy()
-    # Excluir playoffs de la tabla
     if "Fase" in dr.columns:
         dr = dr[dr["Fase"] == "Regular"]
     if condicion != "General":
@@ -472,9 +399,9 @@ def calcular_tabla(df: pd.DataFrame, condicion: str = "General") -> pd.DataFrame
             rows.append({"Equipo": eq, "PJ": 0, "V": 0, "E": 0, "D": 0,
                          "GF": 0, "GC": 0, "PTS": 0, "PPJ": 0.0, "EFEC%": 0.0})
             continue
-        v   = (d["Propio"] > d["Concedido"]).sum()
-        e   = (d["Propio"] == d["Concedido"]).sum()
-        d_  = (d["Propio"] < d["Concedido"]).sum()
+        v  = (d["Propio"] > d["Concedido"]).sum()
+        e  = (d["Propio"] == d["Concedido"]).sum()
+        d_ = (d["Propio"] < d["Concedido"]).sum()
         pts = int(v * 3 + e)
         gf  = d["Propio"].sum()
         gc  = d["Concedido"].sum()
@@ -609,201 +536,362 @@ def top3_marcadores(M, ea, eb):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  ★ MÓDULO VALUE BETS — FUNCIONES MATEMÁTICAS ★
+#  ★  ADN TÁCTICO — MOTOR DE PATRONES
 # ══════════════════════════════════════════════════════════════════════════════
 
-def calcular_mercados_matriz(M: np.ndarray) -> dict:
-    n = M.shape[0]
-    total_goals = np.zeros_like(M)
-    for i in range(n):
-        for j in range(n):
-            total_goals[i, j] = i + j
-    over25   = float(M[total_goals > 2.5].sum())
-    under25  = 1.0 - over25
-    btts_yes = float(M[1:, 1:].sum())
-    btts_no  = 1.0 - btts_yes
-    return {
-        "over25":   round(over25,   4),
-        "under25":  round(under25,  4),
-        "btts_yes": round(btts_yes, 4),
-        "btts_no":  round(btts_no,  4),
-    }
+def _safe_mean(df, equipo, metrica, col="Propio", condicion=None):
+    d = df[(df["Equipo"] == equipo) & (df["Métrica"] == metrica)]
+    if condicion:
+        d = d[d["Condicion"] == condicion]
+    if d.empty:
+        return np.nan
+    return float(d[col].mean())
 
 
-def calcular_lambdas_corners(df: pd.DataFrame, eq_a: str, eq_b: str,
-                              es_loc: bool, tabla: pd.DataFrame) -> tuple:
-    LAM_C_MIN, LAM_C_MAX = 1.0, 15.0
-    W_RECIENTE_C = 1.8
-    W_NORMAL_C   = 1.0
-    N_RECENCIA_C = 3
-    K_C          = 4.0
+def calcular_adn_tactico(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calcula métricas tácticas por equipo y asigna etiquetas de perfil.
 
-    candidatos = ["Córners", "Corners", "Córners a favor", "Tiros de esquina",
-                  "córners", "corners"]
-    metrica_usada = next((c for c in candidatos if c in df["Métrica"].values), None)
+    Dimensiones analizadas:
+      · Pressing:        Posesión cedida vs Tiros concedidos
+      · Transición:      xG_Estimado concedido vs Posesión propia (equipos que
+                         conceden mucho sin posesión baja = juegan en transición)
+      · Volumen ofensivo: Tiros totales propios
+      · Control:         Posesión propia
+      · Eficiencia:      xG / tiro
+    """
+    equipos = sorted(df["Equipo"].unique())
+    rows = []
 
-    if metrica_usada is None:
-        return (5.5, 4.5)
+    for eq in equipos:
+        pos_propia   = _safe_mean(df, eq, "Posesión de balón")
+        pos_cedida   = 100.0 - pos_propia if not np.isnan(pos_propia) else np.nan
+        tiros_prop   = _safe_mean(df, eq, "Tiros totales")
+        tiros_conc   = _safe_mean(df, eq, "Tiros totales", col="Concedido")
+        xg_prop      = _safe_mean(df, eq, "xG_Estimado")
+        xg_conc      = _safe_mean(df, eq, "xG_Estimado", col="Concedido")
+        oc_prop      = _safe_mean(df, eq, "Ocasiones claras")
+        oc_conc      = _safe_mean(df, eq, "Ocasiones claras", col="Concedido")
+        gf           = _safe_mean(df, eq, "Resultado")
+        gc           = _safe_mean(df, eq, "Resultado", col="Concedido")
 
-    max_fecha = int(df["nFecha"].max())
-    df_c = df[df["Métrica"] == metrica_usada]
+        efic_ofens = (xg_prop / tiros_prop) if (not np.isnan(xg_prop) and
+                      not np.isnan(tiros_prop) and tiros_prop > 0) else np.nan
 
-    ref_loc = df_c[df_c["Condicion"] == "Local"]["Propio"].mean()
-    ref_vis = df_c[df_c["Condicion"] == "Visitante"]["Propio"].mean()
-    if np.isnan(ref_loc) or ref_loc == 0: ref_loc = 5.5
-    if np.isnan(ref_vis) or ref_vis == 0: ref_vis = 4.5
-
-    def weighted_avg_c(equipo: str, condicion: str, col: str) -> float:
-        d = df_c[(df_c["Equipo"] == equipo) & (df_c["Condicion"] == condicion)]
-        if d.empty:
-            d = df_c[df_c["Equipo"] == equipo]
-        if d.empty:
-            return np.nan
-        fechas  = d["nFecha"].values
-        valores = d[col].values
-        w = np.where(fechas >= (max_fecha - N_RECENCIA_C + 1), W_RECIENTE_C, W_NORMAL_C)
-        return float(np.average(valores, weights=w))
-
-    def strength_c(equipo: str, condicion: str, ref_atk: float, ref_def: float):
-        atk_raw = weighted_avg_c(equipo, condicion, "Propio")
-        def_raw = weighted_avg_c(equipo, condicion, "Concedido")
-        n = len(df_c[(df_c["Equipo"] == equipo) & (df_c["Condicion"] == condicion)])
-        atk_norm = (atk_raw / ref_atk) if (not np.isnan(atk_raw) and ref_atk > 0) else 1.0
-        def_norm = (def_raw / ref_def) if (not np.isnan(def_raw) and ref_def > 0) else 1.0
-        atk_post = (n * atk_norm + K_C * 1.0) / (n + K_C)
-        def_post = (n * def_norm + K_C * 1.0) / (n + K_C)
-        return atk_post, def_post
-
-    ca, cb = ("Local", "Visitante") if es_loc else ("Visitante", "Local")
-
-    atk_a, def_a = strength_c(eq_a, ca,
-                               ref_loc if ca == "Local" else ref_vis,
-                               ref_vis if ca == "Local" else ref_loc)
-    atk_b, def_b = strength_c(eq_b, cb,
-                               ref_loc if cb == "Local" else ref_vis,
-                               ref_vis if cb == "Local" else ref_loc)
-
-    lc_a = (ref_loc if ca == "Local" else ref_vis) * atk_a * def_b
-    lc_b = (ref_loc if cb == "Local" else ref_vis) * atk_b * def_a
-
-    return (round(float(np.clip(lc_a, LAM_C_MIN, LAM_C_MAX)), 2),
-            round(float(np.clip(lc_b, LAM_C_MIN, LAM_C_MAX)), 2))
-
-
-def prob_corners_mercados(lc_a: float, lc_b: float) -> dict:
-    MAX_C = 25
-
-    def pmf_poisson(lam: float, kmax: int) -> np.ndarray:
-        k = np.arange(kmax + 1)
-        return np.exp(k * np.log(max(lam, 1e-9)) - lam -
-                      np.array([math.log(math.factorial(x)) for x in k]))
-
-    pa = pmf_poisson(lc_a, MAX_C)
-    pb = pmf_poisson(lc_b, MAX_C)
-    total_probs = np.convolve(pa, pb)[:MAX_C * 2 + 1]
-    total_probs /= total_probs.sum()
-
-    over85  = float(sum(total_probs[k] for k in range(len(total_probs)) if k > 8.5))
-    under85 = 1.0 - over85
-    over95  = float(sum(total_probs[k] for k in range(len(total_probs)) if k > 9.5))
-    under95 = 1.0 - over95
-
-    return {
-        "lc_a":     lc_a,
-        "lc_b":     lc_b,
-        "lc_total": round(lc_a + lc_b, 2),
-        "over85":   round(over85,  4),
-        "under85":  round(under85, 4),
-        "over95":   round(over95,  4),
-        "under95":  round(under95, 4),
-    }
-
-
-def calcular_ev(prob_modelo: float, cuota_casa: float) -> float:
-    if cuota_casa <= 1.0 or prob_modelo <= 0.0:
-        return -999.0
-    return round((prob_modelo * cuota_casa) - 1.0, 4)
-
-
-def cuota_justa(prob: float) -> float:
-    if prob <= 0.0:
-        return 999.0
-    return round(1.0 / prob, 3)
-
-
-def analizar_mercado_completo(prob_1, prob_x, prob_2,
-                               cuota_1, cuota_x, cuota_2,
-                               mercados_extra, cuotas_extra) -> list:
-    resultados = []
-
-    for etiqueta, prob, cuota in [
-        ("Victoria Local (1)",      prob_1, cuota_1),
-        ("Empate (X)",              prob_x, cuota_x),
-        ("Victoria Visitante (2)",  prob_2, cuota_2),
-    ]:
-        ev = calcular_ev(prob, cuota)
-        resultados.append({
-            "Mercado":     etiqueta,
-            "Prob Modelo": prob,
-            "Cuota Justa": cuota_justa(prob),
-            "Cuota Casa":  cuota,
-            "EV":          ev,
-            "Value Bet":   ev > 0.0,
-            "Categoria":   "1X2",
+        rows.append({
+            "Equipo":       eq,
+            "Posesion":     pos_propia,
+            "TirosProp":    tiros_prop,
+            "TirosConc":    tiros_conc,
+            "xGProp":       xg_prop,
+            "xGConc":       xg_conc,
+            "OcProp":       oc_prop,
+            "OcConc":       oc_conc,
+            "GF":           gf,
+            "GC":           gc,
+            "EficOfens":    efic_ofens,
         })
 
-    for etiqueta, clave in [("Over 2.5 Goles", "over25"), ("Under 2.5 Goles", "under25")]:
-        prob  = mercados_extra.get(clave, 0.0)
-        cuota = cuotas_extra.get(clave, 0.0)
-        ev    = calcular_ev(prob, cuota) if cuota > 1.0 else -999.0
-        resultados.append({
-            "Mercado":     etiqueta,
-            "Prob Modelo": prob,
-            "Cuota Justa": cuota_justa(prob),
-            "Cuota Casa":  cuota,
-            "EV":          ev,
-            "Value Bet":   ev > 0.0,
-            "Categoria":   "Goles",
+    adn = pd.DataFrame(rows).set_index("Equipo")
+
+    # ── Percentiles de liga para contextualizar ─────────────────────
+    def pct(col):
+        s = adn[col].dropna()
+        if s.empty:
+            return {}
+        return {eq: float(np.mean(s <= v)) for eq, v in adn[col].dropna().items()}
+
+    pct_pos   = pct("Posesion")
+    pct_tprop = pct("TirosProp")
+    pct_tconc = pct("TirosConc")
+    pct_xgc   = pct("xGConc")
+    pct_efic  = pct("EficOfens")
+
+    # ── Etiquetado táctico ──────────────────────────────────────────
+    tags_dict = {}
+    insights  = {}
+
+    for eq in adn.index:
+        tags   = []
+        frases = []
+
+        pos_p  = pct_pos.get(eq,   0.5)
+        tp_p   = pct_tprop.get(eq, 0.5)
+        tc_p   = pct_tconc.get(eq, 0.5)
+        xgc_p  = pct_xgc.get(eq,  0.5)
+        ef_p   = pct_efic.get(eq,  0.5)
+
+        pos_val = adn.loc[eq, "Posesion"]
+        xgc_val = adn.loc[eq, "xGConc"]
+
+        # Posesión
+        if pos_p >= 0.70:
+            tags.append(("POSESIÓN DOMINANTE", "tag-posesion"))
+            frases.append("Controla el juego con posesión elevada.")
+        elif pos_p <= 0.30:
+            tags.append(("JUEGO DIRECTO", "tag-directo"))
+            frases.append("Cede la pelota y busca aprovechar los espacios.")
+
+        # Pressing / intensidad defensiva
+        if tc_p <= 0.30 and pos_p <= 0.55:
+            tags.append(("PRESSING ALTO", "tag-pressing"))
+            frases.append("Asfixia al rival sin necesitar posesión: concede pocos tiros.")
+        elif tc_p >= 0.70:
+            tags.append(("BLOQUE BAJO", "tag-bloque"))
+            frases.append("Defiende replegado, concede muchos intentos al rival.")
+
+        # Transiciones / contraataque
+        # Equipos con poca posesión pero alta amenaza ofensiva = transición
+        if pos_p <= 0.40 and tp_p >= 0.55:
+            tags.append(("CONTRA / TRANSICIÓN", "tag-contra"))
+            frases.append("Peligroso en transición: genera volumen ofensivo con poca pelota.")
+
+        # Eficiencia ofensiva
+        if ef_p >= 0.70:
+            tags.append(("ALTA EFICIENCIA", "tag-posesion"))
+            frases.append("Alta relación xG/tiro: genera ocasiones de calidad.")
+        elif ef_p <= 0.30 and tp_p >= 0.60:
+            tags.append(("VOLUMEN SIN PRECISIÓN", "tag-directo"))
+            frases.append("Tira mucho pero con bajo xG por remate.")
+
+        # Vulnerabilidad defensiva
+        if xgc_p >= 0.75:
+            tags.append(("DÉFICIT DEFENSIVO", "tag-bloque"))
+            frases.append("Concede mucho xG: línea defensiva con espacios.")
+
+        if not tags:
+            tags.append(("PERFIL EQUILIBRADO", "tag-neutral"))
+            frases.append("Sin tendencias extremas: estilo balanceado.")
+
+        tags_dict[eq] = tags
+        insights[eq]  = " ".join(frases)
+
+    adn["Tags"]    = pd.Series(tags_dict)
+    adn["Insight"] = pd.Series(insights)
+    return adn
+
+
+def render_tags_html(tags: list) -> str:
+    html = ""
+    for texto, clase in tags:
+        html += f'<span class="tag-badge {clase}">{texto}</span>'
+    return html
+
+
+def contexto_tactica_clash(adn: pd.DataFrame, eq_a: str, eq_b: str) -> str:
+    """Genera el bloque de contexto táctico para el predictor."""
+    if adn is None or eq_a not in adn.index or eq_b not in adn.index:
+        return ""
+
+    tags_a   = adn.loc[eq_a, "Tags"]   if isinstance(adn.loc[eq_a, "Tags"],   list) else []
+    tags_b   = adn.loc[eq_b, "Tags"]   if isinstance(adn.loc[eq_b, "Tags"],   list) else []
+    ins_a    = adn.loc[eq_a, "Insight"] if pd.notna(adn.loc[eq_a, "Insight"]) else ""
+    ins_b    = adn.loc[eq_b, "Insight"] if pd.notna(adn.loc[eq_b, "Insight"]) else ""
+
+    tags_a_txt = set(t for t, _ in tags_a)
+    tags_b_txt = set(t for t, _ in tags_b)
+
+    # Generar insight del choque
+    clash_lines = []
+    if "PRESSING ALTO" in tags_a_txt and "JUEGO DIRECTO" in tags_b_txt:
+        clash_lines.append("⚡ <b>Pressing vs Juego Directo</b>: el local intentará robar alto, el visitante buscará saltar líneas.")
+    if "POSESIÓN DOMINANTE" in tags_a_txt and "PRESSING ALTO" in tags_b_txt:
+        clash_lines.append("🔄 <b>Batalla de control</b>: local posesivo vs visitante que presiona — partido de mediocampo intenso.")
+    if "CONTRA / TRANSICIÓN" in tags_b_txt and "POSESIÓN DOMINANTE" in tags_a_txt:
+        clash_lines.append("🎯 <b>Posesión vs Contraataque</b>: local domina la pelota, visitante espera el espacio a la espalda.")
+    if "DÉFICIT DEFENSIVO" in tags_a_txt or "DÉFICIT DEFENSIVO" in tags_b_txt:
+        clash_lines.append("⚽ <b>Partido abierto</b>: al menos un equipo tiene vulnerabilidades defensivas — esperar goles.")
+    if "ALTA EFICIENCIA" in tags_a_txt and "ALTA EFICIENCIA" in tags_b_txt:
+        clash_lines.append("🎖️ <b>Duelo de calidad</b>: ambos equipos son clínicos — los pocos errores se pagarán caro.")
+    if not clash_lines:
+        clash_lines.append("📊 Perfiles similares o complementarios — partido de resultado abierto según forma reciente.")
+
+    tags_a_html = render_tags_html(tags_a)
+    tags_b_html = render_tags_html(tags_b)
+    clash_html  = "<br>".join(clash_lines)
+
+    return f"""
+    <div class="tactica-clash">
+        <div class="tactica-title">Contexto Táctico del Choque</div>
+        <div class="tactica-row">
+            <div class="tactica-team-col">
+                <div style="font-size:0.7rem;color:#555560;text-transform:uppercase;letter-spacing:2px;margin-bottom:6px;">{eq_a} (local)</div>
+                {tags_a_html}
+                <div style="font-size:0.8rem;color:#888890;margin-top:8px;">{ins_a}</div>
+            </div>
+            <div class="tactica-vs-col">VS</div>
+            <div class="tactica-team-col">
+                <div style="font-size:0.7rem;color:#555560;text-transform:uppercase;letter-spacing:2px;margin-bottom:6px;">{eq_b} (visitante)</div>
+                {tags_b_html}
+                <div style="font-size:0.8rem;color:#888890;margin-top:8px;">{ins_b}</div>
+            </div>
+        </div>
+        <div class="tactica-insight">{clash_html}</div>
+    </div>"""
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  ★  RACHAS Y MOMENTUM
+# ══════════════════════════════════════════════════════════════════════════════
+
+def calcular_rachas(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Por equipo: calcula racha de resultados (últimas N fechas),
+    tendencia de xG (momentum ofensivo) y una puntuación de momentum.
+    """
+    dr = df[df["Métrica"] == "Resultado"].copy()
+    dx = df[df["Métrica"] == "xG_Estimado"].copy()
+    equipos = sorted(dr["Equipo"].unique())
+    rows = []
+
+    for eq in equipos:
+        d_eq = dr[dr["Equipo"] == eq].sort_values("nFecha")
+        if d_eq.empty:
+            continue
+
+        resultados = []
+        for _, row in d_eq.iterrows():
+            if row["Propio"] > row["Concedido"]:
+                resultados.append("V")
+            elif row["Propio"] == row["Concedido"]:
+                resultados.append("E")
+            else:
+                resultados.append("D")
+
+        # Últimas 6 fechas
+        ultimas6 = resultados[-6:]
+
+        # Puntos últimas 6
+        pts6 = sum(3 if r == "V" else (1 if r == "E" else 0) for r in ultimas6)
+        pts3 = sum(3 if r == "V" else (1 if r == "E" else 0) for r in resultados[-3:])
+
+        # Tendencia xG ofensivo (últimas 3 vs anteriores 3)
+        dxg = dx[dx["Equipo"] == eq].sort_values("nFecha")
+        xg_vals = dxg["Propio"].values
+        if len(xg_vals) >= 6:
+            xg_rec = float(np.mean(xg_vals[-3:]))
+            xg_ant = float(np.mean(xg_vals[-6:-3]))
+            delta_xg = xg_rec - xg_ant
+        elif len(xg_vals) >= 3:
+            xg_rec = float(np.mean(xg_vals[-3:]))
+            xg_ant = float(np.mean(xg_vals[:-3])) if len(xg_vals) > 3 else xg_rec
+            delta_xg = xg_rec - xg_ant
+        else:
+            xg_rec   = float(np.mean(xg_vals)) if len(xg_vals) > 0 else 0.0
+            xg_ant   = xg_rec
+            delta_xg = 0.0
+
+        # Score de momentum: combina pts recientes y xG
+        momentum_score = pts3 / 9.0 * 0.6 + (min(max(delta_xg / 1.0, -1), 1) * 0.5 + 0.5) * 0.4
+
+        if momentum_score >= 0.65:
+            estado = "EN ALZA"
+            estado_cls = "momentum-alza"
+        elif momentum_score <= 0.35:
+            estado = "EN CAÍDA"
+            estado_cls = "momentum-caida"
+        else:
+            estado = "ESTABLE"
+            estado_cls = "momentum-estable"
+
+        rows.append({
+            "Equipo":        eq,
+            "Resultados":    resultados,
+            "Ultimas6":      ultimas6,
+            "Pts6":          pts6,
+            "Pts3":          pts3,
+            "xGRec":         round(xg_rec, 2),
+            "xGAnt":         round(xg_ant, 2),
+            "DeltaXG":       round(delta_xg, 3),
+            "MomentumScore": round(momentum_score, 3),
+            "Estado":        estado,
+            "EstadoCls":     estado_cls,
         })
 
-    for etiqueta, clave in [("BTTS — Ambos Marcan", "btts_yes"),
-                             ("BTTS — No Ambos",     "btts_no")]:
-        prob  = mercados_extra.get(clave, 0.0)
-        cuota = cuotas_extra.get(clave, 0.0)
-        ev    = calcular_ev(prob, cuota) if cuota > 1.0 else -999.0
-        resultados.append({
-            "Mercado":     etiqueta,
-            "Prob Modelo": prob,
-            "Cuota Justa": cuota_justa(prob),
-            "Cuota Casa":  cuota,
-            "EV":          ev,
-            "Value Bet":   ev > 0.0,
-            "Categoria":   "BTTS",
-        })
-
-    for etiqueta, clave in [
-        ("Córners Over 8.5",  "over85"),
-        ("Córners Under 8.5", "under85"),
-        ("Córners Over 9.5",  "over95"),
-        ("Córners Under 9.5", "under95"),
-    ]:
-        prob  = mercados_extra.get(clave, 0.0)
-        cuota = cuotas_extra.get(clave, 0.0)
-        ev    = calcular_ev(prob, cuota) if cuota > 1.0 else -999.0
-        resultados.append({
-            "Mercado":     etiqueta,
-            "Prob Modelo": prob,
-            "Cuota Justa": cuota_justa(prob),
-            "Cuota Casa":  cuota,
-            "EV":          ev,
-            "Value Bet":   ev > 0.0,
-            "Categoria":   "Córners",
-        })
-
-    return resultados
+    return pd.DataFrame(rows).set_index("Equipo")
 
 
-# ── Gráficos ─────────────────────────────────────────────────────────
+def render_racha_dots(ultimas6: list) -> str:
+    html = ""
+    for r in ultimas6:
+        cls = {"V": "racha-v", "E": "racha-e", "D": "racha-d"}[r]
+        html += f'<span class="racha-dot {cls}">{r}</span>'
+    return html
+
+
+def fig_momentum_timeline(df: pd.DataFrame, equipo: str) -> go.Figure:
+    """Gráfico de puntos acumulados y xG por fecha para un equipo."""
+    dr = df[(df["Equipo"] == equipo) & (df["Métrica"] == "Resultado")].sort_values("nFecha")
+    dx = df[(df["Equipo"] == equipo) & (df["Métrica"] == "xG_Estimado")].sort_values("nFecha")
+
+    if dr.empty:
+        return go.Figure()
+
+    fechas = dr["nFecha"].values
+    pts_parciales = []
+    for _, row in dr.iterrows():
+        if row["Propio"] > row["Concedido"]:
+            pts_parciales.append(3)
+        elif row["Propio"] == row["Concedido"]:
+            pts_parciales.append(1)
+        else:
+            pts_parciales.append(0)
+
+    xg_vals = dx.set_index("nFecha")["Propio"].reindex(fechas).fillna(0).values
+
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=fechas, y=pts_parciales, name="Pts/Fecha",
+        marker_color=[RED if p == 3 else ("#888890" if p == 1 else "#1e1e24") for p in pts_parciales],
+        yaxis="y1",
+    ))
+    fig.add_trace(go.Scatter(
+        x=fechas, y=xg_vals, name="xG Propio", mode="lines+markers",
+        line=dict(color=WHITE, width=2), marker=dict(size=6),
+        yaxis="y2",
+    ))
+    fig.update_layout(
+        **PLOT,
+        height=320,
+        yaxis=dict(title="Puntos", showgrid=False, color="#555560"),
+        yaxis2=dict(title="xG", overlaying="y", side="right", showgrid=False, color="#888890"),
+        legend=dict(orientation="h", x=0, y=1.12),
+        xaxis=dict(title="Fecha", color="#555560", tickmode="linear"),
+    )
+    return fig
+
+
+def fig_momentum_ranking(rachas: pd.DataFrame) -> go.Figure:
+    df_r = rachas.sort_values("MomentumScore", ascending=True).copy()
+    colors = []
+    for sc in df_r["MomentumScore"]:
+        if sc >= 0.65:
+            colors.append(RED)
+        elif sc <= 0.35:
+            colors.append(GRAY)
+        else:
+            colors.append("#4a4a6a")
+
+    fig = go.Figure(go.Bar(
+        x=df_r["MomentumScore"],
+        y=df_r.index,
+        orientation="h",
+        marker_color=colors,
+        text=[f"{s:.2f}" for s in df_r["MomentumScore"]],
+        textposition="outside",
+    ))
+    fig.update_layout(
+        **PLOT,
+        height=max(400, len(df_r) * 28),
+        xaxis=dict(range=[0, 1.1], showgrid=False, color="#555560"),
+        title=dict(text="ÍNDICE DE MOMENTUM", font=dict(family="Bebas Neue", size=18, color="#ffffff")),
+    )
+    return fig
+
+
+# ──────────────────────────────────────────────────────────────────────
+# GRÁFICOS EXISTENTES
+# ──────────────────────────────────────────────────────────────────────
 
 def fig_score_matrix(M, ea, eb, n=5):
     sub    = M[:n, :n]
@@ -846,8 +934,12 @@ def fig_radar_pro(df, eq_a, eq_b, cond_a, cond_b):
     r_b   = [b / m for b, m in zip(vb, mx)] + [vb[0] / mx[0]]
     theta = mets + [mets[0]]
     fig = go.Figure()
-    fig.add_trace(go.Scatterpolar(r=r_a, theta=theta, fill="toself", name=eq_a, line=dict(color="#ED1A3B"), hoverinfo="text+name", text=text_a + [text_a[0]]))
-    fig.add_trace(go.Scatterpolar(r=r_b, theta=theta, fill="toself", name=eq_b, line=dict(color="#ffffff"), hoverinfo="text+name", text=text_b + [text_b[0]]))
+    fig.add_trace(go.Scatterpolar(r=r_a, theta=theta, fill="toself", name=eq_a,
+                                  line=dict(color=RED), hoverinfo="text+name",
+                                  text=text_a + [text_a[0]]))
+    fig.add_trace(go.Scatterpolar(r=r_b, theta=theta, fill="toself", name=eq_b,
+                                  line=dict(color=WHITE), hoverinfo="text+name",
+                                  text=text_b + [text_b[0]]))
     layout_args = PLOT.copy()
     layout_args.update(height=400,
         polar=dict(bgcolor="rgba(0,0,0,0)",
@@ -859,30 +951,51 @@ def fig_radar_pro(df, eq_a, eq_b, cond_a, cond_b):
 
 
 # ──────────────────────────────────────────────────────────────────────
-# NAVEGACIÓN Y ESTRUCTURA
+# NAVEGACIÓN
 # ──────────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown('<div class="sidebar-logo">LPF SCOUTING</div>', unsafe_allow_html=True)
     ruta = st.text_input("Archivo de Datos", "Fecha_x_fecha_lpf.xlsx")
     st.markdown("<br>", unsafe_allow_html=True)
-    nav = st.radio("MÓDULOS DE ANÁLISIS",
-                   ["Predicción de Partidos", "Métricas Globales", "Comparativa H2H",
-                    "Análisis de Rival", "Análisis de Estilos", "Posiciones",
-                    "Cazador de Value Bets"],
-                   label_visibility="collapsed")
+    nav = st.radio(
+        "MÓDULOS DE ANÁLISIS",
+        [
+            "Predicción de Partidos",
+            "Métricas Globales",
+            "Comparativa H2H",
+            "Análisis de Rival",
+            "Análisis de Estilos",
+            "Posiciones",
+            "ADN Táctico",
+            "Rachas y Momentum",
+        ],
+        label_visibility="collapsed",
+    )
 
 if not os.path.exists(ruta):
+    st.warning(f"No se encontró el archivo `{ruta}`. Verificá la ruta en el panel lateral.")
     st.stop()
 
-datos   = cargar_excel(ruta)
-df      = construir_df(datos)
-tabla   = calcular_tabla(df, "General")
-equipos = sorted(df["Equipo"].unique())
+datos    = cargar_excel(ruta)
+df       = construir_df(datos)
+tabla    = calcular_tabla(df, "General")
+equipos  = sorted(df["Equipo"].unique())
 metricas = sorted(df["Métrica"].unique())
-
-# DataFrame filtrado sólo con datos de fase Regular (para módulos que no deben ver playoffs)
 df_regular = df[df["Fase"] == "Regular"].copy()
 
+# Precalcular ADN y Rachas (se usan en varios módulos)
+@st.cache_data(ttl=120, show_spinner=False)
+def _cached_adn(df_hash):
+    return calcular_adn_tactico(df)
+
+@st.cache_data(ttl=120, show_spinner=False)
+def _cached_rachas(df_hash):
+    return calcular_rachas(df_regular)
+
+adn_df    = calcular_adn_tactico(df_regular)
+rachas_df = calcular_rachas(df_regular)
+
+# ── Hero Banner ──────────────────────────────────────────────────────
 st.markdown("""
 <div class="hero-banner">
     <div class="hero-subtitle">Base de Datos LPF 2026</div>
@@ -890,7 +1003,8 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# ──────────────────────────────────────────────────────────────────────
+
+# ══════════════════════════════════════════════════════════════════════════════
 if nav == "Predicción de Partidos":
     st.markdown('<div class="section-header">Módulo Predictivo</div>', unsafe_allow_html=True)
     idx_river = equipos.index("River Plate") if "River Plate" in equipos else 0
@@ -924,6 +1038,32 @@ if nav == "Predicción de Partidos":
         st.markdown('<div class="section-header">Marcadores Más Probables</div>', unsafe_allow_html=True)
         st.markdown(top3_marcadores(sim["matrix"], ea, eb), unsafe_allow_html=True)
 
+        # ── Contexto Táctico ────────────────────────────────────────
+        ctx = contexto_tactica_clash(adn_df, ea, eb)
+        if ctx:
+            st.markdown(ctx, unsafe_allow_html=True)
+
+        # ── Momentum de ambos equipos ───────────────────────────────
+        if not rachas_df.empty and ea in rachas_df.index and eb in rachas_df.index:
+            st.markdown('<div class="section-header">Forma Reciente</div>', unsafe_allow_html=True)
+            mc1, mc2 = st.columns(2)
+            for col_ui, eq_m in [(mc1, ea), (mc2, eb)]:
+                with col_ui:
+                    row_m = rachas_df.loc[eq_m]
+                    dots  = render_racha_dots(row_m["Ultimas6"])
+                    col_ui.markdown(f"""
+                    <div class="momentum-card">
+                        <div class="momentum-team">{eq_m}</div>
+                        <div class="momentum-label">Últimas {len(row_m["Ultimas6"])} fechas</div>
+                        <div style="margin-bottom:10px;">{dots}</div>
+                        <div class="momentum-label">Estado de forma</div>
+                        <div class="{row_m["EstadoCls"]}">{row_m["Estado"]}</div>
+                        <div style="font-size:0.78rem;color:#555560;margin-top:6px;">
+                            xG reciente: {row_m["xGRec"]:.2f} &nbsp;|&nbsp;
+                            Pts últimas 3: {row_m["Pts3"]}
+                        </div>
+                    </div>""", unsafe_allow_html=True)
+
         with st.expander("Parámetros del Motor (Lambdas y Priors)"):
             pa_a, pd_a = _get_prior(tabla, ea)
             pa_b, pd_b = _get_prior(tabla, eb)
@@ -932,7 +1072,8 @@ if nav == "Predicción de Partidos":
         st.markdown('<div class="section-header">Matriz de Resultados</div>', unsafe_allow_html=True)
         st.plotly_chart(fig_score_matrix(sim["matrix"], ea, eb), use_container_width=True)
 
-# ──────────────────────────────────────────────────────────────────────
+
+# ══════════════════════════════════════════════════════════════════════════════
 elif nav == "Métricas Globales":
     st.markdown('<div class="section-header">Rankings de Rendimiento</div>', unsafe_allow_html=True)
     c1, c2, c3 = st.columns(3)
@@ -950,7 +1091,8 @@ elif nav == "Métricas Globales":
           .update_layout(**PLOT, height=700),
         use_container_width=True)
 
-# ──────────────────────────────────────────────────────────────────────
+
+# ══════════════════════════════════════════════════════════════════════════════
 elif nav == "Comparativa H2H":
     st.markdown('<div class="section-header">Head-to-Head (H2H)</div>', unsafe_allow_html=True)
     c1, c2 = st.columns(2)
@@ -976,7 +1118,8 @@ elif nav == "Comparativa H2H":
         }).dropna()
         st.dataframe(h2h_df, use_container_width=True)
 
-# ──────────────────────────────────────────────────────────────────────
+
+# ══════════════════════════════════════════════════════════════════════════════
 elif nav == "Análisis de Rival":
     st.markdown('<div class="section-header">Evolución de Rendimiento</div>', unsafe_allow_html=True)
     eq_p  = st.selectbox("Seleccionar Equipo", equipos)
@@ -989,9 +1132,9 @@ elif nav == "Análisis de Rival":
         ])
         st.plotly_chart(fig.update_layout(**PLOT, barmode="group"), use_container_width=True)
 
-# ──────────────────────────────────────────────────────────────────────
+
+# ══════════════════════════════════════════════════════════════════════════════
 elif nav == "Análisis de Estilos":
-    # FIX: usar df_regular para que los playoffs no distorsionen la matriz de estilos
     st.markdown('<div class="section-header">Matriz de Estilos de Juego</div>', unsafe_allow_html=True)
     mo = "Goles esperados (xG)" if "Goles esperados (xG)" in df_regular["Métrica"].values else "Tiros totales"
     if "Posesión de balón" in df_regular["Métrica"].values:
@@ -1008,8 +1151,12 @@ elif nav == "Análisis de Estilos":
         ))
         fig.add_vline(x=mp, line=dict(color=GRAY, dash="dash", width=1))
         fig.add_hline(y=mo_m, line=dict(color=GRAY, dash="dash", width=1))
-        fig.add_annotation(x=df_e["P"].max(), y=df_e["O"].max(), text="DOMINIO & ATAQUE",     showarrow=False, font=dict(color=GRAY, size=10), xanchor="right", yanchor="bottom")
-        fig.add_annotation(x=df_e["P"].min(), y=df_e["O"].min(), text="REACTIVO & DEFENSIVO", showarrow=False, font=dict(color=GRAY, size=10), xanchor="left",  yanchor="top")
+        fig.add_annotation(x=df_e["P"].max(), y=df_e["O"].max(),
+                           text="DOMINIO & ATAQUE", showarrow=False,
+                           font=dict(color=GRAY, size=10), xanchor="right", yanchor="bottom")
+        fig.add_annotation(x=df_e["P"].min(), y=df_e["O"].min(),
+                           text="REACTIVO & DEFENSIVO", showarrow=False,
+                           font=dict(color=GRAY, size=10), xanchor="left", yanchor="top")
         st.plotly_chart(
             fig.update_layout(**PLOT, height=600,
                               xaxis_title="Posesión Promedio (%)",
@@ -1018,7 +1165,8 @@ elif nav == "Análisis de Estilos":
     else:
         st.warning("No se encontraron datos de 'Posesión de balón' para procesar la matriz de estilos.")
 
-# ──────────────────────────────────────────────────────────────────────
+
+# ══════════════════════════════════════════════════════════════════════════════
 elif nav == "Posiciones":
     st.markdown('<div class="section-header">Clasificación por Efectividad</div>', unsafe_allow_html=True)
     vista_tabla = st.selectbox("Escenario de Tabla", ["General", "Local", "Visitante"])
@@ -1034,262 +1182,216 @@ elif nav == "Posiciones":
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  ★ MÓDULO: CAZADOR DE VALUE BETS ★
+#  ★  MÓDULO ADN TÁCTICO
 # ══════════════════════════════════════════════════════════════════════════════
-elif nav == "Cazador de Value Bets":
+elif nav == "ADN Táctico":
+    st.markdown('<div class="section-header">ADN Táctico — Patrones por Equipo</div>',
+                unsafe_allow_html=True)
 
-    st.markdown('<div class="section-header">Cazador de Value Bets</div>', unsafe_allow_html=True)
+    st.markdown("""
+    <div style="background:#111115;border:1px solid #2a2a35;border-radius:8px;
+                padding:14px 20px;margin-bottom:24px;font-size:0.82rem;color:#888890;">
+        Cada equipo es clasificado automáticamente según sus métricas agregadas.
+        Los perfiles detectan estilo de presión, patrón de posesión, modo defensivo
+        y tendencia ofensiva — comparados con la media de la liga.
+    </div>
+    """, unsafe_allow_html=True)
 
-    c1, c2, c3 = st.columns([4, 4, 2])
-    ea_vb  = c1.selectbox("Equipo Local",     equipos, key="vb_ea")
-    eb_vb  = c2.selectbox("Equipo Visitante", equipos,
-                           index=min(1, len(equipos) - 1), key="vb_eb")
-    loc_vb = c3.selectbox("Localía", ["Aplicar Ventaja", "Terreno Neutral"],
-                           key="vb_loc") == "Aplicar Ventaja"
+    tab_todos, tab_equipo = st.tabs(["Vista de Liga", "Detalle por Equipo"])
 
-    st.markdown("---")
-
-    fuente = st.radio("Fuente de Cuotas",
-                      ["Ingresar Manualmente", "Subir CSV (cuotas_fecha.csv)"],
-                      horizontal=True, key="vb_fuente")
-
-    cuotas_validas = False
-    cuota_1 = cuota_x = cuota_2 = 0.0
-    cuotas_extra = {}
-
-    if fuente == "Ingresar Manualmente":
-        st.markdown("#### Cuotas 1X2")
-        c1, c2, c3 = st.columns(3)
-        cuota_1 = c1.number_input(f"Cuota Local ({ea_vb[:15]})",
-                                   min_value=1.01, value=2.20, step=0.05, key="q1")
-        cuota_x = c2.number_input("Cuota Empate",
-                                   min_value=1.01, value=3.10, step=0.05, key="qx")
-        cuota_2 = c3.number_input(f"Cuota Visitante ({eb_vb[:12]})",
-                                   min_value=1.01, value=3.50, step=0.05, key="q2")
-
-        with st.expander("➕ Cuotas de Goles y Córners (opcional — dejar en 0 si no disponés)"):
-            cg1, cg2 = st.columns(2)
-            cuotas_extra["over25"]  = cg1.number_input("Over 2.5 Goles",  min_value=0.0, value=0.0, step=0.05, key="qo25")
-            cuotas_extra["under25"] = cg2.number_input("Under 2.5 Goles", min_value=0.0, value=0.0, step=0.05, key="qu25")
-            cb1, cb2 = st.columns(2)
-            cuotas_extra["btts_yes"] = cb1.number_input("BTTS — Ambos Marcan", min_value=0.0, value=0.0, step=0.05, key="qby")
-            cuotas_extra["btts_no"]  = cb2.number_input("BTTS — No Ambos",     min_value=0.0, value=0.0, step=0.05, key="qbn")
-            cc1, cc2, cc3, cc4 = st.columns(4)
-            cuotas_extra["over85"]  = cc1.number_input("Córners O 8.5", min_value=0.0, value=0.0, step=0.05, key="qco85")
-            cuotas_extra["under85"] = cc2.number_input("Córners U 8.5", min_value=0.0, value=0.0, step=0.05, key="qcu85")
-            cuotas_extra["over95"]  = cc3.number_input("Córners O 9.5", min_value=0.0, value=0.0, step=0.05, key="qco95")
-            cuotas_extra["under95"] = cc4.number_input("Córners U 9.5", min_value=0.0, value=0.0, step=0.05, key="qcu95")
-
-        cuotas_validas = (cuota_1 > 1.0 and cuota_x > 1.0 and cuota_2 > 1.0)
-
-    else:
-        st.markdown("""
-        **Formato del CSV esperado** — dos columnas: `mercado` y `cuota`:
-        ```
-        mercado,cuota
-        1,2.20
-        X,3.10
-        2,3.50
-        over25,1.85
-        under25,1.95
-        btts_yes,1.80
-        btts_no,2.05
-        over85,1.90
-        under85,1.90
-        over95,2.10
-        under95,1.72
-        ```
-        """)
-        csv_file = st.file_uploader("Subir cuotas_fecha.csv", type=["csv"])
-        if csv_file:
-            try:
-                df_csv  = pd.read_csv(csv_file)
-                mapping = df_csv.set_index(df_csv.columns[0])[df_csv.columns[1]].to_dict()
-                cuota_1 = float(mapping.get("1", mapping.get("local",     0.0)))
-                cuota_x = float(mapping.get("X", mapping.get("empate",    0.0)))
-                cuota_2 = float(mapping.get("2", mapping.get("visitante", 0.0)))
-                for clave in ["over25", "under25", "btts_yes", "btts_no",
-                               "over85", "under85", "over95",  "under95"]:
-                    cuotas_extra[clave] = float(mapping.get(clave, 0.0))
-                cuotas_validas = (cuota_1 > 1.0 and cuota_x > 1.0 and cuota_2 > 1.0)
-                if cuotas_validas:
-                    st.success(f"✔ CSV cargado | 1 = {cuota_1} | X = {cuota_x} | 2 = {cuota_2}")
-            except Exception as e:
-                st.error(f"Error al leer el CSV: {e}")
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    if st.button("🔍 ANALIZAR VALUE BETS", key="vb_run"):
-        if not cuotas_validas:
-            st.error("Ingresá cuotas válidas (> 1.00) para los tres resultados (1, X, 2).")
-            st.stop()
-
-        la_vb, lb_vb = calcular_lambdas(df, ea_vb, eb_vb, loc_vb, tabla)
-        sim_vb       = montecarlo(la_vb, lb_vb)
-        M_vb         = sim_vb["matrix"]
-
-        prob_1_vb = sim_vb["victoria"]
-        prob_x_vb = sim_vb["empate"]
-        prob_2_vb = sim_vb["derrota"]
-
-        mercados_goles = calcular_mercados_matriz(M_vb)
-
-        lc_a, lc_b  = calcular_lambdas_corners(df, ea_vb, eb_vb, loc_vb, tabla)
-        corner_data = prob_corners_mercados(lc_a, lc_b)
-        mercados_todos = {
-            **mercados_goles,
-            "over85":  corner_data["over85"],
-            "under85": corner_data["under85"],
-            "over95":  corner_data["over95"],
-            "under95": corner_data["under95"],
-        }
-
-        analisis   = analizar_mercado_completo(
-            prob_1_vb, prob_x_vb, prob_2_vb,
-            cuota_1, cuota_x, cuota_2,
-            mercados_todos, cuotas_extra
-        )
-        value_bets = [r for r in analisis if r["Value Bet"]]
-        n_value    = len(value_bets)
-
-        if n_value > 0:
-            st.markdown(f"""
-            <div class="vb-alert found">
-                <div class="vb-alert-icon">🎯</div>
-                <div class="vb-alert-text">
-                    <div class="vb-alert-title">
-                        {n_value} VALUE BET{"S" if n_value > 1 else ""} DETECTADA{"S" if n_value > 1 else ""}
-                    </div>
-                    <div class="vb-alert-sub">
-                        El mercado está subestimando estas probabilidades vs. tu modelo.
-                        EV positivo indica ventaja estadística a largo plazo — no garantía de ganancia inmediata.
-                    </div>
-                </div>
-            </div>""", unsafe_allow_html=True)
+    with tab_todos:
+        if adn_df.empty:
+            st.warning("No hay suficientes métricas para calcular el ADN táctico.")
         else:
-            st.markdown("""
-            <div class="vb-alert none">
-                <div class="vb-alert-icon">📊</div>
-                <div class="vb-alert-text">
-                    <div class="vb-alert-title">SIN VALUE BETS EN ESTE PARTIDO</div>
-                    <div class="vb-alert-sub">
-                        Las cuotas del mercado reflejan o superan las probabilidades del modelo.
-                        El mercado parece eficiente para este encuentro.
-                    </div>
-                </div>
-            </div>""", unsafe_allow_html=True)
-
-        def render_cards(items):
-            cards_html = '<div class="vb-grid">'
-            for r in items:
-                is_value  = r["Value Bet"]
-                ev_pct    = r["EV"] * 100
-                ev_class  = "ev-pos" if is_value else "ev-neg"
-                ev_str    = f"+{ev_pct:.1f}%" if is_value else (
-                             f"{ev_pct:.1f}%" if r["EV"] > -99 else "—")
-                badge_cls = "value" if is_value else "neutral"
-                badge_txt = "✦ VALUE BET" if is_value else "SIN VALUE"
-                bar_pct   = min(r["Prob Modelo"] * 100, 100)
-                bar_cls   = "" if is_value else "neutral-bar"
-                cuota_str = f'{r["Cuota Casa"]:.2f}' if r["Cuota Casa"] > 1.0 else "—"
+            # Ordenar por posesión para agrupar visualmente los estilos
+            adn_sorted = adn_df.sort_values("Posesion", ascending=False, na_position="last")
+            cards_html = ""
+            for eq, row in adn_sorted.iterrows():
+                tags_html = render_tags_html(row["Tags"]) if isinstance(row["Tags"], list) else ""
+                pos_str   = f"{row['Posesion']:.0f}%" if not np.isnan(row["Posesion"]) else "—"
+                tp_str    = f"{row['TirosProp']:.1f}" if not np.isnan(row["TirosProp"]) else "—"
+                xg_str    = f"{row['xGProp']:.2f}" if not np.isnan(row["xGProp"]) else "—"
+                xgc_str   = f"{row['xGConc']:.2f}" if not np.isnan(row["xGConc"]) else "—"
 
                 cards_html += f"""
-                <div class="vb-card {"value" if is_value else ""}">
-                    <span class="vb-badge {badge_cls}">{badge_txt}</span>
-                    <div class="vb-cat">{r["Categoria"]}</div>
-                    <div class="vb-name">{r["Mercado"]}</div>
-                    <div class="vb-row">
-                        <div class="vb-col">
-                            <div class="vb-col-label">Prob Modelo</div>
-                            <div class="vb-col-value">{r["Prob Modelo"]*100:.1f}%</div>
+                <div class="adn-card">
+                    <div class="adn-team-name">{eq}</div>
+                    <div>{tags_html}</div>
+                    <div style="margin-top:12px;display:flex;gap:28px;flex-wrap:wrap;">
+                        <div>
+                            <div class="adn-perfil">Posesión media</div>
+                            <div style="font-size:1.1rem;font-weight:800;color:#e0e0e0;">{pos_str}</div>
                         </div>
-                        <div class="vb-divider"></div>
-                        <div class="vb-col">
-                            <div class="vb-col-label">Cuota Justa</div>
-                            <div class="vb-col-value justa">{r["Cuota Justa"]:.2f}</div>
+                        <div>
+                            <div class="adn-perfil">Tiros / partido</div>
+                            <div style="font-size:1.1rem;font-weight:800;color:#e0e0e0;">{tp_str}</div>
                         </div>
-                        <div class="vb-divider"></div>
-                        <div class="vb-col">
-                            <div class="vb-col-label">Cuota Casa</div>
-                            <div class="vb-col-value casa">{cuota_str}</div>
+                        <div>
+                            <div class="adn-perfil">xG generado</div>
+                            <div style="font-size:1.1rem;font-weight:800;color:#ED1A3B;">{xg_str}</div>
                         </div>
-                        <div class="vb-divider"></div>
-                        <div class="vb-col">
-                            <div class="vb-col-label">EV</div>
-                            <div class="vb-col-value {ev_class}">{ev_str}</div>
+                        <div>
+                            <div class="adn-perfil">xG concedido</div>
+                            <div style="font-size:1.1rem;font-weight:800;color:#888890;">{xgc_str}</div>
                         </div>
                     </div>
-                    <div class="vb-prob-bar-wrap">
-                        <div class="vb-prob-bar {bar_cls}" style="width:{bar_pct:.1f}%"></div>
+                    <div style="margin-top:10px;font-size:0.78rem;color:#555560;border-top:1px solid #1e1e24;padding-top:8px;">
+                        {row["Insight"]}
                     </div>
                 </div>"""
-            cards_html += "</div>"
+
             st.markdown(cards_html, unsafe_allow_html=True)
 
-        tab_labels = ["📋 Todos", "🏆 1X2", "⚽ Goles", "🔄 BTTS", "📐 Córners"]
-        tabs_ui    = st.tabs(tab_labels)
+    with tab_equipo:
+        eq_sel = st.selectbox("Seleccionar Equipo", equipos, key="adn_eq")
+        if eq_sel in adn_df.index:
+            row = adn_df.loc[eq_sel]
 
-        categorias_filtro = [None, "1X2", "Goles", "BTTS", "Córners"]
-        for i, cat in enumerate(categorias_filtro):
-            with tabs_ui[i]:
-                items = analisis if cat is None else [r for r in analisis if r["Categoria"] == cat]
-                render_cards(items)
+            # Tags
+            tags_html = render_tags_html(row["Tags"]) if isinstance(row["Tags"], list) else ""
+            st.markdown(f"""
+            <div class="adn-card" style="margin-bottom:20px;">
+                <div class="adn-team-name">{eq_sel}</div>
+                <div>{tags_html}</div>
+                <div class="tactica-insight" style="margin-top:14px;">{row["Insight"]}</div>
+            </div>""", unsafe_allow_html=True)
 
-        st.markdown('<div class="section-header">Motor de Córners — Detalle</div>',
+            # Radar comparativo: equipo vs media de liga
+            mets_adn = ["Posesion", "TirosProp", "xGProp", "xGConc", "EficOfens"]
+            labels_adn = ["Posesión", "Tiros Prop.", "xG Generado", "xG Concedido", "Efic. Ofens."]
+            liga_means = adn_df[mets_adn].mean()
+            liga_stds  = adn_df[mets_adn].std().replace(0, 1)
+
+            eq_vals  = [(row[m] - liga_means[m]) / liga_stds[m] if not np.isnan(row[m]) else 0.0 for m in mets_adn]
+            # Normalizar a [0,1] para el radar
+            eq_norm  = [(v + 3) / 6 for v in eq_vals]
+            lig_norm = [0.5] * len(mets_adn)
+
+            theta = labels_adn + [labels_adn[0]]
+            r_eq  = eq_norm  + [eq_norm[0]]
+            r_lig = lig_norm + [lig_norm[0]]
+
+            fig_adn = go.Figure()
+            fig_adn.add_trace(go.Scatterpolar(
+                r=r_lig, theta=theta, fill="toself", name="Media Liga",
+                line=dict(color=GRAY, dash="dot"), opacity=0.5,
+            ))
+            fig_adn.add_trace(go.Scatterpolar(
+                r=r_eq, theta=theta, fill="toself", name=eq_sel,
+                line=dict(color=RED, width=2),
+            ))
+            layout_r = PLOT.copy()
+            layout_r.update(height=400,
+                polar=dict(bgcolor="rgba(0,0,0,0)",
+                    radialaxis=dict(visible=True, showticklabels=False, gridcolor="#2a2a30", range=[0, 1]),
+                    angularaxis=dict(gridcolor="#2a2a30", linecolor="#2a2a30")),
+                margin=dict(l=50, r=50, t=36, b=50),
+                legend=dict(orientation="h", x=0.3, y=-0.1))
+            fig_adn.update_layout(**layout_r)
+            st.plotly_chart(fig_adn, use_container_width=True)
+
+            st.caption("El radar muestra la posición del equipo relativa a la media de la liga (z-score normalizado). 0.5 = media de liga.")
+        else:
+            st.info("Seleccioná un equipo para ver el detalle.")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  ★  MÓDULO RACHAS Y MOMENTUM
+# ══════════════════════════════════════════════════════════════════════════════
+elif nav == "Rachas y Momentum":
+    st.markdown('<div class="section-header">Rachas y Momentum</div>', unsafe_allow_html=True)
+
+    if rachas_df.empty:
+        st.warning("No hay datos suficientes para calcular rachas.")
+        st.stop()
+
+    tab_liga, tab_equipo_m = st.tabs(["Ranking de Momentum", "Detalle por Equipo"])
+
+    with tab_liga:
+        st.markdown("""
+        <div style="background:#111115;border:1px solid #2a2a35;border-radius:8px;
+                    padding:14px 20px;margin-bottom:20px;font-size:0.82rem;color:#888890;">
+            El índice de momentum combina puntos en las últimas 3 fechas (60%)
+            y tendencia de xG generado (40%). Rojo = en alza · Gris = estable · Oscuro = en caída.
+        </div>
+        """, unsafe_allow_html=True)
+
+        st.plotly_chart(fig_momentum_ranking(rachas_df), use_container_width=True)
+
+        st.markdown('<div class="section-header">Racha de Todos los Equipos</div>',
                     unsafe_allow_html=True)
-        st.markdown(f"""
-        <div class="corner-summary">
-            <div class="corner-team">
-                <div class="corner-team-name">{ea_vb}</div>
-                <div class="corner-lambda">{lc_a:.1f}</div>
-                <div class="corner-team-name" style="margin-top:4px;">córners esperados</div>
-            </div>
-            <div class="corner-sep">VS</div>
-            <div class="corner-team">
-                <div class="corner-team-name">{eb_vb}</div>
-                <div class="corner-lambda" style="color:#ffffff;">{lc_b:.1f}</div>
-                <div class="corner-team-name" style="margin-top:4px;">córners esperados</div>
-            </div>
-            <div class="corner-sep">│</div>
-            <div class="corner-total">
-                <div class="corner-total-label">Total Esperado</div>
-                <div class="corner-total-val">{corner_data["lc_total"]:.1f}</div>
-            </div>
-            <div class="corner-sep">│</div>
-            <div class="corner-total">
-                <div class="corner-total-label">Prob Over 8.5</div>
-                <div class="corner-total-val" style="color:#ED1A3B;">{corner_data["over85"]*100:.1f}%</div>
-            </div>
-            <div class="corner-total">
-                <div class="corner-total-label">Prob Over 9.5</div>
-                <div class="corner-total-val" style="color:#888890;">{corner_data["over95"]*100:.1f}%</div>
-            </div>
-        </div>""", unsafe_allow_html=True)
 
-        with st.expander("📥 Tabla Resumen Completa (exportable)"):
-            df_out = pd.DataFrame(analisis).copy()
-            df_out["Prob Modelo"] = (df_out["Prob Modelo"] * 100).round(2).astype(str) + "%"
-            df_out["EV"]          = df_out["EV"].apply(
-                lambda x: f"+{x*100:.2f}%" if x > 0 else (f"{x*100:.2f}%" if x > -99 else "—"))
-            df_out["Value Bet"]   = df_out["Value Bet"].map({True: "✦ SÍ", False: "No"})
-            st.dataframe(
-                df_out[["Categoria", "Mercado", "Prob Modelo",
-                         "Cuota Justa", "Cuota Casa", "EV", "Value Bet"]],
-                use_container_width=True, hide_index=True
-            )
+        # Cards de racha en grid
+        rachas_sorted = rachas_df.sort_values("MomentumScore", ascending=False)
+        cards_html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;margin-top:10px;">'
+        for eq, row in rachas_sorted.iterrows():
+            dots = render_racha_dots(row["Ultimas6"])
+            delta_str = f"+{row['DeltaXG']:.2f}" if row["DeltaXG"] >= 0 else f"{row['DeltaXG']:.2f}"
+            delta_color = "#5ecf6b" if row["DeltaXG"] > 0.05 else ("#ED1A3B" if row["DeltaXG"] < -0.05 else "#888890")
+            cards_html += f"""
+            <div class="momentum-card">
+                <div class="momentum-team">{eq}</div>
+                <div style="margin-bottom:8px;">{dots}</div>
+                <div style="display:flex;gap:18px;flex-wrap:wrap;">
+                    <div>
+                        <div class="momentum-label">Forma</div>
+                        <div class="{row['EstadoCls']}">{row["Estado"]}</div>
+                    </div>
+                    <div>
+                        <div class="momentum-label">Pts últimas 3</div>
+                        <div style="font-size:1rem;font-weight:800;color:#e0e0e0;">{row["Pts3"]}</div>
+                    </div>
+                    <div>
+                        <div class="momentum-label">Δ xG</div>
+                        <div style="font-size:1rem;font-weight:800;color:{delta_color};">{delta_str}</div>
+                    </div>
+                </div>
+            </div>"""
+        cards_html += "</div>"
+        st.markdown(cards_html, unsafe_allow_html=True)
 
-        with st.expander("⚙ Parámetros del Motor (debug)"):
-            pa_a, pd_a = _get_prior(tabla, ea_vb)
-            pa_b, pd_b = _get_prior(tabla, eb_vb)
-            st.code(
-                f"GOLES\n"
-                f"  λ {ea_vb}: {la_vb:.3f}  (Prior Atk: {pa_a:.2f} | Prior Def: {pd_a:.2f})\n"
-                f"  λ {eb_vb}: {lb_vb:.3f}  (Prior Atk: {pa_b:.2f} | Prior Def: {pd_b:.2f})\n\n"
-                f"CÓRNERS\n"
-                f"  λc {ea_vb}: {lc_a:.2f}\n"
-                f"  λc {eb_vb}: {lc_b:.2f}\n"
-                f"  Total esperado: {corner_data['lc_total']:.2f}\n\n"
-                f"MERCADOS DERIVADOS DE LA MATRIZ\n"
-                f"  Over 2.5:  {mercados_goles['over25']*100:.1f}%  |  Under 2.5: {mercados_goles['under25']*100:.1f}%\n"
-                f"  BTTS Sí:   {mercados_goles['btts_yes']*100:.1f}%  |  BTTS No:   {mercados_goles['btts_no']*100:.1f}%"
-            )
+    with tab_equipo_m:
+        eq_m = st.selectbox("Seleccionar Equipo", equipos, key="racha_eq")
+        if eq_m in rachas_df.index:
+            row_m = rachas_df.loc[eq_m]
+            dots  = render_racha_dots(row_m["Ultimas6"])
+            delta_str   = f"+{row_m['DeltaXG']:.2f}" if row_m["DeltaXG"] >= 0 else f"{row_m['DeltaXG']:.2f}"
+            delta_color = "#5ecf6b" if row_m["DeltaXG"] > 0.05 else ("#ED1A3B" if row_m["DeltaXG"] < -0.05 else "#888890")
+
+            st.markdown(f"""
+            <div class="momentum-card" style="margin-bottom:20px;">
+                <div class="momentum-team">{eq_m}</div>
+                <div class="momentum-label">Racha completa (✦ = victorias)</div>
+                <div style="margin:8px 0 14px;">{"".join(
+                    f'<span class="racha-dot {"racha-v" if r=="V" else ("racha-e" if r=="E" else "racha-d")}">{r}</span>'
+                    for r in row_m["Resultados"]
+                )}</div>
+                <div style="display:flex;gap:30px;flex-wrap:wrap;">
+                    <div>
+                        <div class="momentum-label">Estado de forma</div>
+                        <div class="{row_m["EstadoCls"]}">{row_m["Estado"]}</div>
+                    </div>
+                    <div>
+                        <div class="momentum-label">xG reciente (últ. 3)</div>
+                        <div style="font-size:1.1rem;font-weight:800;color:#ED1A3B;">{row_m["xGRec"]:.2f}</div>
+                    </div>
+                    <div>
+                        <div class="momentum-label">xG anterior (3 ant.)</div>
+                        <div style="font-size:1.1rem;font-weight:800;color:#888890;">{row_m["xGAnt"]:.2f}</div>
+                    </div>
+                    <div>
+                        <div class="momentum-label">Tendencia xG</div>
+                        <div style="font-size:1.1rem;font-weight:800;color:{delta_color};">{delta_str}</div>
+                    </div>
+                    <div>
+                        <div class="momentum-label">Índice Momentum</div>
+                        <div style="font-size:1.1rem;font-weight:800;color:#e0e0e0;">{row_m["MomentumScore"]:.2f}</div>
+                    </div>
+                </div>
+            </div>""", unsafe_allow_html=True)
+
+            st.markdown('<div class="section-header">Evolución Temporal</div>', unsafe_allow_html=True)
+            st.plotly_chart(fig_momentum_timeline(df_regular, eq_m), use_container_width=True)
+            st.caption("Barras = puntos obtenidos por fecha. Línea blanca = xG generado. Rojo = victoria · Gris = empate · Oscuro = derrota.")
+        else:
+            st.info("Seleccioná un equipo para ver el detalle.")
