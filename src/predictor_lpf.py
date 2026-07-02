@@ -299,63 +299,86 @@ def num(v) -> float:
     except:
         return 0.0
 
-
 _SENTINEL_DERIVADAS = re.compile(r'métricas derivadas|métrica calculada', re.IGNORECASE)
 
+# Función auxiliar universal para procesar el dataframe (sirve para CSV y Excel)
+def _procesar_dataframe(df):
+    partidos, i = [], 0
+    while i < len(df):
+        c0 = str(df.iloc[i, 0]).strip() if pd.notna(df.iloc[i, 0]) else ""
+        if re.search(r"\s+vs\s+", c0, re.IGNORECASE):
+            p = re.split(r"\s+vs\s+", c0, flags=re.IGNORECASE)
+            loc, vis, stats, j = p[0].strip(), p[1].strip(), {}, i + 1
+            while j < len(df):
+                r0 = str(df.iloc[j, 0]).strip() if pd.notna(df.iloc[j, 0]) else ""
+                if re.search(r"\s+vs\s+", r0, re.IGNORECASE):
+                    break
+                if r0 == "":
+                    j += 1
+                    continue
+                if _SENTINEL_DERIVADAS.search(r0):
+                    j += 1
+                    while j < len(df):
+                        r_check = str(df.iloc[j, 0]).strip() if pd.notna(df.iloc[j, 0]) else ""
+                        if r_check == "" or re.search(r"\s+vs\s+", r_check, re.IGNORECASE):
+                            break
+                        j += 1
+                    break
+                if r0.lower() in ("métrica", "metrica") or r0 == loc:
+                    j += 1
+                    continue
+                
+                # Verificamos que existan las columnas suficientes para evitar el KeyError
+                if pd.notna(df.iloc[j, 1]) and df.shape[1] > 2:
+                    stats[r0] = {
+                        "local":     num(df.iloc[j, 1]),
+                        "visitante": num(df.iloc[j, 2]) if pd.notna(df.iloc[j, 2]) else 0.0,
+                    }
+                j += 1
+            partidos.append({"local": loc, "visitante": vis, "metricas": stats})
+            i = j
+        else:
+            i += 1
+    return partidos
 
 @st.cache_data(ttl=120, show_spinner=False)
 def cargar_excel(ruta: str):
     res = {}
+    if not os.path.exists(ruta):
+        return res
     
-    # Buscamos en la carpeta de datos si existe
-    if os.path.exists(ruta):
-        archivos = [f for f in os.listdir(ruta) if f.endswith('.csv')]
-        
-        for archivo in archivos:
-            # Limpiamos el nombre para sacar el "Fecha_x_fecha_lpf.xlsx - "
-            hoja = archivo.split(" - ")[-1].replace(".csv", "")
-            
-            if not re.search(r"fecha\s*\d+|octavo|cuarto|semi|final|playoff", hoja, re.IGNORECASE):
-                continue
+    # CASO 1: Es directamente un archivo de Excel
+    if os.path.isfile(ruta) and ruta.endswith(('.xlsx', '.xls')):
+        xl = pd.ExcelFile(ruta, engine="openpyxl")
+        for hoja in xl.sheet_names:
+            if re.search(r"fecha\s*\d+|octavo|cuarto|semi|final|playoff", hoja, re.IGNORECASE):
+                df = pd.read_excel(xl, sheet_name=hoja, header=None)
+                res[hoja] = _procesar_dataframe(df)
                 
-            ruta_csv = os.path.join(ruta, archivo)
-            df = pd.read_csv(ruta_csv, header=None)
-            
-            partidos, i = [], 0
-            while i < len(df):
-                c0 = str(df.iloc[i, 0]).strip() if pd.notna(df.iloc[i, 0]) else ""
-                if re.search(r"\s+vs\s+", c0, re.IGNORECASE):
-                    p = re.split(r"\s+vs\s+", c0, flags=re.IGNORECASE)
-                    loc, vis, stats, j = p[0].strip(), p[1].strip(), {}, i + 1
-                    while j < len(df):
-                        r0 = str(df.iloc[j, 0]).strip() if pd.notna(df.iloc[j, 0]) else ""
-                        if re.search(r"\s+vs\s+", r0, re.IGNORECASE):
-                            break
-                        if r0 == "":
-                            j += 1
-                            continue
-                        if _SENTINEL_DERIVADAS.search(r0):
-                            j += 1
-                            while j < len(df):
-                                r_check = str(df.iloc[j, 0]).strip() if pd.notna(df.iloc[j, 0]) else ""
-                                if r_check == "" or re.search(r"\s+vs\s+", r_check, re.IGNORECASE):
-                                    break
-                                j += 1
-                            break
-                        if r0.lower() in ("métrica", "metrica") or r0 == loc:
-                            j += 1
-                            continue
-                        if pd.notna(df.iloc[j, 1]):
-                            stats[r0] = {
-                                "local":     num(df.iloc[j, 1]),
-                                "visitante": num(df.iloc[j, 2]) if pd.notna(df.iloc[j, 2]) else 0.0,
-                            }
-                        j += 1
-                    partidos.append({"local": loc, "visitante": vis, "metricas": stats})
-                    i = j
-                else:
-                    i += 1
-            res[hoja] = partidos
+    # CASO 2: Es una carpeta (ej: "data")
+    elif os.path.isdir(ruta):
+        archivos = os.listdir(ruta)
+        
+        # Buscamos primero si hay un Excel entero ADENTRO de la carpeta
+        archivos_excel = [f for f in archivos if f.endswith(('.xlsx', '.xls'))]
+        if archivos_excel:
+            ruta_xl = os.path.join(ruta, archivos_excel[0])
+            xl = pd.ExcelFile(ruta_xl, engine="openpyxl")
+            for hoja in xl.sheet_names:
+                if re.search(r"fecha\s*\d+|octavo|cuarto|semi|final|playoff", hoja, re.IGNORECASE):
+                    df = pd.read_excel(xl, sheet_name=hoja, header=None)
+                    res[hoja] = _procesar_dataframe(df)
+                    
+        # CASO 3: Si no hay Excel, leemos los CSV separados
+        else:
+            archivos_csv = [f for f in archivos if f.endswith('.csv')]
+            for archivo in archivos_csv:
+                hoja = archivo.split(" - ")[-1].replace(".csv", "") if " - " in archivo else archivo.replace(".csv", "")
+                if re.search(r"fecha\s*\d+|octavo|cuarto|semi|final|playoff", hoja, re.IGNORECASE):
+                    ruta_csv = os.path.join(ruta, archivo)
+                    df = pd.read_csv(ruta_csv, header=None)
+                    res[hoja] = _procesar_dataframe(df)
+                    
     return res
 
 
@@ -938,7 +961,7 @@ def fig_radar_pro(df, eq_a, eq_b, cond_a, cond_b):
 # ──────────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown('<div class="sidebar-logo">LPF SCOUTING</div>', unsafe_allow_html=True)
-    ruta = st.text_input("Carpeta de Datos", "data")
+    ruta = st.text_input("Carpeta / Archivo de Datos", "data")
     st.markdown("<br>", unsafe_allow_html=True)
     nav = st.radio(
         "MÓDULOS DE ANÁLISIS",
@@ -955,16 +978,12 @@ with st.sidebar:
         label_visibility="collapsed",
     )
 
-if not os.path.exists(ruta):
-    st.warning(f"No se encontró la carpeta `{ruta}` con los archivos CSV. Verificá la ruta en el panel lateral.")
-    st.stop()
-
 datos    = cargar_excel(ruta)
 df       = construir_df(datos)
 
 # --- FRENO DE SEGURIDAD NUEVO ---
 if df.empty:
-    st.error(f"⚠️ No se encontraron partidos válidos en la carpeta `{ruta}`. Verificá que la ruta sea correcta y que los archivos CSV estén ahí.")
+    st.error(f"⚠️ No se encontraron partidos válidos en `{ruta}`. Verificá que la ruta sea correcta y que los archivos existan.")
     st.stop()
 # --------------------------------
 
