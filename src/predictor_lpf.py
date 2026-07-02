@@ -313,7 +313,7 @@ def cargar_excel(ruta: str):
         # Detectamos explícitamente fases de playoff además de "fecha X"
         if not re.search(r"fecha\s*\d+|octavo|cuarto|semi|final|playoff", hoja, re.IGNORECASE):
             continue
-        df = pd.read_excel(ruta, sheet_name=hoja, header=None)
+        df = pd.read_excel(xl, sheet_name=hoja, header=None)
         partidos, i = [], 0
         while i < len(df):
             c0 = str(df.iloc[i, 0]).strip() if pd.notna(df.iloc[i, 0]) else ""
