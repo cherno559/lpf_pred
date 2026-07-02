@@ -961,6 +961,13 @@ if not os.path.exists(ruta):
 
 datos    = cargar_excel(ruta)
 df       = construir_df(datos)
+
+# --- FRENO DE SEGURIDAD NUEVO ---
+if df.empty:
+    st.error(f"⚠️ No se encontraron partidos válidos en la carpeta `{ruta}`. Verificá que la ruta sea correcta y que los archivos CSV estén ahí.")
+    st.stop()
+# --------------------------------
+
 tabla    = calcular_tabla(df, "General")
 equipos  = sorted(df["Equipo"].unique())
 metricas = sorted(df["Métrica"].unique())
