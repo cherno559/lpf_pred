@@ -305,50 +305,57 @@ _SENTINEL_DERIVADAS = re.compile(r'métricas derivadas|métrica calculada', re.I
 
 @st.cache_data(ttl=120, show_spinner=False)
 def cargar_excel(ruta: str):
-    if not os.path.exists(ruta):
-        return {}
-    xl = pd.ExcelFile(ruta, engine="openpyxl")
     res = {}
-    for hoja in xl.sheet_names:
-        # Detectamos explícitamente fases de playoff además de "fecha X"
-        if not re.search(r"fecha\s*\d+|octavo|cuarto|semi|final|playoff", hoja, re.IGNORECASE):
-            continue
-        df = pd.read_excel(xl, sheet_name=hoja, header=None)
-        partidos, i = [], 0
-        while i < len(df):
-            c0 = str(df.iloc[i, 0]).strip() if pd.notna(df.iloc[i, 0]) else ""
-            if re.search(r"\s+vs\s+", c0, re.IGNORECASE):
-                p = re.split(r"\s+vs\s+", c0, flags=re.IGNORECASE)
-                loc, vis, stats, j = p[0].strip(), p[1].strip(), {}, i + 1
-                while j < len(df):
-                    r0 = str(df.iloc[j, 0]).strip() if pd.notna(df.iloc[j, 0]) else ""
-                    if re.search(r"\s+vs\s+", r0, re.IGNORECASE):
-                        break
-                    if r0 == "":
-                        j += 1
-                        continue
-                    if _SENTINEL_DERIVADAS.search(r0):
-                        j += 1
-                        while j < len(df):
-                            r_check = str(df.iloc[j, 0]).strip() if pd.notna(df.iloc[j, 0]) else ""
-                            if r_check == "" or re.search(r"\s+vs\s+", r_check, re.IGNORECASE):
-                                break
+    
+    # Buscamos en la carpeta de datos si existe
+    if os.path.exists(ruta):
+        archivos = [f for f in os.listdir(ruta) if f.endswith('.csv')]
+        
+        for archivo in archivos:
+            # Limpiamos el nombre para sacar el "Fecha_x_fecha_lpf.xlsx - "
+            hoja = archivo.split(" - ")[-1].replace(".csv", "")
+            
+            if not re.search(r"fecha\s*\d+|octavo|cuarto|semi|final|playoff", hoja, re.IGNORECASE):
+                continue
+                
+            ruta_csv = os.path.join(ruta, archivo)
+            df = pd.read_csv(ruta_csv, header=None)
+            
+            partidos, i = [], 0
+            while i < len(df):
+                c0 = str(df.iloc[i, 0]).strip() if pd.notna(df.iloc[i, 0]) else ""
+                if re.search(r"\s+vs\s+", c0, re.IGNORECASE):
+                    p = re.split(r"\s+vs\s+", c0, flags=re.IGNORECASE)
+                    loc, vis, stats, j = p[0].strip(), p[1].strip(), {}, i + 1
+                    while j < len(df):
+                        r0 = str(df.iloc[j, 0]).strip() if pd.notna(df.iloc[j, 0]) else ""
+                        if re.search(r"\s+vs\s+", r0, re.IGNORECASE):
+                            break
+                        if r0 == "":
                             j += 1
-                        break
-                    if r0.lower() in ("métrica", "metrica") or r0 == loc:
+                            continue
+                        if _SENTINEL_DERIVADAS.search(r0):
+                            j += 1
+                            while j < len(df):
+                                r_check = str(df.iloc[j, 0]).strip() if pd.notna(df.iloc[j, 0]) else ""
+                                if r_check == "" or re.search(r"\s+vs\s+", r_check, re.IGNORECASE):
+                                    break
+                                j += 1
+                            break
+                        if r0.lower() in ("métrica", "metrica") or r0 == loc:
+                            j += 1
+                            continue
+                        if pd.notna(df.iloc[j, 1]):
+                            stats[r0] = {
+                                "local":     num(df.iloc[j, 1]),
+                                "visitante": num(df.iloc[j, 2]) if pd.notna(df.iloc[j, 2]) else 0.0,
+                            }
                         j += 1
-                        continue
-                    if pd.notna(df.iloc[j, 1]):
-                        stats[r0] = {
-                            "local":     num(df.iloc[j, 1]),
-                            "visitante": num(df.iloc[j, 2]) if pd.notna(df.iloc[j, 2]) else 0.0,
-                        }
-                    j += 1
-                partidos.append({"local": loc, "visitante": vis, "metricas": stats})
-                i = j
-            else:
-                i += 1
-        res[hoja] = partidos
+                    partidos.append({"local": loc, "visitante": vis, "metricas": stats})
+                    i = j
+                else:
+                    i += 1
+            res[hoja] = partidos
     return res
 
 
@@ -654,8 +661,8 @@ def calcular_adn_tactico(df: pd.DataFrame) -> pd.DataFrame:
         tags_dict[eq] = tags
         insights[eq]  = " ".join(frases)
 
-    adn["Tags"]    = pd.Series(tags_dict)
-    adn["Insight"] = pd.Series(insights)
+    adn["Tags"]    = adn.index.map(tags_dict)
+    adn["Insight"] = adn.index.map(insights)
     return adn
 
 
@@ -931,7 +938,7 @@ def fig_radar_pro(df, eq_a, eq_b, cond_a, cond_b):
 # ──────────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown('<div class="sidebar-logo">LPF SCOUTING</div>', unsafe_allow_html=True)
-    ruta = st.text_input("Archivo de Datos", "Fecha_x_fecha_lpf.xlsx")
+    ruta = st.text_input("Carpeta de Datos", "data")
     st.markdown("<br>", unsafe_allow_html=True)
     nav = st.radio(
         "MÓDULOS DE ANÁLISIS",
@@ -949,7 +956,7 @@ with st.sidebar:
     )
 
 if not os.path.exists(ruta):
-    st.warning(f"No se encontró el archivo `{ruta}`. Verificá la ruta en el panel lateral.")
+    st.warning(f"No se encontró la carpeta `{ruta}` con los archivos CSV. Verificá la ruta en el panel lateral.")
     st.stop()
 
 datos    = cargar_excel(ruta)
@@ -960,15 +967,15 @@ metricas = sorted(df["Métrica"].unique())
 
 # PRECALCULAR TODO CON EL DF COMPLETO (Incluye playoffs)
 @st.cache_data(ttl=120, show_spinner=False)
-def _cached_adn(df_hash):
-    return calcular_adn_tactico(df)
+def _cached_adn(dataframe):
+    return calcular_adn_tactico(dataframe)
 
 @st.cache_data(ttl=120, show_spinner=False)
-def _cached_rachas(df_hash):
-    return calcular_rachas(df)
+def _cached_rachas(dataframe):
+    return calcular_rachas(dataframe)
 
-adn_df    = calcular_adn_tactico(df)
-rachas_df = calcular_rachas(df)
+adn_df    = _cached_adn(df)
+rachas_df = _cached_rachas(df)
 
 # ── Hero Banner ──────────────────────────────────────────────────────
 st.markdown("""
