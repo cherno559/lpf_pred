@@ -1,15 +1,5 @@
 """
-Plataforma de Scouting LPF 2026
-─────────────────────────────────────────────────────────────────────────────
-Módulos:
-  · Predicción de Partidos  (con contexto táctico)
-  · Métricas Globales
-  · Comparativa H2H
-  · Análisis de Rival
-  · Análisis de Estilos
-  · Posiciones
-  · ADN Táctico            ★ NUEVO
-  · Rachas y Momentum      ★ NUEVO
+Plataforma de Scouting LPF 2026 - Completa y Dinámica
 """
 import re, os, math
 import numpy as np
@@ -120,7 +110,7 @@ PRIOR_DEF_SCALE = 0.30
 DC_RHO = -0.10
 MAX_GOALS_MATRIX = 7
 N_RECENCIA, PESO_RECIENTE, PESO_NORMAL = 3, 1.8, 1.0
-PESO_HISTORICO = 0.4  # <--- NUEVO: Castigo matemático a torneos viejos
+PESO_HISTORICO = 0.4
 LAM_MIN, LAM_MAX = 0.30, 5.00
 
 RED, WHITE, GRAY = "#ED1A3B", "#ffffff", "#4a4a52"
@@ -188,7 +178,6 @@ def cargar_excel(archivos_seleccionados: list):
             continue
         
         nombre_torneo = os.path.basename(ruta_archivo).split('.')[0]
-        # NUEVO: Detectamos de qué carpeta viene el archivo para asignarle un peso menor luego
         categoria = "Histórico" if "historico" in ruta_archivo else "Actual"
         
         if ruta_archivo.endswith(('.xlsx', '.xls')):
@@ -210,7 +199,6 @@ def construir_df(datos: dict) -> pd.DataFrame:
     current_playoff_nf = MAX_FECHAS_REGULARES + 1
 
     for clave, partidos in datos.items():
-        # Desarmamos la clave dinámica
         if "||" in clave:
             partes = clave.split("||")
             if len(partes) == 3:
@@ -238,11 +226,11 @@ def construir_df(datos: dict) -> pd.DataFrame:
             xg_vis = (oc["visitante"] * 0.38) + (max(0, tt["visitante"] - oc["visitante"]) * 0.05)
             p["metricas"]["xG_Estimado"] = {"local": xg_loc, "visitante": xg_vis}
             for met, vals in p["metricas"].items():
-                # NUEVO: Guardamos la categoría (Histórico vs Actual)
                 base = {"nFecha": nf, "Fase": fase, "Métrica": met, "Torneo": torneo, "Categoria": categoria}
                 filas.append({**base, "Equipo": p["local"],     "Rival": p["visitante"], "Condicion": "Local",     "Propio": vals["local"],     "Concedido": vals["visitante"]})
                 filas.append({**base, "Equipo": p["visitante"], "Rival": p["local"],     "Condicion": "Visitante", "Propio": vals["visitante"], "Concedido": vals["local"]})
     return pd.DataFrame(filas)
+
 @st.cache_data(ttl=120, show_spinner=False)
 def calcular_tabla(df: pd.DataFrame, condicion: str = "General") -> pd.DataFrame:
     if df.empty:
@@ -305,8 +293,6 @@ def _adjusted_rate(d_spec, metrica, col, max_fecha_torneo, tabla, is_attack):
         adj = v / pd_r if (is_attack and pd_r > 0) else v / pa_r if (not is_attack and pa_r > 0) else v
         valores_ajustados.append(adj)
         
-    # NUEVO: Aplicamos el filtro de decaimiento
-    # Si es histórico vale 0.4. Si es actual y reciente vale 1.8. Sino 1.0.
     w = np.where(categoria == "Histórico", PESO_HISTORICO, 
          np.where(fechas >= (max_fecha_torneo - N_RECENCIA + 1), PESO_RECIENTE, PESO_NORMAL))
          
@@ -357,8 +343,6 @@ def _strength(df, eq, cond, league, max_fecha_torneo: int, tabla: pd.DataFrame):
 
 def calcular_lambdas(df, eq_a, eq_b, es_loc, tabla):
     l = _league_stats(df)
-    
-    # NUEVO: Buscamos la fecha máxima SOLO del torneo actual para aplicar bien el multiplicador reciente
     df_actual = df[df["Categoria"] == "Actual"]
     if not df_actual.empty:
         max_fecha_torneo = int(df_actual["nFecha"].max())
@@ -664,7 +648,6 @@ def fig_radar_pro(df, eq_a, eq_b, cond_a, cond_b):
 with st.sidebar:
     st.markdown('<div class="sidebar-logo">LPF SCOUTING</div>', unsafe_allow_html=True)
     
-    # --- LECTURA DINÁMICA DE ARCHIVOS ---
     rutas_base = {
         "Histórico": "data/historico",
         "Actual": "data/actual"
@@ -674,17 +657,12 @@ with st.sidebar:
     for categoria, ruta_carpeta in rutas_base.items():
         if os.path.exists(ruta_carpeta):
             for archivo in os.listdir(ruta_carpeta):
-                # Filtramos para que solo lea Excels o CSVs
                 if archivo.endswith(('.xlsx', '.xls', '.csv')):
                     nombre_amigable = f"{categoria} | {archivo}"
                     opciones_archivos[nombre_amigable] = os.path.join(ruta_carpeta, archivo)
     
     opciones_disponibles = list(opciones_archivos.keys())
-    
-    # Intentamos pre-seleccionar los archivos por defecto si existen
-    defaults = [opt for opt in opciones_disponibles if "clausura" in opt.lower()]
-    if not defaults:
-        defaults = [opt for opt in opciones_disponibles if "apertura" in opt.lower()]
+    defaults = [opt for opt in opciones_disponibles if "clausura" in opt.lower() or "apertura" in opt.lower()]
     
     torneos_seleccionados_nombres = st.multiselect(
         "Bases de Datos a Utilizar:",
@@ -692,9 +670,7 @@ with st.sidebar:
         default=defaults if defaults else (opciones_disponibles[:1] if opciones_disponibles else [])
     )
     
-    # Traducimos lo que elegiste a las rutas reales de la computadora
     archivos_a_cargar = [opciones_archivos[nombre] for nombre in torneos_seleccionados_nombres]
-    # ------------------------------------
 
     st.markdown("<br>", unsafe_allow_html=True)
     nav = st.radio(
@@ -712,13 +688,22 @@ with st.sidebar:
         label_visibility="collapsed",
     )
 
-# Cargamos usando la lógica que recibe las rutas exactas
 datos    = cargar_excel(archivos_a_cargar)
 df       = construir_df(datos)
 
 if df.empty:
     st.error("⚠️ No se seleccionaron datos o las carpetas están vacías. Elegí un torneo en la barra lateral.")
     st.stop()
+
+torneos_cargados = list(df["Torneo"].unique())
+if len(torneos_cargados) > 1 and nav != "Predicción de Partidos":
+    st.sidebar.markdown("<hr style='border-color:#2a2a30; margin-top: 10px;'>", unsafe_allow_html=True)
+    torneo_analisis = st.sidebar.selectbox(
+        "📊 Ver estadísticas de:", 
+        ["Todos los seleccionados"] + torneos_cargados
+    )
+    if torneo_analisis != "Todos los seleccionados":
+        df = df[df["Torneo"] == torneo_analisis]
 
 tabla    = calcular_tabla(df, "General")
 equipos  = sorted(df["Equipo"].unique())
@@ -871,7 +856,7 @@ elif nav == "Rachas y Momentum":
             for eq, row in rachas_sorted.iterrows():
                 dots, delta_str = render_racha_dots(row["Ultimas6"]), f"+{row['DeltaXG']:.2f}" if row["DeltaXG"] >= 0 else f"{row['DeltaXG']:.2f}"
                 delta_color = "#5ecf6b" if row["DeltaXG"] > 0.05 else ("#ED1A3B" if row["DeltaXG"] < -0.05 else "#888890")
-                cards_html += f"""<div class="momentum-card"><div class="momentum-team">{eq}</div><div style="margin-bottom:8px;">{dots}</div><div style="display:flex;gap:18px;flex-wrap:wrap;"><div><div class="momentum-label">Forma</div><div class="{row['EstadoCls']}">{row["Estado"]}</div></div><div><div class="momentum-label">Pts últ 3</div><div style="font-size:1rem;font-weight:800;color:#e0e0e0;">{row["Pts3"]}</div></div><div><div class="momentum-label">Δ xG</div><div style="font-size:1rem;font-weight:800;color:{delta_color};">{delta_str}</div></div></div></div>"""
+                cards_html += f"""<div class="momentum-card"><div class="momentum-team">{eq}</div><div style="margin-bottom:8px;">{dots}</div><div style="display:flex;gap:18px;flex-wrap:wrap;"><div><div class="momentum-label">Forma</div><div class="{row['EstadoCls']}">{row["Estado"]}</div></div><div><div class="momentum-label">Pts últ 3</div><div style="font-size:1rem;font-weight:800;color:#e0e0e0;">{row["Pts3"]}</div></div><div><div class="momentum-label">Δ xG</div><div style="font-size:1.1rem;font-weight:800;color:{delta_color};">{delta_str}</div></div></div></div>"""
             st.markdown(cards_html + "</div>", unsafe_allow_html=True)
         with tab_equipo_m:
             eq_m = st.selectbox("Seleccionar Equipo", equipos, key="racha_eq")
