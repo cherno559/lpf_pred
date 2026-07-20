@@ -120,6 +120,7 @@ PRIOR_DEF_SCALE = 0.30
 DC_RHO = -0.10
 MAX_GOALS_MATRIX = 7
 N_RECENCIA, PESO_RECIENTE, PESO_NORMAL = 3, 1.8, 1.0
+PESO_HISTORICO = 0.4  # <--- NUEVO: Castigo matemático a torneos viejos
 LAM_MIN, LAM_MAX = 0.30, 5.00
 
 RED, WHITE, GRAY = "#ED1A3B", "#ffffff", "#4a4a52"
@@ -187,18 +188,20 @@ def cargar_excel(archivos_seleccionados: list):
             continue
         
         nombre_torneo = os.path.basename(ruta_archivo).split('.')[0]
+        # NUEVO: Detectamos de qué carpeta viene el archivo para asignarle un peso menor luego
+        categoria = "Histórico" if "historico" in ruta_archivo else "Actual"
         
         if ruta_archivo.endswith(('.xlsx', '.xls')):
             xl = pd.ExcelFile(ruta_archivo, engine="openpyxl")
             for hoja in xl.sheet_names:
                 if re.search(r"fecha\s*\d+|octavo|cuarto|semi|final|playoff", hoja, re.IGNORECASE):
                     df = pd.read_excel(xl, sheet_name=hoja, header=None)
-                    res[f"{nombre_torneo}||{hoja}"] = _procesar_dataframe(df)
+                    res[f"{categoria}||{nombre_torneo}||{hoja}"] = _procesar_dataframe(df)
         elif ruta_archivo.endswith('.csv'):
             hoja = nombre_torneo.split(" - ")[-1] if " - " in nombre_torneo else nombre_torneo
             if re.search(r"fecha\s*\d+|octavo|cuarto|semi|final|playoff", hoja, re.IGNORECASE):
                 df = pd.read_csv(ruta_archivo, header=None)
-                res[f"{nombre_torneo}||{hoja}"] = _procesar_dataframe(df)
+                res[f"{categoria}||{nombre_torneo}||{hoja}"] = _procesar_dataframe(df)
     return res
 
 def construir_df(datos: dict) -> pd.DataFrame:
@@ -207,10 +210,15 @@ def construir_df(datos: dict) -> pd.DataFrame:
     current_playoff_nf = MAX_FECHAS_REGULARES + 1
 
     for clave, partidos in datos.items():
+        # Desarmamos la clave dinámica
         if "||" in clave:
-            torneo, fecha = clave.split("||", 1)
+            partes = clave.split("||")
+            if len(partes) == 3:
+                categoria, torneo, fecha = partes
+            else:
+                categoria, torneo, fecha = "Actual", partes[0], partes[1]
         else:
-            torneo, fecha = "General", clave
+            categoria, torneo, fecha = "Actual", "General", clave
             
         match_fecha = re.search(r"\d+", fecha)
         es_playoff_txt = re.search(r"(octavo|cuarto|semi|final|playoff)", fecha, re.IGNORECASE)
@@ -230,7 +238,8 @@ def construir_df(datos: dict) -> pd.DataFrame:
             xg_vis = (oc["visitante"] * 0.38) + (max(0, tt["visitante"] - oc["visitante"]) * 0.05)
             p["metricas"]["xG_Estimado"] = {"local": xg_loc, "visitante": xg_vis}
             for met, vals in p["metricas"].items():
-                base = {"nFecha": nf, "Fase": fase, "Métrica": met, "Torneo": torneo}
+                # NUEVO: Guardamos la categoría (Histórico vs Actual)
+                base = {"nFecha": nf, "Fase": fase, "Métrica": met, "Torneo": torneo, "Categoria": categoria}
                 filas.append({**base, "Equipo": p["local"],     "Rival": p["visitante"], "Condicion": "Local",     "Propio": vals["local"],     "Concedido": vals["visitante"]})
                 filas.append({**base, "Equipo": p["visitante"], "Rival": p["local"],     "Condicion": "Visitante", "Propio": vals["visitante"], "Concedido": vals["local"]})
     return pd.DataFrame(filas)
@@ -285,15 +294,22 @@ def _adjusted_rate(d_spec, metrica, col, max_fecha_torneo, tabla, is_attack):
     df_m = d_spec[d_spec["Métrica"] == metrica]
     if df_m.empty:
         return np.nan
-    fechas   = df_m["nFecha"].values
-    valores  = df_m[col].values
-    rivales  = df_m["Rival"].values
+    fechas    = df_m["nFecha"].values
+    categoria = df_m["Categoria"].values
+    valores   = df_m[col].values
+    rivales   = df_m["Rival"].values
     valores_ajustados = []
+    
     for v, r in zip(valores, rivales):
         pa_r, pd_r = _get_prior(tabla, r)
         adj = v / pd_r if (is_attack and pd_r > 0) else v / pa_r if (not is_attack and pa_r > 0) else v
         valores_ajustados.append(adj)
-    w = np.where(fechas >= (max_fecha_torneo - N_RECENCIA + 1), PESO_RECIENTE, PESO_NORMAL)
+        
+    # NUEVO: Aplicamos el filtro de decaimiento
+    # Si es histórico vale 0.4. Si es actual y reciente vale 1.8. Sino 1.0.
+    w = np.where(categoria == "Histórico", PESO_HISTORICO, 
+         np.where(fechas >= (max_fecha_torneo - N_RECENCIA + 1), PESO_RECIENTE, PESO_NORMAL))
+         
     return float(np.average(valores_ajustados, weights=w))
 
 @st.cache_data(ttl=120, show_spinner=False)
@@ -341,7 +357,14 @@ def _strength(df, eq, cond, league, max_fecha_torneo: int, tabla: pd.DataFrame):
 
 def calcular_lambdas(df, eq_a, eq_b, es_loc, tabla):
     l = _league_stats(df)
-    max_fecha_torneo = int(df["nFecha"].max())
+    
+    # NUEVO: Buscamos la fecha máxima SOLO del torneo actual para aplicar bien el multiplicador reciente
+    df_actual = df[df["Categoria"] == "Actual"]
+    if not df_actual.empty:
+        max_fecha_torneo = int(df_actual["nFecha"].max())
+    else:
+        max_fecha_torneo = int(df["nFecha"].max())
+        
     ca, cb = ("Local", "Visitante") if es_loc else ("Visitante", "Local")
     aa, da, na = _strength(df, eq_a, ca, l, max_fecha_torneo, tabla)
     ab, db, nb = _strength(df, eq_b, cb, l, max_fecha_torneo, tabla)
@@ -658,8 +681,10 @@ with st.sidebar:
     
     opciones_disponibles = list(opciones_archivos.keys())
     
-    # Intentamos pre-seleccionar el apertura26 si lo encuentra
-    defaults = [opt for opt in opciones_disponibles if "apertura26" in opt]
+    # Intentamos pre-seleccionar los archivos por defecto si existen
+    defaults = [opt for opt in opciones_disponibles if "clausura" in opt.lower()]
+    if not defaults:
+        defaults = [opt for opt in opciones_disponibles if "apertura" in opt.lower()]
     
     torneos_seleccionados_nombres = st.multiselect(
         "Bases de Datos a Utilizar:",
@@ -687,7 +712,7 @@ with st.sidebar:
         label_visibility="collapsed",
     )
 
-# Cargamos usando la nueva lógica que recibe las rutas exactas
+# Cargamos usando la lógica que recibe las rutas exactas
 datos    = cargar_excel(archivos_a_cargar)
 df       = construir_df(datos)
 
