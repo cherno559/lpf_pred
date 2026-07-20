@@ -649,10 +649,10 @@ def fig_radar_pro(df, eq_a, eq_b, cond_a, cond_b):
 with st.sidebar:
     st.markdown('<div class="sidebar-logo">LPF SCOUTING</div>', unsafe_allow_html=True)
     
-    # --- ESTA ES LA MAGIA DEL MULTISELECT DE DIRECTORIOS ---
+       # --- ESTA ES LA MAGIA DEL MULTISELECT DE DIRECTORIOS ---
     rutas_db = {
-        "Apertura (Histórico)": "/home/sebi/Documents/futbol/lpf_pred/data/historico",
-        "Clausura (Actual)": "/home/sebi/Documents/futbol/lpf_pred/data/actual"
+        "Apertura (Histórico)": "data/historico",
+        "Clausura (Actual)": "data/actual"
     }
     torneos_seleccionados = st.multiselect(
         "Bases de Datos a Utilizar:",
