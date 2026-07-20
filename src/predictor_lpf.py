@@ -180,33 +180,25 @@ def _procesar_dataframe(df):
     return partidos
 
 @st.cache_data(ttl=120, show_spinner=False)
-def cargar_excel(rutas_dict: dict, seleccion: list):
+def cargar_excel(archivos_seleccionados: list):
     res = {}
-    for nombre_torneo in seleccion:
-        ruta = rutas_dict.get(nombre_torneo)
-        if not ruta or not os.path.exists(ruta):
+    for ruta_archivo in archivos_seleccionados:
+        if not os.path.exists(ruta_archivo):
             continue
         
-        if os.path.isdir(ruta):
-            archivos = os.listdir(ruta)
-            archivos_excel = [f for f in archivos if f.endswith(('.xlsx', '.xls'))]
-            
-            if archivos_excel:
-                ruta_xl = os.path.join(ruta, archivos_excel[0])
-                xl = pd.ExcelFile(ruta_xl, engine="openpyxl")
-                for hoja in xl.sheet_names:
-                    if re.search(r"fecha\s*\d+|octavo|cuarto|semi|final|playoff", hoja, re.IGNORECASE):
-                        df = pd.read_excel(xl, sheet_name=hoja, header=None)
-                        # Agregamos prefijo para diferenciar de dónde viene cada hoja
-                        res[f"{nombre_torneo}||{hoja}"] = _procesar_dataframe(df)
-            else:
-                archivos_csv = [f for f in archivos if f.endswith('.csv')]
-                for archivo in archivos_csv:
-                    hoja = archivo.split(" - ")[-1].replace(".csv", "") if " - " in archivo else archivo.replace(".csv", "")
-                    if re.search(r"fecha\s*\d+|octavo|cuarto|semi|final|playoff", hoja, re.IGNORECASE):
-                        ruta_csv = os.path.join(ruta, archivo)
-                        df = pd.read_csv(ruta_csv, header=None)
-                        res[f"{nombre_torneo}||{hoja}"] = _procesar_dataframe(df)
+        nombre_torneo = os.path.basename(ruta_archivo).split('.')[0]
+        
+        if ruta_archivo.endswith(('.xlsx', '.xls')):
+            xl = pd.ExcelFile(ruta_archivo, engine="openpyxl")
+            for hoja in xl.sheet_names:
+                if re.search(r"fecha\s*\d+|octavo|cuarto|semi|final|playoff", hoja, re.IGNORECASE):
+                    df = pd.read_excel(xl, sheet_name=hoja, header=None)
+                    res[f"{nombre_torneo}||{hoja}"] = _procesar_dataframe(df)
+        elif ruta_archivo.endswith('.csv'):
+            hoja = nombre_torneo.split(" - ")[-1] if " - " in nombre_torneo else nombre_torneo
+            if re.search(r"fecha\s*\d+|octavo|cuarto|semi|final|playoff", hoja, re.IGNORECASE):
+                df = pd.read_csv(ruta_archivo, header=None)
+                res[f"{nombre_torneo}||{hoja}"] = _procesar_dataframe(df)
     return res
 
 def construir_df(datos: dict) -> pd.DataFrame:
@@ -649,17 +641,35 @@ def fig_radar_pro(df, eq_a, eq_b, cond_a, cond_b):
 with st.sidebar:
     st.markdown('<div class="sidebar-logo">LPF SCOUTING</div>', unsafe_allow_html=True)
     
-       # --- ESTA ES LA MAGIA DEL MULTISELECT DE DIRECTORIOS ---
-    rutas_db = {
-        "Apertura (Histórico)": "data/historico",
-        "Clausura (Actual)": "data/actual"
+    # --- LECTURA DINÁMICA DE ARCHIVOS ---
+    rutas_base = {
+        "Histórico": "data/historico",
+        "Actual": "data/actual"
     }
-    torneos_seleccionados = st.multiselect(
+    
+    opciones_archivos = {}
+    for categoria, ruta_carpeta in rutas_base.items():
+        if os.path.exists(ruta_carpeta):
+            for archivo in os.listdir(ruta_carpeta):
+                # Filtramos para que solo lea Excels o CSVs
+                if archivo.endswith(('.xlsx', '.xls', '.csv')):
+                    nombre_amigable = f"{categoria} | {archivo}"
+                    opciones_archivos[nombre_amigable] = os.path.join(ruta_carpeta, archivo)
+    
+    opciones_disponibles = list(opciones_archivos.keys())
+    
+    # Intentamos pre-seleccionar el apertura26 si lo encuentra
+    defaults = [opt for opt in opciones_disponibles if "apertura26" in opt]
+    
+    torneos_seleccionados_nombres = st.multiselect(
         "Bases de Datos a Utilizar:",
-        options=list(rutas_db.keys()),
-        default=["Apertura (Histórico)"]
+        options=opciones_disponibles,
+        default=defaults if defaults else (opciones_disponibles[:1] if opciones_disponibles else [])
     )
-    # -------------------------------------------------------
+    
+    # Traducimos lo que elegiste a las rutas reales de la computadora
+    archivos_a_cargar = [opciones_archivos[nombre] for nombre in torneos_seleccionados_nombres]
+    # ------------------------------------
 
     st.markdown("<br>", unsafe_allow_html=True)
     nav = st.radio(
@@ -677,8 +687,8 @@ with st.sidebar:
         label_visibility="collapsed",
     )
 
-# Cargamos usando la nueva lógica dinámica
-datos    = cargar_excel(rutas_db, torneos_seleccionados)
+# Cargamos usando la nueva lógica que recibe las rutas exactas
+datos    = cargar_excel(archivos_a_cargar)
 df       = construir_df(datos)
 
 if df.empty:
