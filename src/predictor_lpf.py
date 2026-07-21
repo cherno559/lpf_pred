@@ -796,17 +796,22 @@ if nav == "Predicción de Partidos":
         la, lb = calcular_lambdas(df, ea, eb, loc, tabla)
         sim    = montecarlo(la, lb)
         
-        # --- CÁLCULO DE CUOTAS: REAL vs CASA ---
-        margen = 1.06
+        # --- CÁLCULO DE CUOTAS: REAL vs CASA (Realidad LPF) ---
+        # Margen base del 11% (promedio real en fútbol sudamericano)
+        margen = 1.11
         
         r_loc = 1 / sim['victoria'] if sim['victoria'] > 0 else 0.0
-        c_loc = 1 / (sim['victoria'] * margen) if sim['victoria'] > 0 else 0.0
+        r_emp = 1 / sim['empate']   if sim['empate'] > 0   else 0.0
+        r_vis = 1 / sim['derrota']  if sim['derrota'] > 0  else 0.0
         
-        r_emp = 1 / sim['empate'] if sim['empate'] > 0 else 0.0
-        c_emp = 1 / (sim['empate'] * margen) if sim['empate'] > 0 else 0.0
+        # Ajuste usurero real: las casas castigan extra el empate y al underdog
+        m_loc = margen if sim['victoria'] >= 0.45 else margen + 0.02
+        m_emp = margen + 0.04 # El empate siempre se lleva la peor tajada del margen
+        m_vis = margen if sim['derrota'] >= 0.45 else margen + 0.02
         
-        r_vis = 1 / sim['derrota'] if sim['derrota'] > 0 else 0.0
-        c_vis = 1 / (sim['derrota'] * margen) if sim['derrota'] > 0 else 0.0
+        c_loc = 1 / (sim['victoria'] * m_loc) if sim['victoria'] > 0 else 0.0
+        c_emp = 1 / (sim['empate'] * m_emp)   if sim['empate'] > 0   else 0.0
+        c_vis = 1 / (sim['derrota'] * m_vis)  if sim['derrota'] > 0  else 0.0
         
         st.markdown(f"""
         <div class="broadcast-board">
