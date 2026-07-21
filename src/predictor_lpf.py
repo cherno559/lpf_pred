@@ -425,22 +425,27 @@ def proyectar_metrica(df, eq_a, eq_b, metrica, es_loc, tabla):
     
     ca, cb = ("Local", "Visitante") if es_loc else ("Visitante", "Local")
     
-    ref_a_fav = df_m[df_m["Condicion"] == ca]["Propio"].mean()
-    ref_b_fav = df_m[df_m["Condicion"] == cb]["Propio"].mean()
+    # 1. Obtener el promedio histórico real del equipo local jugando de local (o general si hay pocos)
+    d_a = df_m[(df_m["Equipo"] == eq_a) & (df_m["Condicion"] == ca)]
+    if len(d_a) == 0:
+        d_a = df_m[df_m["Equipo"] == eq_a]
+    base_a = d_a["Propio"].mean() if not d_a.empty else df_m["Propio"].mean()
     
-    if np.isnan(ref_a_fav): ref_a_fav = df_m["Propio"].mean()
-    if np.isnan(ref_b_fav): ref_b_fav = df_m["Propio"].mean()
+    # 2. Obtener el promedio histórico real del equipo visitante jugando de visitante
+    d_b = df_m[(df_m["Equipo"] == eq_b) & (df_m["Condicion"] == cb)]
+    if len(d_b) == 0:
+        d_b = df_m[df_m["Equipo"] == eq_b]
+    base_b = d_b["Propio"].mean() if not d_b.empty else df_m["Propio"].mean()
     
-    df_actual = df[df["Categoria"] == "Actual"]
-    max_f = int(df_actual["nFecha"].max()) if not df_actual.empty else int(df["nFecha"].max())
-
-    aa, da, _ = _strength(df, eq_a, ca, {"ref_home": ref_a_fav, "ref_away": ref_b_fav}, max_f, tabla)
-    ab, db, _ = _strength(df, eq_b, cb, {"ref_home": ref_b_fav, "ref_away": ref_a_fav}, max_f, tabla)
+    # 3. Obtener la jerarquía/prior defensiva del rival para ponderar el ajuste
+    _, def_b = _get_prior(tabla, eq_b) # Qué tan permeable es el visitante defendiendo
+    def_a, _ = _get_prior(tabla, eq_a) # Qué tan permeable es el local defendiendo
     
-    val_a = ref_a_fav * aa * db
-    val_b = ref_b_fav * ab * da
-    return max(0.0, val_a), max(0.0, val_b)
-
+    # Proyección final cruzando el volumen real del equipo con la resistencia del rival
+    val_a = base_a * (2.0 - def_b) # Si el rival defiende mal (def_b bajo), sube el remate
+    val_b = base_b * (2.0 - def_a)
+    
+    return max(0.0, float(val_a)), max(0.0, float(val_b))
 def montecarlo(la, lb):
     def _pmf(lam, kmax):
         k = np.arange(kmax + 1)
