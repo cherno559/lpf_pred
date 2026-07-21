@@ -1,5 +1,5 @@
 """
-Plataforma de Scouting LPF 2026 - Completa (Etapas 1, 2 y Value Betting)
+Plataforma de Scouting LPF 2026 - Completa (Etapas 1, 2 y Value Betting H2H)
 """
 import re, os, math
 import numpy as np
@@ -113,7 +113,10 @@ N_RECENCIA, PESO_RECIENTE, PESO_NORMAL = 3, 1.8, 1.0
 PESO_HISTORICO = 0.4
 LAM_MIN, LAM_MAX = 0.30, 5.00
 
-# Diccionario interno de jerarquías de mercado 
+# ──────────────────────────────────────────────────────────────────────
+# JERARQUÍAS DE MERCADO (Clausura 2026 - Actualizado con Damping)
+# Media de liga: 33.76 M€ = 1.000
+# ──────────────────────────────────────────────────────────────────────
 JERARQUIA_EQUIPOS = {
     "River Plate": 1.149,
     "Boca Juniors": 1.126,
@@ -305,7 +308,7 @@ def calcular_tabla(df: pd.DataFrame, condicion: str = "General") -> pd.DataFrame
     tabla["prior_atk"] = (1.0 + (tabla["PPJ_norm"] - 1.0) * PRIOR_ATK_SCALE).clip(0.4, 2.5)
     tabla["prior_def"] = (1.0 - (tabla["PPJ_norm"] - 1.0) * PRIOR_DEF_SCALE).clip(0.4, 2.5)
     
-    # ETAPA 2: Aplicamos el factor de jerarquía de mercado de forma invisible a los priors
+    # ETAPA 2: Aplicamos el factor de jerarquía de mercado
     for eq in tabla.index:
         nombre_eq = tabla.loc[eq, "Equipo"]
         factor = JERARQUIA_EQUIPOS.get(nombre_eq, 1.0)
@@ -793,10 +796,17 @@ if nav == "Predicción de Partidos":
         la, lb = calcular_lambdas(df, ea, eb, loc, tabla)
         sim    = montecarlo(la, lb)
         
-        # --- CÁLCULO DE CUOTAS JUSTAS (SIN MARGEN) ---
-        cuota_loc = 1 / sim['victoria'] if sim['victoria'] > 0 else 0.0
-        cuota_emp = 1 / sim['empate']   if sim['empate'] > 0   else 0.0
-        cuota_vis = 1 / sim['derrota']  if sim['derrota'] > 0  else 0.0
+        # --- CÁLCULO DE CUOTAS: REAL vs CASA ---
+        margen = 1.06
+        
+        r_loc = 1 / sim['victoria'] if sim['victoria'] > 0 else 0.0
+        c_loc = 1 / (sim['victoria'] * margen) if sim['victoria'] > 0 else 0.0
+        
+        r_emp = 1 / sim['empate'] if sim['empate'] > 0 else 0.0
+        c_emp = 1 / (sim['empate'] * margen) if sim['empate'] > 0 else 0.0
+        
+        r_vis = 1 / sim['derrota'] if sim['derrota'] > 0 else 0.0
+        c_vis = 1 / (sim['derrota'] * margen) if sim['derrota'] > 0 else 0.0
         
         st.markdown(f"""
         <div class="broadcast-board">
@@ -804,23 +814,38 @@ if nav == "Predicción de Partidos":
                 <div class="t-name">{ea}</div>
                 <div class="t-prob">{sim['victoria']*100:.1f}%</div>
                 <div class="t-label">Victoria Local</div>
-                <div style="margin-top:12px; font-size:0.85rem; color:#5ecf6b; font-weight:800; letter-spacing:1px; background:#1a1d2d; display:inline-block; padding:4px 10px; border-radius:4px; border: 1px solid #2a2a35;">
-                    ⚖️ CUOTA JUSTA: {cuota_loc:.2f}
+                <div style="display:flex; justify-content:center; gap:8px; margin-top:12px;">
+                    <div style="font-size:0.75rem; color:#a0a0a8; background:#111115; padding:4px 8px; border-radius:4px; border: 1px solid #2a2a35;">
+                        ⚖️ REAL: {r_loc:.2f}
+                    </div>
+                    <div style="font-size:0.75rem; color:#cfb45e; background:#2a2a1a; padding:4px 8px; border-radius:4px; border: 1px solid #cfb45e;">
+                        🏦 CASA: {c_loc:.2f}
+                    </div>
                 </div>
             </div>
             <div class="draw-block">
                 <div class="t-label" style="margin-bottom:5px;">Empate</div>
                 <div class="draw-prob">{sim['empate']*100:.1f}%</div>
-                <div style="margin-top:12px; font-size:0.85rem; color:#888890; font-weight:800; letter-spacing:1px; background:#111115; display:inline-block; padding:4px 10px; border-radius:4px; border: 1px solid #2a2a35;">
-                    ⚖️ CUOTA JUSTA: {cuota_emp:.2f}
+                <div style="display:flex; justify-content:center; gap:8px; margin-top:12px;">
+                    <div style="font-size:0.75rem; color:#a0a0a8; background:#111115; padding:4px 8px; border-radius:4px; border: 1px solid #2a2a35;">
+                        ⚖️ REAL: {r_emp:.2f}
+                    </div>
+                    <div style="font-size:0.75rem; color:#cfb45e; background:#2a2a1a; padding:4px 8px; border-radius:4px; border: 1px solid #cfb45e;">
+                        🏦 CASA: {c_emp:.2f}
+                    </div>
                 </div>
             </div>
             <div class="team-block away">
                 <div class="t-name">{eb}</div>
                 <div class="t-prob" style="color:#ffffff;">{sim['derrota']*100:.1f}%</div>
                 <div class="t-label">Victoria Visitante</div>
-                <div style="margin-top:12px; font-size:0.85rem; color:#5ecf6b; font-weight:800; letter-spacing:1px; background:#1a1d2d; display:inline-block; padding:4px 10px; border-radius:4px; border: 1px solid #2a2a35;">
-                    ⚖️ CUOTA JUSTA: {cuota_vis:.2f}
+                <div style="display:flex; justify-content:center; gap:8px; margin-top:12px;">
+                    <div style="font-size:0.75rem; color:#a0a0a8; background:#111115; padding:4px 8px; border-radius:4px; border: 1px solid #2a2a35;">
+                        ⚖️ REAL: {r_vis:.2f}
+                    </div>
+                    <div style="font-size:0.75rem; color:#cfb45e; background:#2a2a1a; padding:4px 8px; border-radius:4px; border: 1px solid #cfb45e;">
+                        🏦 CASA: {c_vis:.2f}
+                    </div>
                 </div>
             </div>
         </div>
