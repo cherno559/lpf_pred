@@ -888,7 +888,7 @@ if nav == "Predicción de Partidos":
         ctx = contexto_tactica_clash(adn_df, ea, eb)
         if ctx: st.markdown(ctx, unsafe_allow_html=True)
 
-        # --- GUION TÉCNICO Y PROYECCIÓN DE MÉTRICAS (Nativo Streamlit) ---
+      # --- GUION TÉCNICO Y PROYECCIÓN DE MÉTRICAS (Separado por Equipo) ---
         tiros_a, tiros_b = proyectar_metrica(df, ea, eb, "Tiros totales", loc, tabla)
         arco_a, arco_b   = proyectar_metrica(df, ea, eb, "Tiros al arco", loc, tabla)
         ocas_a, ocas_b   = proyectar_metrica(df, ea, eb, "Ocasiones claras", loc, tabla)
@@ -911,25 +911,24 @@ if nav == "Predicción de Partidos":
         with st.container():
             st.info("⚡ ESTIMACIÓN MATEMÁTICA DE MÉTRICAS CLAVE PARA EL ENCUENTRO")
             
-            col_lh, col_mid, col_lv = st.columns([3, 2, 3])
-            with col_lh:
-                st.markdown(f"<h3 style='text-align: center; font-family: 'Bebas Neue'; color: #ED1A3B; margin:0;'>{ea}</h3>", unsafe_allow_html=True)
-                st.markdown("<p style='text-align: center; font-size: 0.75rem; color: #888890; margin:0;'>LOCAL</p>", unsafe_allow_html=True)
-            with col_mid:
-                st.markdown("<p style='text-align: center; font-weight: 800; color: #555560; margin:0; padding-top:5px;'>VS</p>", unsafe_allow_html=True)
-            with col_lv:
-                st.markdown(f"<h3 style='text-align: center; font-family: 'Bebas Neue'; color: #fff; margin:0;'>{eb}</h3>", unsafe_allow_html=True)
-                st.markdown("<p style='text-align: center; font-size: 0.75rem; color: #888890; margin:0;'>VISITANTE</p>", unsafe_allow_html=True)
+            # Dos columnas principales: Izquierda Local, Derecha Visitante
+            col_local, col_vis = st.columns(2)
             
-            st.divider()
-
-            # Métricas en columnas limpias
-            m1, m2, m3, m4, m5 = st.columns(5)
-            m1.metric("Tiros Totales", f"{tiros_a:.1f}", f"{tiros_b:.1f} rival")
-            m2.metric("Tiros al Arco", f"{arco_a:.1f}", f"{arco_b:.1f} rival")
-            m3.metric("Ocasiones Claras", f"{ocas_a:.1f}", f"{ocas_b:.1f} rival")
-            m4.metric("Goles (xG)", f"{la:.2f}", f"{lb:.2f} rival")
-            m5.metric("Posesión Est.", f"{pos_a:.0f}%", f"{pos_b:.0f}% rival")
+            with col_local:
+                st.markdown(f"<h4 style='color: #ED1A3B; border-bottom: 2px solid #ED1A3B; padding-bottom: 5px;'>🏠 {ea} (Local)</h4>", unsafe_allow_html=True)
+                st.metric("Tiros Totales Proyectados", f"{tiros_a:.1f}")
+                st.metric("Tiros al Arco Proyectados", f"{arco_a:.1f}")
+                st.metric("Ocasiones Claras", f"{ocas_a:.1f}")
+                st.metric("Goles Esperados (xG)", f"{la:.2f}")
+                st.metric("Posesión Estimada", f"{pos_a:.0f}%")
+                
+            with col_vis:
+                st.markdown(f"<h4 style='color: #ffffff; border-bottom: 2px solid #2a2a35; padding-bottom: 5px;'>✈️ {eb} (Visitante)</h4>", unsafe_allow_html=True)
+                st.metric("Tiros Totales Proyectados", f"{tiros_b:.1f}")
+                st.metric("Tiros al Arco Proyectados", f"{arco_b:.1f}")
+                st.metric("Ocasiones Claras", f"{ocas_b:.1f}")
+                st.metric("Goles Esperados (xG)", f"{lb:.2f}")
+                st.metric("Posesión Estimada", f"{pos_b:.0f}%")
 
             st.markdown(f"""
             <p style="color: #a0a0a8; font-size: 0.85rem; margin-top: 15px; margin-bottom: 0; line-height: 1.5; border-top: 1px solid #2a2a35; padding-top: 12px;">
