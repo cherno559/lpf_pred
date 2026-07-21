@@ -1,5 +1,5 @@
 """
-Plataforma de Scouting LPF 2026 - Completa (Etapas 1, 2, Value Betting y Guion de Partido)
+Plataforma de Scouting LPF 2026 - Completa (Etapas 1, 2, Value Betting y Guion Técnico de Métricas)
 """
 import re, os, math
 import numpy as np
@@ -417,6 +417,29 @@ def calcular_lambdas(df, eq_a, eq_b, es_loc, tabla):
 
     return (round(float(np.clip(la, LAM_MIN, LAM_MAX)), 3),
             round(float(np.clip(lb, LAM_MIN, LAM_MAX)), 3))
+
+def proyectar_metrica(df, eq_a, eq_b, metrica, es_loc, tabla):
+    df_m = df[df["Métrica"] == metrica]
+    if df_m.empty:
+        return 0.0, 0.0
+    
+    ca, cb = ("Local", "Visitante") if es_loc else ("Visitante", "Local")
+    
+    ref_a_fav = df_m[df_m["Condicion"] == ca]["Propio"].mean()
+    ref_b_fav = df_m[df_m["Condicion"] == cb]["Propio"].mean()
+    
+    if np.isnan(ref_a_fav): ref_a_fav = df_m["Propio"].mean()
+    if np.isnan(ref_b_fav): ref_b_fav = df_m["Propio"].mean()
+    
+    df_actual = df[df["Categoria"] == "Actual"]
+    max_f = int(df_actual["nFecha"].max()) if not df_actual.empty else int(df["nFecha"].max())
+
+    aa, da, _ = _strength(df, eq_a, ca, {"ref_home": ref_a_fav, "ref_away": ref_b_fav}, max_f, tabla)
+    ab, db, _ = _strength(df, eq_b, cb, {"ref_home": ref_b_fav, "ref_away": ref_a_fav}, max_f, tabla)
+    
+    val_a = ref_a_fav * aa * db
+    val_b = ref_b_fav * ab * da
+    return max(0.0, val_a), max(0.0, val_b)
 
 def montecarlo(la, lb):
     def _pmf(lam, kmax):
@@ -859,35 +882,79 @@ if nav == "Predicción de Partidos":
         st.markdown(top3_marcadores(sim["matrix"], ea, eb), unsafe_allow_html=True)
         ctx = contexto_tactica_clash(adn_df, ea, eb)
         if ctx: st.markdown(ctx, unsafe_allow_html=True)
-# ---# --- GUION DE PARTIDO TÉCNICO (Tiros, xG y Estilos) ---
-        if sim['victoria'] > 0.50:
-            fav_txt = f"Se perfila como un monólogo o dominio sostenido de {ea} en campo rival."
-        elif sim['derrota'] > 0.50:
-            fav_txt = f"Escenario adverso para el local; {eb} (Visitante) cuenta con mejores argumentos de control."
+
+        # --- GUION TÉCNICO Y PROYECCIÓN DE MÉTRICAS (Tiros, xG, Posesión) ---
+        tiros_a, tiros_b = proyectar_metrica(df, ea, eb, "Tiros totales", loc, tabla)
+        arco_a, arco_b   = proyectar_metrica(df, ea, eb, "Tiros al arco", loc, tabla)
+        ocas_a, ocas_b   = proyectar_metrica(df, ea, eb, "Ocasiones claras", loc, tabla)
+        pos_a, pos_b     = proyectar_metrica(df, ea, eb, "Posesión de balón", loc, tabla)
+        
+        tot_pos = pos_a + pos_b
+        if tot_pos > 0:
+            pos_a = (pos_a / tot_pos) * 100
+            pos_b = (pos_b / tot_pos) * 100
         else:
-            fav_txt = f"Partido sumamente equilibrado, típico trámite de libreto cerrado y friccionado."
+            pos_a, pos_b = 50.0, 50.0
 
         flat = [(sim["matrix"][i, j], i, j) for i in range(sim["matrix"].shape[0]) for j in range(sim["matrix"].shape[1])]
         flat.sort(reverse=True)
         top_score_prob, i_top, j_top = flat[0]
         
         st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown("### 📝 GUION DE PARTIDO TÉCNICO")
+        st.markdown("### 📝 GUION Y PROYECCIÓN TÉCNICA DE RENDIMIENTO")
         
-        with st.container():
-            st.markdown(f"""
-            <div style="background: #141417; border-left: 4px solid #ED1A3B; border-radius: 6px; padding: 20px 24px; border: 1px solid #2a2a35; border-left-width: 4px;">
-                <p style="color: #e0e0e0; font-size: 0.95rem; line-height: 1.6; margin-bottom: 12px;">
-                    <strong>📊 Proyección de Peligro y xG:</strong><br>
-                    El motor estima una producción de <strong>{la:.2f} xG</strong> para {ea} frente a <strong>{lb:.2f} xG</strong> de {eb}. {fav_txt}
-                </p>
-                <p style="color: #e0e0e0; font-size: 0.95rem; line-height: 1.6; margin-bottom: 0;">
-                    <strong>⚽ Dinámica de Remates y Desenlace:</strong><br>
-                    Cruzando el volumen de tiros y el choque de estilos tácticos, la tendencia indica un trámite donde el marcador más probable es el <strong>{i_top}-{j_top}</strong> ({top_score_prob*100:.1f}%). 
-                    Las estadísticas previas sugieren que el equipo que logre imponer su estructura de posesión o transición rápida se quedará con el control de las ocasiones claras en el área.
-                </p>
+        st.markdown(f"""
+        <div style="background: #141417; border-left: 4px solid #ED1A3B; border-radius: 6px; padding: 24px; border: 1px solid #2a2a35;">
+            <p style="color: #888890; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 15px;">
+                ⚡ ESTIMACIÓN MATEMÁTICA DE MÉTRICAS CLAVE PARA EL ENCUENTRO
+            </p>
+            
+            <div style="display: grid; grid-template-columns: 1fr auto 1fr; gap: 15px; align-items: center; text-align: center; margin-bottom: 20px; background: #0f0f12; padding: 15px; border-radius: 6px;">
+                <div>
+                    <div style="font-family: 'Bebas Neue'; font-size: 1.5rem; color: #fff;">{ea}</div>
+                    <div style="font-size: 0.75rem; color: #ED1A3B; font-weight: 800;">LOCAL</div>
+                </div>
+                <div style="font-size: 0.8rem; color: #555560; font-weight: 800; text-transform: uppercase;">Métrica Proyectada</div>
+                <div>
+                    <div style="font-family: 'Bebas Neue'; font-size: 1.5rem; color: #fff;">{eb}</div>
+                    <div style="font-size: 0.75rem; color: #888890; font-weight: 800;">VISITANTE</div>
+                </div>
             </div>
-            """, unsafe_allow_html=True)
+
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+                <div style="display: flex; justify-content: space-between; background: #0f0f12; padding: 10px 15px; border-radius: 4px;">
+                    <span style="font-weight: 800; color: #ED1A3B;">{tiros_a:.1f}</span>
+                    <span style="color: #888890; font-size: 0.85rem; text-transform: uppercase;">Tiros Totales</span>
+                    <span style="font-weight: 800; color: #ffffff;">{tiros_b:.1f}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; background: #0f0f12; padding: 10px 15px; border-radius: 4px;">
+                    <span style="font-weight: 800; color: #ED1A3B;">{arco_a:.1f}</span>
+                    <span style="color: #888890; font-size: 0.85rem; text-transform: uppercase;">Tiros al Arco</span>
+                    <span style="font-weight: 800; color: #ffffff;">{arco_b:.1f}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; background: #0f0f12; padding: 10px 15px; border-radius: 4px;">
+                    <span style="font-weight: 800; color: #ED1A3B;">{ocas_a:.1f}</span>
+                    <span style="color: #888890; font-size: 0.85rem; text-transform: uppercase;">Ocasiones Claras</span>
+                    <span style="font-weight: 800; color: #ffffff;">{ocas_b:.1f}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; background: #0f0f12; padding: 10px 15px; border-radius: 4px;">
+                    <span style="font-weight: 800; color: #ED1A3B;">{la:.2f}</span>
+                    <span style="color: #888890; font-size: 0.85rem; text-transform: uppercase;">Goles Esperados (xG)</span>
+                    <span style="font-weight: 800; color: #ffffff;">{lb:.2f}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; background: #0f0f12; padding: 10px 15px; border-radius: 4px;">
+                    <span style="font-weight: 800; color: #ED1A3B;">{pos_a:.0f}%</span>
+                    <span style="color: #888890; font-size: 0.85rem; text-transform: uppercase;">Posesión Estimada</span>
+                    <span style="font-weight: 800; color: #ffffff;">{pos_b:.0f}%</span>
+                </div>
+            </div>
+
+            <p style="color: #a0a0a8; font-size: 0.85rem; margin-top: 15px; margin-bottom: 0; line-height: 1.5; border-top: 1px solid #2a2a35; padding-top: 12px;">
+                <strong>💡 Lectura analítica:</strong> El modelo proyecta un desarrollo donde el marcador más probable es el <strong>{i_top}-{j_top}</strong> ({top_score_prob*100:.1f}%). Las tasas de remates y conversión esperadas reflejan el impacto de los bloques defensivos y las jerarquías de plantel configuradas.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+
         if not rachas_df.empty and ea in rachas_df.index and eb in rachas_df.index:
             st.markdown('<div class="section-header">Forma Reciente</div>', unsafe_allow_html=True)
             mc1, mc2 = st.columns(2)
@@ -900,7 +967,7 @@ if nav == "Predicción de Partidos":
         with st.expander("Parámetros del Motor (Lambdas y Priors)"):
             pa_a, pd_a = _get_prior(tabla, ea)
             pa_b, pd_b = _get_prior(tabla, eb)
-            st.code(f"λ {ea}: {la:.3f} (Atk Prior: {pa_a:.2f})\nλ {eb}: {lb:.3f} (Atk Prior: {pa_b:.2f})")
+            st.code(f"λ {ea}: {la:.3f} (Atk Prior: {pa_a:.2f})\nλ {eb}: {lb:.3f} (Atk Prior: {pd_b:.2f})")
             
         st.markdown('<div class="section-header">Matriz de Resultados</div>', unsafe_allow_html=True)
         st.plotly_chart(fig_score_matrix(sim["matrix"], ea, eb), use_container_width=True)
