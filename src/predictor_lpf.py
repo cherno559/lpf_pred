@@ -97,7 +97,7 @@ html, body, [class*="css"] { font-family: 'Manrope', sans-serif; background-colo
 .tactica-vs-col { color: #2a2a35; font-family: 'Bebas Neue', sans-serif; font-size: 1.2rem; padding-top: 4px; }
 .tactica-insight { background: #0f0f12; border-left: 3px solid #ED1A3B; border-radius: 0 6px 6px 0; padding: 10px 14px; margin-top: 10px; font-size: 0.82rem; color: #a0a0a8; line-height: 1.5; }
 </style>
-"""), unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
 # ──────────────────────────────────────────────────────────────────────
 # PARÁMETROS DEL MOTOR Y JERARQUÍAS
