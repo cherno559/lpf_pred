@@ -1,5 +1,5 @@
 """
-Plataforma de Scouting LPF 2026 - Completa y Dinámica
+Plataforma de Scouting LPF 2026 - Completa (Etapa 1 y Etapa 2)
 """
 import re, os, math
 import numpy as np
@@ -100,7 +100,7 @@ html, body, [class*="css"] { font-family: 'Manrope', sans-serif; background-colo
 """, unsafe_allow_html=True)
 
 # ──────────────────────────────────────────────────────────────────────
-# PARÁMETROS DEL MOTOR
+# PARÁMETROS DEL MOTOR Y JERARQUÍAS (ETAPA 2)
 # ──────────────────────────────────────────────────────────────────────
 W_XG = 0.60
 K_SHRINK = 6.0
@@ -112,6 +112,17 @@ MAX_GOALS_MATRIX = 7
 N_RECENCIA, PESO_RECIENTE, PESO_NORMAL = 3, 1.8, 1.0
 PESO_HISTORICO = 0.4
 LAM_MIN, LAM_MAX = 0.30, 5.00
+
+# Diccionario interno de jerarquías de mercado (1.0 es la media)
+JERARQUIA_EQUIPOS = {
+    "River Plate": 1.12,
+    "Boca Juniors": 1.10,
+    "Racing Club": 1.06,
+    "Independiente": 1.04,
+    "San Lorenzo": 1.04,
+    "Estudiantes de La Plata": 1.03,
+    "Vélez Sarsfield": 1.03,
+}
 
 RED, WHITE, GRAY = "#ED1A3B", "#ffffff", "#4a4a52"
 PLOT = dict(
@@ -271,6 +282,13 @@ def calcular_tabla(df: pd.DataFrame, condicion: str = "General") -> pd.DataFrame
     tabla["PPJ_norm"]  = tabla["PPJ"] / ppj_mean if ppj_mean > 0 else 1.0
     tabla["prior_atk"] = (1.0 + (tabla["PPJ_norm"] - 1.0) * PRIOR_ATK_SCALE).clip(0.4, 2.5)
     tabla["prior_def"] = (1.0 - (tabla["PPJ_norm"] - 1.0) * PRIOR_DEF_SCALE).clip(0.4, 2.5)
+    
+    # ETAPA 2: Aplicamos el factor de jerarquía de mercado de forma invisible a los priors
+    for eq in tabla.index:
+        nombre_eq = tabla.loc[eq, "Equipo"]
+        factor = JERARQUIA_EQUIPOS.get(nombre_eq, 1.0)
+        tabla.loc[eq, "prior_atk"] = tabla.loc[eq, "prior_atk"] * factor
+
     return tabla.set_index("Equipo")
 
 def _get_prior(tabla: pd.DataFrame, eq: str):
@@ -352,8 +370,25 @@ def calcular_lambdas(df, eq_a, eq_b, es_loc, tabla):
     ca, cb = ("Local", "Visitante") if es_loc else ("Visitante", "Local")
     aa, da, na = _strength(df, eq_a, ca, l, max_fecha_torneo, tabla)
     ab, db, nb = _strength(df, eq_b, cb, l, max_fecha_torneo, tabla)
+    
     la = (l["ref_home"] if ca == "Local" else l["ref_away"]) * aa * db
     lb = (l["ref_home"] if cb == "Local" else l["ref_away"]) * ab * da
+
+    # --- ETAPA 2: MODIFICADORES POR CHOQUE DE ESTILOS ---
+    adn_temp = calcular_adn_tactico(df)
+    if not adn_temp.empty and eq_a in adn_temp.index and eq_b in adn_temp.index:
+        tags_a = set(t for t, _ in adn_temp.loc[eq_a, "Tags"]) if isinstance(adn_temp.loc[eq_a, "Tags"], list) else set()
+        tags_b = set(t for t, _ in adn_temp.loc[eq_b, "Tags"]) if isinstance(adn_temp.loc[eq_b, "Tags"], list) else set()
+        
+        if "POSESIÓN DOMINANTE" in tags_a and "BLOQUE BAJO" in tags_b:
+            la += 0.12  
+            lb -= 0.08  
+        if "DÉFICIT DEFENSIVO" in tags_a:
+            lb += 0.10
+        if "DÉFICIT DEFENSIVO" in tags_b:
+            la += 0.10
+    # ----------------------------------------------------
+
     return (round(float(np.clip(la, LAM_MIN, LAM_MAX)), 3),
             round(float(np.clip(lb, LAM_MIN, LAM_MAX)), 3))
 
