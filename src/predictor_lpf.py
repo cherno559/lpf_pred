@@ -425,25 +425,33 @@ def proyectar_metrica(df, eq_a, eq_b, metrica, es_loc, tabla):
     
     ca, cb = ("Local", "Visitante") if es_loc else ("Visitante", "Local")
     
-    # 1. Obtener el promedio histórico real del equipo local jugando de local (o general si hay pocos)
+    # 1. Promedio ofensivo propio del equipo A y B según condición
     d_a = df_m[(df_m["Equipo"] == eq_a) & (df_m["Condicion"] == ca)]
-    if len(d_a) == 0:
-        d_a = df_m[df_m["Equipo"] == eq_a]
     base_a = d_a["Propio"].mean() if not d_a.empty else df_m["Propio"].mean()
     
-    # 2. Obtener el promedio histórico real del equipo visitante jugando de visitante
     d_b = df_m[(df_m["Equipo"] == eq_b) & (df_m["Condicion"] == cb)]
-    if len(d_b) == 0:
-        d_b = df_m[df_m["Equipo"] == eq_b]
     base_b = d_b["Propio"].mean() if not d_b.empty else df_m["Propio"].mean()
     
-    # 3. Obtener la jerarquía/prior defensiva del rival para ponderar el ajuste
-    _, def_b = _get_prior(tabla, eq_b) # Qué tan permeable es el visitante defendiendo
-    def_a, _ = _get_prior(tabla, eq_a) # Qué tan permeable es el local defendiendo
+    # 2. Promedio de tiros CONCEDIDOS por el rival (lo que le permiten al oponente)
+    # Buscamos cuántos tiros concedió el equipo B en su condición de local/visitante
+    d_b_conc = df_m[(df_m["Equipo"] == eq_b) & (df_m["Condicion"] == cb)]
+    concede_b = d_b_conc["Concedido"].mean() if not d_b_conc.empty else df_m["Concedido"].mean()
     
-    # Proyección final cruzando el volumen real del equipo con la resistencia del rival
-    val_a = base_a * (2.0 - def_b) # Si el rival defiende mal (def_b bajo), sube el remate
-    val_b = base_b * (2.0 - def_a)
+    d_a_conc = df_m[(df_m["Equipo"] == eq_a) & (df_m["Condicion"] == ca)]
+    concede_a = d_a_conc["Concedido"].mean() if not d_a_conc.empty else df_m["Concedido"].mean()
+    
+    # Promedio general de la liga para esta métrica (para usar de pivote)
+    media_liga = df_m["Propio"].mean() if not df_m.empty else 1.0
+    if media_liga == 0: media_liga = 1.0
+
+    # 3. Factor defensivo del rival: ¿Cuánto más o menos concede comparado con la media?
+    factor_def_b = concede_b / media_liga if media_liga > 0 else 1.0
+    factor_def_a = concede_a / media_liga if media_liga > 0 else 1.0
+
+    # 4. Proyección final cruzando el ataque propio con lo que el rival concede
+    # (Si el rival concede muchos tiros, el factor multiplica el volumen de River hacia arriba)
+    val_a = base_a * factor_def_b
+    val_b = base_b * factor_def_a
     
     return max(0.0, float(val_a)), max(0.0, float(val_b))
 def montecarlo(la, lb):
