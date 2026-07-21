@@ -859,39 +859,35 @@ if nav == "Predicción de Partidos":
         st.markdown(top3_marcadores(sim["matrix"], ea, eb), unsafe_allow_html=True)
         ctx = contexto_tactica_clash(adn_df, ea, eb)
         if ctx: st.markdown(ctx, unsafe_allow_html=True)
-# --- REPORTE DE PREVIA (GUION DE PARTIDO) ---
+# ---# --- GUION DE PARTIDO TÉCNICO (Tiros, xG y Estilos) ---
         if sim['victoria'] > 0.50:
-            fav_txt = f"Claro favoritismo para {ea}."
+            fav_txt = f"Se perfila como un monólogo o dominio sostenido de {ea} en campo rival."
         elif sim['derrota'] > 0.50:
-            fav_txt = f"Claro favoritismo para {eb} (Visitante)."
-        elif sim['victoria'] > sim['derrota']:
-            fav_txt = f"Ligera ventaja para {ea}, en un trámite que se proyecta cerrado."
+            fav_txt = f"Escenario adverso para el local; {eb} (Visitante) cuenta con mejores argumentos de control."
         else:
-            fav_txt = f"Ligera ventaja para {eb}, en un trámite que se proyecta cerrado."
+            fav_txt = f"Partido sumamente equilibrado, típico trámite de libreto cerrado y friccionado."
 
         flat = [(sim["matrix"][i, j], i, j) for i in range(sim["matrix"].shape[0]) for j in range(sim["matrix"].shape[1])]
         flat.sort(reverse=True)
         top_score_prob, i_top, j_top = flat[0]
         
-        # Usamos contenedores nativos limpios de Streamlit con formato visual
         st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown("### 📝 GUION DE PARTIDO ESTIMADO")
+        st.markdown("### 📝 GUION DE PARTIDO TÉCNICO")
         
         with st.container():
             st.markdown(f"""
-            <div style="background: #141417; border-left: 4px solid #cfb45e; border-radius: 6px; padding: 20px 24px; border: 1px solid #2a2a35; border-left-width: 4px;">
+            <div style="background: #141417; border-left: 4px solid #ED1A3B; border-radius: 6px; padding: 20px 24px; border: 1px solid #2a2a35; border-left-width: 4px;">
                 <p style="color: #e0e0e0; font-size: 0.95rem; line-height: 1.6; margin-bottom: 12px;">
-                    <strong>📊 Proyección de xG (Realidad de goles):</strong><br>
-                    El motor matemático proyecta un volumen ofensivo de <strong>{la:.2f} xG</strong> para {ea} frente a <strong>{lb:.2f} xG</strong> de {eb}. {fav_txt}
+                    <strong>📊 Proyección de Peligro y xG:</strong><br>
+                    El motor estima una producción de <strong>{la:.2f} xG</strong> para {ea} frente a <strong>{lb:.2f} xG</strong> de {eb}. {fav_txt}
                 </p>
                 <p style="color: #e0e0e0; font-size: 0.95rem; line-height: 1.6; margin-bottom: 0;">
-                    <strong>🎯 Veredicto de Scouting & Apuestas:</strong><br>
-                    El resultado exacto con mayor probabilidad es el <strong>{i_top}-{j_top}</strong> ({top_score_prob*100:.1f}%). 
-                    En términos de inversión (Value Betting), el sistema indica que sólo tiene sentido matemático apostar por el local si la cuota en vivo supera los <strong>{r_loc:.2f}</strong>, o por el visitante si paga más de <strong>{r_vis:.2f}</strong>. Cualquier cuota inferior carece de valor y beneficia exclusivamente a la casa.
+                    <strong>⚽ Dinámica de Remates y Desenlace:</strong><br>
+                    Cruzando el volumen de tiros y el choque de estilos tácticos, la tendencia indica un trámite donde el marcador más probable es el <strong>{i_top}-{j_top}</strong> ({top_score_prob*100:.1f}%). 
+                    Las estadísticas previas sugieren que el equipo que logre imponer su estructura de posesión o transición rápida se quedará con el control de las ocasiones claras en el área.
                 </p>
             </div>
             """, unsafe_allow_html=True)
-
         if not rachas_df.empty and ea in rachas_df.index and eb in rachas_df.index:
             st.markdown('<div class="section-header">Forma Reciente</div>', unsafe_allow_html=True)
             mc1, mc2 = st.columns(2)
