@@ -1,5 +1,5 @@
 """
-Plataforma de Scouting LPF 2026 - Completa (Etapas 1, 2, Value Betting y Guion Técnico de Métricas)
+Plataforma de Scouting LPF 2026 - Completa (Etapas 1, 2, Value Betting y Guion Técnico Nativo)
 """
 import re, os, math
 import numpy as np
@@ -883,7 +883,7 @@ if nav == "Predicción de Partidos":
         ctx = contexto_tactica_clash(adn_df, ea, eb)
         if ctx: st.markdown(ctx, unsafe_allow_html=True)
 
-        # --- GUION TÉCNICO Y PROYECCIÓN DE MÉTRICAS (Tiros, xG, Posesión) ---
+        # --- GUION TÉCNICO Y PROYECCIÓN DE MÉTRICAS (Nativo Streamlit) ---
         tiros_a, tiros_b = proyectar_metrica(df, ea, eb, "Tiros totales", loc, tabla)
         arco_a, arco_b   = proyectar_metrica(df, ea, eb, "Tiros al arco", loc, tabla)
         ocas_a, ocas_b   = proyectar_metrica(df, ea, eb, "Ocasiones claras", loc, tabla)
@@ -903,57 +903,34 @@ if nav == "Predicción de Partidos":
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("### 📝 GUION Y PROYECCIÓN TÉCNICA DE RENDIMIENTO")
         
-        st.markdown(f"""
-        <div style="background: #141417; border-left: 4px solid #ED1A3B; border-radius: 6px; padding: 24px; border: 1px solid #2a2a35;">
-            <p style="color: #888890; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 15px;">
-                ⚡ ESTIMACIÓN MATEMÁTICA DE MÉTRICAS CLAVE PARA EL ENCUENTRO
-            </p>
+        with st.container():
+            st.info("⚡ ESTIMACIÓN MATEMÁTICA DE MÉTRICAS CLAVE PARA EL ENCUENTRO")
             
-            <div style="display: grid; grid-template-columns: 1fr auto 1fr; gap: 15px; align-items: center; text-align: center; margin-bottom: 20px; background: #0f0f12; padding: 15px; border-radius: 6px;">
-                <div>
-                    <div style="font-family: 'Bebas Neue'; font-size: 1.5rem; color: #fff;">{ea}</div>
-                    <div style="font-size: 0.75rem; color: #ED1A3B; font-weight: 800;">LOCAL</div>
-                </div>
-                <div style="font-size: 0.8rem; color: #555560; font-weight: 800; text-transform: uppercase;">Métrica Proyectada</div>
-                <div>
-                    <div style="font-family: 'Bebas Neue'; font-size: 1.5rem; color: #fff;">{eb}</div>
-                    <div style="font-size: 0.75rem; color: #888890; font-weight: 800;">VISITANTE</div>
-                </div>
-            </div>
+            col_lh, col_mid, col_lv = st.columns([3, 2, 3])
+            with col_lh:
+                st.markdown(f"<h3 style='text-align: center; font-family: 'Bebas Neue'; color: #ED1A3B; margin:0;'>{ea}</h3>", unsafe_allow_html=True)
+                st.markdown("<p style='text-align: center; font-size: 0.75rem; color: #888890; margin:0;'>LOCAL</p>", unsafe_allow_html=True)
+            with col_mid:
+                st.markdown("<p style='text-align: center; font-weight: 800; color: #555560; margin:0; padding-top:5px;'>VS</p>", unsafe_allow_html=True)
+            with col_lv:
+                st.markdown(f"<h3 style='text-align: center; font-family: 'Bebas Neue'; color: #fff; margin:0;'>{eb}</h3>", unsafe_allow_html=True)
+                st.markdown("<p style='text-align: center; font-size: 0.75rem; color: #888890; margin:0;'>VISITANTE</p>", unsafe_allow_html=True)
+            
+            st.divider()
 
-            <div style="display: flex; flex-direction: column; gap: 10px;">
-                <div style="display: flex; justify-content: space-between; background: #0f0f12; padding: 10px 15px; border-radius: 4px;">
-                    <span style="font-weight: 800; color: #ED1A3B;">{tiros_a:.1f}</span>
-                    <span style="color: #888890; font-size: 0.85rem; text-transform: uppercase;">Tiros Totales</span>
-                    <span style="font-weight: 800; color: #ffffff;">{tiros_b:.1f}</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; background: #0f0f12; padding: 10px 15px; border-radius: 4px;">
-                    <span style="font-weight: 800; color: #ED1A3B;">{arco_a:.1f}</span>
-                    <span style="color: #888890; font-size: 0.85rem; text-transform: uppercase;">Tiros al Arco</span>
-                    <span style="font-weight: 800; color: #ffffff;">{arco_b:.1f}</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; background: #0f0f12; padding: 10px 15px; border-radius: 4px;">
-                    <span style="font-weight: 800; color: #ED1A3B;">{ocas_a:.1f}</span>
-                    <span style="color: #888890; font-size: 0.85rem; text-transform: uppercase;">Ocasiones Claras</span>
-                    <span style="font-weight: 800; color: #ffffff;">{ocas_b:.1f}</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; background: #0f0f12; padding: 10px 15px; border-radius: 4px;">
-                    <span style="font-weight: 800; color: #ED1A3B;">{la:.2f}</span>
-                    <span style="color: #888890; font-size: 0.85rem; text-transform: uppercase;">Goles Esperados (xG)</span>
-                    <span style="font-weight: 800; color: #ffffff;">{lb:.2f}</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; background: #0f0f12; padding: 10px 15px; border-radius: 4px;">
-                    <span style="font-weight: 800; color: #ED1A3B;">{pos_a:.0f}%</span>
-                    <span style="color: #888890; font-size: 0.85rem; text-transform: uppercase;">Posesión Estimada</span>
-                    <span style="font-weight: 800; color: #ffffff;">{pos_b:.0f}%</span>
-                </div>
-            </div>
+            # Métricas en columnas limpias
+            m1, m2, m3, m4, m5 = st.columns(5)
+            m1.metric("Tiros Totales", f"{tiros_a:.1f}", f"{tiros_b:.1f} rival")
+            m2.metric("Tiros al Arco", f"{arco_a:.1f}", f"{arco_b:.1f} rival")
+            m3.metric("Ocasiones Claras", f"{ocas_a:.1f}", f"{ocas_b:.1f} rival")
+            m4.metric("Goles (xG)", f"{la:.2f}", f"{lb:.2f} rival")
+            m5.metric("Posesión Est.", f"{pos_a:.0f}%", f"{pos_b:.0f}% rival")
 
+            st.markdown(f"""
             <p style="color: #a0a0a8; font-size: 0.85rem; margin-top: 15px; margin-bottom: 0; line-height: 1.5; border-top: 1px solid #2a2a35; padding-top: 12px;">
                 <strong>💡 Lectura analítica:</strong> El modelo proyecta un desarrollo donde el marcador más probable es el <strong>{i_top}-{j_top}</strong> ({top_score_prob*100:.1f}%). Las tasas de remates y conversión esperadas reflejan el impacto de los bloques defensivos y las jerarquías de plantel configuradas.
             </p>
-        </div>
-        """, unsafe_allow_html=True)
+            """, unsafe_allow_html=True)
 
         if not rachas_df.empty and ea in rachas_df.index and eb in rachas_df.index:
             st.markdown('<div class="section-header">Forma Reciente</div>', unsafe_allow_html=True)
