@@ -1,5 +1,5 @@
 """
-Plataforma de Scouting LPF 2026 - Completa (Etapa 1 y Etapa 2)
+Plataforma de Scouting LPF 2026 - Completa (Etapas 1, 2 y Value Betting)
 """
 import re, os, math
 import numpy as np
@@ -241,7 +241,6 @@ def construir_df(datos: dict) -> pd.DataFrame:
                 filas.append({**base, "Equipo": p["local"],     "Rival": p["visitante"], "Condicion": "Local",     "Propio": vals["local"],     "Concedido": vals["visitante"]})
                 filas.append({**base, "Equipo": p["visitante"], "Rival": p["local"],     "Condicion": "Visitante", "Propio": vals["visitante"], "Concedido": vals["local"]})
     return pd.DataFrame(filas)
-
 @st.cache_data(ttl=120, show_spinner=False)
 def calcular_tabla(df: pd.DataFrame, condicion: str = "General") -> pd.DataFrame:
     if df.empty:
@@ -770,7 +769,40 @@ if nav == "Predicción de Partidos":
     if st.button("CALCULAR PROBABILIDADES"):
         la, lb = calcular_lambdas(df, ea, eb, loc, tabla)
         sim    = montecarlo(la, lb)
-        st.markdown(f"""<div class="broadcast-board"><div class="team-block home"><div class="t-name">{ea}</div><div class="t-prob">{sim['victoria']*100:.1f}%</div><div class="t-label">Victoria Local</div></div><div class="draw-block"><div class="t-label" style="margin-bottom:5px;">Empate</div><div class="draw-prob">{sim['empate']*100:.1f}%</div></div><div class="team-block away"><div class="t-name">{eb}</div><div class="t-prob" style="color:#ffffff;">{sim['derrota']*100:.1f}%</div><div class="t-label">Victoria Visitante</div></div></div>""", unsafe_allow_html=True)
+        
+        # --- CÁLCULO DE CUOTAS JUSTAS (SIN MARGEN) ---
+        cuota_loc = 1 / sim['victoria'] if sim['victoria'] > 0 else 0.0
+        cuota_emp = 1 / sim['empate']   if sim['empate'] > 0   else 0.0
+        cuota_vis = 1 / sim['derrota']  if sim['derrota'] > 0  else 0.0
+        
+        st.markdown(f"""
+        <div class="broadcast-board">
+            <div class="team-block home">
+                <div class="t-name">{ea}</div>
+                <div class="t-prob">{sim['victoria']*100:.1f}%</div>
+                <div class="t-label">Victoria Local</div>
+                <div style="margin-top:12px; font-size:0.85rem; color:#5ecf6b; font-weight:800; letter-spacing:1px; background:#1a1d2d; display:inline-block; padding:4px 10px; border-radius:4px; border: 1px solid #2a2a35;">
+                    ⚖️ CUOTA JUSTA: {cuota_loc:.2f}
+                </div>
+            </div>
+            <div class="draw-block">
+                <div class="t-label" style="margin-bottom:5px;">Empate</div>
+                <div class="draw-prob">{sim['empate']*100:.1f}%</div>
+                <div style="margin-top:12px; font-size:0.85rem; color:#888890; font-weight:800; letter-spacing:1px; background:#111115; display:inline-block; padding:4px 10px; border-radius:4px; border: 1px solid #2a2a35;">
+                    ⚖️ CUOTA JUSTA: {cuota_emp:.2f}
+                </div>
+            </div>
+            <div class="team-block away">
+                <div class="t-name">{eb}</div>
+                <div class="t-prob" style="color:#ffffff;">{sim['derrota']*100:.1f}%</div>
+                <div class="t-label">Victoria Visitante</div>
+                <div style="margin-top:12px; font-size:0.85rem; color:#5ecf6b; font-weight:800; letter-spacing:1px; background:#1a1d2d; display:inline-block; padding:4px 10px; border-radius:4px; border: 1px solid #2a2a35;">
+                    ⚖️ CUOTA JUSTA: {cuota_vis:.2f}
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
         st.markdown('<div class="section-header">Marcadores Más Probables</div>', unsafe_allow_html=True)
         st.markdown(top3_marcadores(sim["matrix"], ea, eb), unsafe_allow_html=True)
         ctx = contexto_tactica_clash(adn_df, ea, eb)
