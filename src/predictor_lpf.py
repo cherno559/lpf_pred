@@ -113,15 +113,38 @@ N_RECENCIA, PESO_RECIENTE, PESO_NORMAL = 3, 1.8, 1.0
 PESO_HISTORICO = 0.4
 LAM_MIN, LAM_MAX = 0.30, 5.00
 
-# Diccionario interno de jerarquías de mercado (1.0 es la media)
+# Diccionario interno de jerarquías de mercado 
 JERARQUIA_EQUIPOS = {
-    "River Plate": 1.12,
-    "Boca Juniors": 1.10,
-    "Racing Club": 1.06,
-    "Independiente": 1.04,
-    "San Lorenzo": 1.04,
-    "Estudiantes de La Plata": 1.03,
-    "Vélez Sarsfield": 1.03,
+    "River Plate": 1.149,
+    "Boca Juniors": 1.126,
+    "Racing Club": 1.059,
+    "Rosario Central": 1.037,
+    "Estudiantes de La Plata": 1.027,
+    "Talleres": 1.018,
+    "San Lorenzo": 1.013,
+    "Lanús": 1.010,
+    "Argentinos Juniors": 1.006,
+    "Independiente": 1.006,
+    "Tigre": 1.005,
+    "Vélez Sarsfield": 1.002,
+    "Independiente Rivadavia": 1.001,
+    "Platense": 0.996,
+    "Newell's Old Boys": 0.992,
+    "Belgrano": 0.989,
+    "Gimnasia y Esgrima La Plata": 0.988,
+    "Defensa y Justicia": 0.981,
+    "Huracán": 0.977,
+    "Instituto": 0.977,
+    "Unión": 0.974,
+    "Barracas Central": 0.971,
+    "Banfield": 0.969,
+    "Sarmiento": 0.967,
+    "Gimnasia de Mendoza": 0.965,
+    "Atlético Tucumán": 0.964,
+    "Deportivo Riestra": 0.962,
+    "Central Córdoba": 0.958,
+    "Aldosivi": 0.957,
+    "Estudiantes de Río Cuarto": 0.955
 }
 
 RED, WHITE, GRAY = "#ED1A3B", "#ffffff", "#4a4a52"
