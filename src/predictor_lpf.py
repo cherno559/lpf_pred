@@ -1,5 +1,5 @@
 """
-Plataforma de Scouting LPF 2026 - Completa (Etapas 1, 2 y Value Betting H2H)
+Plataforma de Scouting LPF 2026 - Completa (Etapas 1, 2, Value Betting y Guion de Partido)
 """
 import re, os, math
 import numpy as np
@@ -97,10 +97,10 @@ html, body, [class*="css"] { font-family: 'Manrope', sans-serif; background-colo
 .tactica-vs-col { color: #2a2a35; font-family: 'Bebas Neue', sans-serif; font-size: 1.2rem; padding-top: 4px; }
 .tactica-insight { background: #0f0f12; border-left: 3px solid #ED1A3B; border-radius: 0 6px 6px 0; padding: 10px 14px; margin-top: 10px; font-size: 0.82rem; color: #a0a0a8; line-height: 1.5; }
 </style>
-""", unsafe_allow_html=True)
+"""), unsafe_allow_html=True)
 
 # ──────────────────────────────────────────────────────────────────────
-# PARÁMETROS DEL MOTOR Y JERARQUÍAS (ETAPA 2)
+# PARÁMETROS DEL MOTOR Y JERARQUÍAS
 # ──────────────────────────────────────────────────────────────────────
 W_XG = 0.60
 K_SHRINK = 6.0
@@ -267,6 +267,7 @@ def construir_df(datos: dict) -> pd.DataFrame:
                 filas.append({**base, "Equipo": p["local"],     "Rival": p["visitante"], "Condicion": "Local",     "Propio": vals["local"],     "Concedido": vals["visitante"]})
                 filas.append({**base, "Equipo": p["visitante"], "Rival": p["local"],     "Condicion": "Visitante", "Propio": vals["visitante"], "Concedido": vals["local"]})
     return pd.DataFrame(filas)
+
 @st.cache_data(ttl=120, show_spinner=False)
 def calcular_tabla(df: pd.DataFrame, condicion: str = "General") -> pd.DataFrame:
     if df.empty:
@@ -797,16 +798,14 @@ if nav == "Predicción de Partidos":
         sim    = montecarlo(la, lb)
         
         # --- CÁLCULO DE CUOTAS: REAL vs CASA (Realidad LPF) ---
-        # Margen base del 11% (promedio real en fútbol sudamericano)
         margen = 1.11
         
         r_loc = 1 / sim['victoria'] if sim['victoria'] > 0 else 0.0
         r_emp = 1 / sim['empate']   if sim['empate'] > 0   else 0.0
         r_vis = 1 / sim['derrota']  if sim['derrota'] > 0  else 0.0
         
-        # Ajuste usurero real: las casas castigan extra el empate y al underdog
         m_loc = margen if sim['victoria'] >= 0.45 else margen + 0.02
-        m_emp = margen + 0.04 # El empate siempre se lleva la peor tajada del margen
+        m_emp = margen + 0.04
         m_vis = margen if sim['derrota'] >= 0.45 else margen + 0.02
         
         c_loc = 1 / (sim['victoria'] * m_loc) if sim['victoria'] > 0 else 0.0
@@ -860,6 +859,37 @@ if nav == "Predicción de Partidos":
         st.markdown(top3_marcadores(sim["matrix"], ea, eb), unsafe_allow_html=True)
         ctx = contexto_tactica_clash(adn_df, ea, eb)
         if ctx: st.markdown(ctx, unsafe_allow_html=True)
+
+        # --- NUEVO: REPORTE DE PREVIA (GUION DE PARTIDO) ---
+        if sim['victoria'] > 0.50:
+            fav_txt = f"Claro favoritismo para {ea}."
+        elif sim['derrota'] > 0.50:
+            fav_txt = f"Claro favoritismo para {eb} (Visitante)."
+        elif sim['victoria'] > sim['derrota']:
+            fav_txt = f"Ligera ventaja para {ea}, en un trámite que se proyecta cerrado."
+        else:
+            fav_txt = f"Ligera ventaja para {eb}, en un trámite que se proyecta cerrado."
+
+        flat = [(sim["matrix"][i, j], i, j) for i in range(sim["matrix"].shape[0]) for j in range(sim["matrix"].shape[1])]
+        flat.sort(reverse=True)
+        top_score_prob, i_top, j_top = flat[0]
+        
+        st.markdown(f"""
+        <div style="background: #0f0f12; border-left: 4px solid #cfb45e; border-radius: 6px; padding: 20px 24px; margin-top: 25px; border-top: 1px solid #1f1f24; border-right: 1px solid #1f1f24; border-bottom: 1px solid #1f1f24;">
+            <h3 style="font-family: 'Bebas Neue', sans-serif; font-size: 1.6rem; color: #cfb45e; letter-spacing: 1.5px; margin-top: 0; margin-bottom: 15px;">📝 GUION DE PARTIDO ESTIMADO</h3>
+            
+            <p style="color: #e0e0e0; font-size: 0.95rem; line-height: 1.6; margin-bottom: 12px;">
+                <strong>📊 Proyección de xG (Realidad de goles):</strong><br>
+                El motor matemático proyecta un volumen ofensivo de <strong>{la:.2f} xG</strong> para {ea} frente a <strong>{lb:.2f} xG</strong> de {eb}. {fav_txt}
+            </p>
+            
+            <p style="color: #e0e0e0; font-size: 0.95rem; line-height: 1.6; margin-bottom: 0;">
+                <strong>🎯 Veredicto de Scouting & Apuestas:</strong><br>
+                El resultado exacto con mayor probabilidad es el <strong>{i_top}-{j_top}</strong> ({top_score_prob*100:.1f}%). 
+                En términos de inversión (Value Betting), el sistema indica que sólo tiene sentido matemático apostar por el local si la cuota en vivo supera los <strong>{r_loc:.2f}</strong>, o por el visitante si paga más de <strong>{r_vis:.2f}</strong>. Cualquier cuota inferior a esos números carece de valor y beneficia exclusivamente a la casa.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
 
         if not rachas_df.empty and ea in rachas_df.index and eb in rachas_df.index:
             st.markdown('<div class="section-header">Forma Reciente</div>', unsafe_allow_html=True)
