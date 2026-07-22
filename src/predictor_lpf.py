@@ -992,7 +992,7 @@ elif nav == "Simulador de Jornada":
             "Visitante": df_fecha_apertura["Equipo"].values  # El equipo (local) ahora es Visitante
         })
         
-        c2.write(f"**Cruces invertidos generados para la Fecha {jornada_elegida}**")
+        c2.write(f"**Partidos de la Fecha {jornada_elegida}**")
         c2.dataframe(cruces_validos, hide_index=True, use_container_width=True)
         
         if st.button("SIMULAR JORNADA Y OBTENER TOPS"):
@@ -1045,9 +1045,10 @@ elif nav == "Simulador de Jornada":
                 col1, col2 = st.columns(2)
                 
                 with col1:
-                    st.markdown("### 🧤 Mejor Arquero (Exigencia)")
-                    df_res["Exigencia_Arquero"] = df_res["Arco_Contra"] - df_res["xG_Contra"]
-                    top_arq = df_res.nlargest(5, "Exigencia_Arquero")[["Equipo", "Arco_Contra", "xG_Contra", "Rival"]]
+                    st.markdown("### 🧤 Mejor Arquero (Rendimiento)")
+                    # Lógica: Premia recibir tiros al arco pero castiga fuertemente el xG Concedido.
+                    df_res["Indice_Arquero"] = df_res["Arco_Contra"] / (df_res["xG_Contra"] + 0.5)
+                    top_arq = df_res.nlargest(5, "Indice_Arquero")[["Equipo", "Arco_Contra", "xG_Contra", "Rival"]]
                     top_arq.columns = ["Equipo", "Tiros Arco Recibidos", "xG Concedido", "Rival"]
                     st.dataframe(top_arq.style.format("{:.2f}", subset=["Tiros Arco Recibidos", "xG Concedido"]), hide_index=True, use_container_width=True)
 
