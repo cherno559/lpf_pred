@@ -432,24 +432,25 @@ def proyectar_metrica(df, eq_a, eq_b, metrica, es_loc, tabla):
     d_b = df_m[(df_m["Equipo"] == eq_b) & (df_m["Condicion"] == cb)]
     base_b = d_b["Propio"].mean() if not d_b.empty else df_m["Propio"].mean()
     
-    # 2. Promedio de tiros CONCEDIDOS por el rival (lo que le permiten al oponente)
-    # Buscamos cuántos tiros concedió el equipo B en su condición de local/visitante
+    # 2. Promedio de tiros CONCEDIDOS por el rival
     d_b_conc = df_m[(df_m["Equipo"] == eq_b) & (df_m["Condicion"] == cb)]
     concede_b = d_b_conc["Concedido"].mean() if not d_b_conc.empty else df_m["Concedido"].mean()
     
     d_a_conc = df_m[(df_m["Equipo"] == eq_a) & (df_m["Condicion"] == ca)]
     concede_a = d_a_conc["Concedido"].mean() if not d_a_conc.empty else df_m["Concedido"].mean()
     
-    # Promedio general de la liga para esta métrica (para usar de pivote)
+    # Promedio general de la liga
     media_liga = df_m["Propio"].mean() if not df_m.empty else 1.0
     if media_liga == 0: media_liga = 1.0
 
-    # 3. Factor defensivo del rival: ¿Cuánto más o menos concede comparado con la media?
-    factor_def_b = concede_b / media_liga if media_liga > 0 else 1.0
-    factor_def_a = concede_a / media_liga if media_liga > 0 else 1.0
+    # 3. Factor defensivo con SUAVIZADO (damping) para evitar inflar las métricas
+    factor_crudo_b = concede_b / media_liga if media_liga > 0 else 1.0
+    factor_def_b = 1.0 + (factor_crudo_b - 1.0) * 0.5  # Suavizado al 50%
 
-    # 4. Proyección final cruzando el ataque propio con lo que el rival concede
-    # (Si el rival concede muchos tiros, el factor multiplica el volumen de River hacia arriba)
+    factor_crudo_a = concede_a / media_liga if media_liga > 0 else 1.0
+    factor_def_a = 1.0 + (factor_crudo_a - 1.0) * 0.5  # Suavizado al 50%
+
+    # 4. Proyección final con regresión a la media
     val_a = base_a * factor_def_b
     val_b = base_b * factor_def_a
     
@@ -964,99 +965,110 @@ if nav == "Predicción de Partidos":
         st.plotly_chart(fig_score_matrix(sim["matrix"], ea, eb), use_container_width=True)
 
 elif nav == "Simulador de Jornada":
-    st.markdown('<div class="section-header">Simulador de Jornada (15 Partidos)</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-header">Simulador de Jornada Automático</div>', unsafe_allow_html=True)
     
-    if "df_jornada" not in st.session_state:
-        st.session_state.df_jornada = pd.DataFrame({
-            "Local": [None] * 15,
-            "Visitante": [None] * 15
+    # 1. Filtramos solo los datos del Apertura (Histórico)
+    df_historico = df[df["Categoria"] == "Histórico"]
+    
+    if df_historico.empty:
+        st.warning("⚠️ No hay datos históricos (Apertura) cargados para invertir el fixture. Revisá la selección en la barra lateral.")
+    else:
+        # 2. Obtenemos las fechas disponibles
+        fechas_disponibles = sorted(df_historico["nFecha"].unique())
+        
+        c1, c2 = st.columns([1, 3])
+        jornada_elegida = c1.selectbox("Seleccionar Fecha a Simular:", fechas_disponibles)
+        
+        # 3. Filtramos los partidos de esa fecha exacta y nos quedamos con una sola métrica para no duplicar filas
+        df_fecha_apertura = df_historico[
+            (df_historico["nFecha"] == jornada_elegida) & 
+            (df_historico["Condicion"] == "Local") &
+            (df_historico["Métrica"] == "Resultado")
+        ].drop_duplicates(subset=["Equipo", "Rival"])
+        
+        # 4. Invertimos las localías para el Clausura
+        cruces_validos = pd.DataFrame({
+            "Local": df_fecha_apertura["Rival"].values,      # El rival (visitante) ahora es Local
+            "Visitante": df_fecha_apertura["Equipo"].values  # El equipo (local) ahora es Visitante
         })
         
-    st.info("Cargá los cruces de la próxima fecha. Dejá en blanco las filas que no uses si la fecha tiene menos partidos.")
-    
-    df_cruces = st.data_editor(
-        st.session_state.df_jornada,
-        column_config={
-            "Local": st.column_config.SelectboxColumn("Equipo Local", options=equipos),
-            "Visitante": st.column_config.SelectboxColumn("Equipo Visitante", options=equipos)
-        },
-        num_rows="fixed",
-        use_container_width=True
-    )
-    
-    if st.button("SIMULAR JORNADA Y OBTENER TOPS"):
-        cruces_validos = df_cruces.dropna(subset=["Local", "Visitante"])
+        c2.write(f"**Cruces invertidos generados para la Fecha {jornada_elegida}**")
+        c2.dataframe(cruces_validos, hide_index=True, use_container_width=True)
         
-        if len(cruces_validos) == 0:
-            st.warning("⚠️ Por favor, ingresá al menos un partido.")
-        else:
-            resultados_jornada = []
-            
-            with st.spinner("Procesando simulaciones matemáticas para toda la fecha..."):
-                for idx, row in cruces_validos.iterrows():
-                    ea = row["Local"]
-                    eb = row["Visitante"]
-                    
-                    if ea == eb: continue
-                        
-                    la, lb = calcular_lambdas(df, ea, eb, True, tabla)
-                    tiros_a, tiros_b = proyectar_metrica(df, ea, eb, "Tiros totales", True, tabla)
-                    arco_a, arco_b   = proyectar_metrica(df, ea, eb, "Tiros al arco", True, tabla)
-                    ocas_a, ocas_b   = proyectar_metrica(df, ea, eb, "Ocasiones claras", True, tabla)
-                    pos_a, pos_b     = proyectar_metrica(df, ea, eb, "Posesión de balón", True, tabla)
-                    
-                    tot_pos = pos_a + pos_b
-                    if tot_pos > 0:
-                        pos_a = (pos_a / tot_pos) * 100
-                        pos_b = (pos_b / tot_pos) * 100
-                    else:
-                        pos_a, pos_b = 50.0, 50.0
-                        
-                    resultados_jornada.append({
-                        "Equipo": ea, "Condición": "Local", "Rival": eb,
-                        "xG_Favor": la, "xG_Contra": lb, "Tiros_Favor": tiros_a, "Tiros_Contra": tiros_b,
-                        "Arco_Favor": arco_a, "Arco_Contra": arco_b, "Ocasiones_Favor": ocas_a, "Ocasiones_Contra": ocas_b,
-                        "Posesion": pos_a
-                    })
-                    
-                    resultados_jornada.append({
-                        "Equipo": eb, "Condición": "Visitante", "Rival": ea,
-                        "xG_Favor": lb, "xG_Contra": la, "Tiros_Favor": tiros_b, "Tiros_Contra": tiros_a,
-                        "Arco_Favor": arco_b, "Arco_Contra": arco_a, "Ocasiones_Favor": ocas_b, "Ocasiones_Contra": ocas_a,
-                        "Posesion": pos_b
-                    })
-            
-            df_res = pd.DataFrame(resultados_jornada)
-            
-            st.markdown('<div class="section-header">🏆 Destacados de la Jornada Proyectada</div>', unsafe_allow_html=True)
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.markdown("### 🧤 Mejor Arquero (Exigencia)")
-                df_res["Exigencia_Arquero"] = df_res["Arco_Contra"] - df_res["xG_Contra"]
-                top_arq = df_res.nlargest(5, "Exigencia_Arquero")[["Equipo", "Arco_Contra", "xG_Contra", "Rival"]]
-                top_arq.columns = ["Equipo", "Tiros Arco Recibidos", "xG Concedido", "Rival"]
-                st.dataframe(top_arq.style.format("{:.2f}", subset=["Tiros Arco Recibidos", "xG Concedido"]), hide_index=True, use_container_width=True)
-
-                st.markdown("### 🛡️ Mejor Defensa")
-                top_def = df_res.nsmallest(5, "xG_Contra")[["Equipo", "xG_Contra", "Ocasiones_Contra", "Tiros_Contra"]]
-                top_def.columns = ["Equipo", "xGA Esperado", "Ocasiones Concedidas", "Tiros Concedidos"]
-                st.dataframe(top_def.style.format("{:.2f}", subset=["xGA Esperado", "Ocasiones Concedidas", "Tiros Concedidos"]), hide_index=True, use_container_width=True)
-
-            with col2:
-                st.markdown("### 🧭 Mejor Mediocampo")
-                top_med = df_res.nlargest(5, "Posesion")[["Equipo", "Posesion", "xG_Favor", "Rival"]]
-                top_med.columns = ["Equipo", "Posesión %", "xG Generado", "Rival"]
-                st.dataframe(top_med.style.format("{:.1f}", subset=["Posesión %", "xG Generado"]), hide_index=True, use_container_width=True)
+        if st.button("SIMULAR JORNADA Y OBTENER TOPS"):
+            if len(cruces_validos) == 0:
+                st.warning("⚠️ No hay partidos para simular.")
+            else:
+                resultados_jornada = []
                 
-                st.markdown("### ⚔️ Mejor Delantera")
-                top_del = df_res.nlargest(5, "xG_Favor")[["Equipo", "xG_Favor", "Ocasiones_Favor", "Tiros_Favor"]]
-                top_del.columns = ["Equipo", "xG Esperado", "Ocasiones Creadas", "Tiros Totales"]
-                st.dataframe(top_del.style.format("{:.2f}", subset=["xG Esperado", "Ocasiones Creadas", "Tiros Totales"]), hide_index=True, use_container_width=True)
+                with st.spinner(f"Procesando simulaciones matemáticas para la Fecha {jornada_elegida}..."):
+                    for idx, row in cruces_validos.iterrows():
+                        ea = row["Local"]
+                        eb = row["Visitante"]
+                        
+                        if ea == eb: continue
+                            
+                        # Cálculos matemáticos del motor
+                        la, lb = calcular_lambdas(df, ea, eb, True, tabla)
+                        tiros_a, tiros_b = proyectar_metrica(df, ea, eb, "Tiros totales", True, tabla)
+                        arco_a, arco_b   = proyectar_metrica(df, ea, eb, "Tiros al arco", True, tabla)
+                        ocas_a, ocas_b   = proyectar_metrica(df, ea, eb, "Ocasiones claras", True, tabla)
+                        pos_a, pos_b     = proyectar_metrica(df, ea, eb, "Posesión de balón", True, tabla)
+                        
+                        tot_pos = pos_a + pos_b
+                        if tot_pos > 0:
+                            pos_a = (pos_a / tot_pos) * 100
+                            pos_b = (pos_b / tot_pos) * 100
+                        else:
+                            pos_a, pos_b = 50.0, 50.0
+                            
+                        # Guardamos resultados del Local
+                        resultados_jornada.append({
+                            "Equipo": ea, "Condición": "Local", "Rival": eb,
+                            "xG_Favor": la, "xG_Contra": lb, "Tiros_Favor": tiros_a, "Tiros_Contra": tiros_b,
+                            "Arco_Favor": arco_a, "Arco_Contra": arco_b, "Ocasiones_Favor": ocas_a, "Ocasiones_Contra": ocas_b,
+                            "Posesion": pos_a
+                        })
+                        
+                        # Guardamos resultados del Visitante
+                        resultados_jornada.append({
+                            "Equipo": eb, "Condición": "Visitante", "Rival": ea,
+                            "xG_Favor": lb, "xG_Contra": la, "Tiros_Favor": tiros_b, "Tiros_Contra": tiros_a,
+                            "Arco_Favor": arco_b, "Arco_Contra": arco_a, "Ocasiones_Favor": ocas_b, "Ocasiones_Contra": ocas_a,
+                            "Posesion": pos_b
+                        })
                 
-            with st.expander("📊 Ver métricas proyectadas de todos los equipos"):
-                st.dataframe(df_res.sort_values(by="xG_Favor", ascending=False).style.format("{:.2f}", subset=["xG_Favor", "xG_Contra", "Tiros_Favor", "Tiros_Contra", "Arco_Favor", "Arco_Contra", "Ocasiones_Favor", "Ocasiones_Contra", "Posesion"]), hide_index=True, use_container_width=True)
+                df_res = pd.DataFrame(resultados_jornada)
+                
+                st.markdown('<div class="section-header">🏆 Destacados de la Jornada Proyectada</div>', unsafe_allow_html=True)
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.markdown("### 🧤 Mejor Arquero (Exigencia)")
+                    df_res["Exigencia_Arquero"] = df_res["Arco_Contra"] - df_res["xG_Contra"]
+                    top_arq = df_res.nlargest(5, "Exigencia_Arquero")[["Equipo", "Arco_Contra", "xG_Contra", "Rival"]]
+                    top_arq.columns = ["Equipo", "Tiros Arco Recibidos", "xG Concedido", "Rival"]
+                    st.dataframe(top_arq.style.format("{:.2f}", subset=["Tiros Arco Recibidos", "xG Concedido"]), hide_index=True, use_container_width=True)
+
+                    st.markdown("### 🛡️ Mejor Defensa")
+                    top_def = df_res.nsmallest(5, "xG_Contra")[["Equipo", "xG_Contra", "Ocasiones_Contra", "Tiros_Contra"]]
+                    top_def.columns = ["Equipo", "xGA Esperado", "Ocasiones Concedidas", "Tiros Concedidos"]
+                    st.dataframe(top_def.style.format("{:.2f}", subset=["xGA Esperado", "Ocasiones Concedidas", "Tiros Concedidos"]), hide_index=True, use_container_width=True)
+
+                with col2:
+                    st.markdown("### 🧭 Mejor Mediocampo")
+                    top_med = df_res.nlargest(5, "Posesion")[["Equipo", "Posesion", "xG_Favor", "Rival"]]
+                    top_med.columns = ["Equipo", "Posesión %", "xG Generado", "Rival"]
+                    st.dataframe(top_med.style.format("{:.1f}", subset=["Posesión %", "xG Generado"]), hide_index=True, use_container_width=True)
+                    
+                    st.markdown("### ⚔️ Mejor Delantera")
+                    top_del = df_res.nlargest(5, "xG_Favor")[["Equipo", "xG_Favor", "Ocasiones_Favor", "Tiros_Favor"]]
+                    top_del.columns = ["Equipo", "xG Esperado", "Ocasiones Creadas", "Tiros Totales"]
+                    st.dataframe(top_del.style.format("{:.2f}", subset=["xG Esperado", "Ocasiones Creadas", "Tiros Totales"]), hide_index=True, use_container_width=True)
+                    
+                with st.expander("📊 Ver métricas proyectadas de todos los equipos"):
+                    st.dataframe(df_res.sort_values(by="xG_Favor", ascending=False).style.format("{:.2f}", subset=["xG_Favor", "xG_Contra", "Tiros_Favor", "Tiros_Contra", "Arco_Favor", "Arco_Contra", "Ocasiones_Favor", "Ocasiones_Contra", "Posesion"]), hide_index=True, use_container_width=True)
 
 elif nav == "Métricas Globales":
     st.markdown('<div class="section-header">Rankings de Rendimiento</div>', unsafe_allow_html=True)
