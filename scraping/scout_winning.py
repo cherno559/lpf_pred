@@ -195,8 +195,14 @@ def get_events(session, round_number: int) -> list[dict]:
         url = f"{BASE_URL}/api/v1/unique-tournament/{TOURNAMENT_ID}/season/{SEASON_ID}/events/round/{round_number}"
         
     data = safe_get(session, url)
-    return data.get("events", []) if data else []
-
+    eventos = data.get("events", []) if data else []
+    
+    # Si la API devuelve los dos torneos juntos (más de 15 partidos), 
+    # nos quedamos solo con la segunda mitad (del 16 al 30)
+    if len(eventos) > 15:
+        return eventos[15:]
+        
+    return eventos
 def extraer_numero(valor) -> float:
     if isinstance(valor, str):
         valor = valor.replace('%', '')
