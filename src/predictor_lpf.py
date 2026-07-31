@@ -1,5 +1,5 @@
 """
-Plataforma de Scouting LPF 2026 - Completa (Etapas 1, 2, Value Betting y Guion Técnico Nativo)
+Plataforma de Rendimiento LPF 2026 - Completa (Etapas 1, 2, Value Betting y Guion Técnico Nativo)
 """
 import re, os, math
 import numpy as np
@@ -12,7 +12,7 @@ import streamlit as st
 # CONFIGURACIÓN Y ESTILOS
 # ──────────────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="LPF Analytics | Scouting",
+    page_title="LPF Analytics | Rendimiento",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -637,11 +637,17 @@ def contexto_tactica_clash(adn: pd.DataFrame, eq_a: str, eq_b: str) -> str:
 def calcular_rachas(df: pd.DataFrame) -> pd.DataFrame:
     dr = df[df["Métrica"] == "Resultado"].copy()
     dx = df[df["Métrica"] == "xG_Estimado"].copy()
+    
+    # Creamos una columna de orden lógico (Histórico primero = 0, Actual = 1)
+    dr["Orden_Cat"] = np.where(dr["Categoria"] == "Histórico", 0, 1)
+    dx["Orden_Cat"] = np.where(dx["Categoria"] == "Histórico", 0, 1)
+    
     equipos = sorted(dr["Equipo"].unique())
     rows = []
 
     for eq in equipos:
-        d_eq = dr[dr["Equipo"] == eq].sort_values("nFecha")
+        # Ordenamos primero por Categoría y después por Fecha
+        d_eq = dr[dr["Equipo"] == eq].sort_values(["Orden_Cat", "nFecha"])
         if d_eq.empty: continue
 
         resultados = []
@@ -654,8 +660,10 @@ def calcular_rachas(df: pd.DataFrame) -> pd.DataFrame:
         pts6 = sum(3 if r == "V" else (1 if r == "E" else 0) for r in ultimas6)
         pts3 = sum(3 if r == "V" else (1 if r == "E" else 0) for r in resultados[-3:])
 
-        dxg = dx[dx["Equipo"] == eq].sort_values("nFecha")
+        # También corregimos el ordenamiento acá
+        dxg = dx[dx["Equipo"] == eq].sort_values(["Orden_Cat", "nFecha"])
         xg_vals = dxg["Propio"].values
+        
         if len(xg_vals) >= 6:
             xg_rec, xg_ant = float(np.mean(xg_vals[-3:])), float(np.mean(xg_vals[-6:-3]))
             delta_xg = xg_rec - xg_ant
@@ -689,20 +697,39 @@ def render_racha_dots(ultimas6: list) -> str:
     return html
 
 def fig_momentum_timeline(df: pd.DataFrame, equipo: str) -> go.Figure:
-    dr = df[(df["Equipo"] == equipo) & (df["Métrica"] == "Resultado")].sort_values("nFecha")
-    dx = df[(df["Equipo"] == equipo) & (df["Métrica"] == "xG_Estimado")].sort_values("nFecha")
+    dr = df[(df["Equipo"] == equipo) & (df["Métrica"] == "Resultado")].copy()
+    dx = df[(df["Equipo"] == equipo) & (df["Métrica"] == "xG_Estimado")].copy()
+    
     if dr.empty: return go.Figure()
-    fechas = dr["nFecha"].values
+
+    # Aplicamos el mismo parche de ordenamiento para el gráfico temporal
+    dr["Orden_Cat"] = np.where(dr["Categoria"] == "Histórico", 0, 1)
+    dx["Orden_Cat"] = np.where(dx["Categoria"] == "Histórico", 0, 1)
+    
+    dr = dr.sort_values(["Orden_Cat", "nFecha"])
+    dx = dx.sort_values(["Orden_Cat", "nFecha"])
+
+    # Generamos etiquetas dinámicas para el Eje X para no repetir los números (Ej: APE-14, CLA-1)
+    fechas_labels = dr.apply(lambda r: f"{r['Torneo'][:3].upper()}-{r['nFecha']}", axis=1).tolist()
+    
     pts_parciales = []
     for _, row in dr.iterrows():
         if row["Propio"] > row["Concedido"]: pts_parciales.append(3)
         elif row["Propio"] == row["Concedido"]: pts_parciales.append(1)
         else: pts_parciales.append(0)
-    xg_vals = dx.set_index("nFecha")["Propio"].reindex(fechas).fillna(0).values
+        
+    xg_vals = dx["Propio"].values
+    
+    # Alinear longitudes de los datos por seguridad
+    min_len = min(len(fechas_labels), len(xg_vals))
+    fechas_labels = fechas_labels[:min_len]
+    pts_parciales = pts_parciales[:min_len]
+    xg_vals = xg_vals[:min_len]
+
     fig = go.Figure()
-    fig.add_trace(go.Bar(x=fechas, y=pts_parciales, name="Pts/Fecha", marker_color=[RED if p == 3 else ("#888890" if p == 1 else "#1e1e24") for p in pts_parciales], yaxis="y1"))
-    fig.add_trace(go.Scatter(x=fechas, y=xg_vals, name="xG Propio", mode="lines+markers", line=dict(color=WHITE, width=2), marker=dict(size=6), yaxis="y2"))
-    fig.update_layout(**PLOT, height=320, yaxis=dict(title="Puntos", showgrid=False, color="#555560"), yaxis2=dict(title="xG", overlaying="y", side="right", showgrid=False, color="#888890"), legend=dict(orientation="h", x=0, y=1.12), xaxis=dict(title="Fecha", color="#555560", tickmode="linear"))
+    fig.add_trace(go.Bar(x=fechas_labels, y=pts_parciales, name="Pts/Fecha", marker_color=[RED if p == 3 else ("#888890" if p == 1 else "#1e1e24") for p in pts_parciales], yaxis="y1"))
+    fig.add_trace(go.Scatter(x=fechas_labels, y=xg_vals, name="xG Propio", mode="lines+markers", line=dict(color=WHITE, width=2), marker=dict(size=6), yaxis="y2"))
+    fig.update_layout(**PLOT, height=320, yaxis=dict(title="Puntos", showgrid=False, color="#555560"), yaxis2=dict(title="xG", overlaying="y", side="right", showgrid=False, color="#888890"), legend=dict(orientation="h", x=0, y=1.12), xaxis=dict(title="Torneo y Fecha", color="#555560", tickmode="linear"))
     return fig
 
 def fig_momentum_ranking(rachas: pd.DataFrame) -> go.Figure:
