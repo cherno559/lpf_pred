@@ -1086,7 +1086,7 @@ elif nav == "Simulador de Jornada":
                         "xG Favor": "{:.2f}",
                         "xG Contra": "{:.2f}",
                         "Posesión %": "{:.1f}%"
-                    }).background_gradient(subset=["Power Score"], cmap="Reds"), 
+                    })
                     hide_index=True, 
                     use_container_width=True
                 )
