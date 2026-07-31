@@ -131,7 +131,7 @@ def calcular_metricas_derivadas(stats: dict) -> list:
     return derivadas
 
 
-EXCEL_DEFAULT = "Fecha_x_fecha_lpf.xlsx"
+EXCEL_DEFAULT = "/home/sebi/Documents/futbol/lpf_pred/data/actual/clausura26.xlsx"
 
 # ──────────────────────────────────────────────────────────────────
 # SESIÓN TLS
