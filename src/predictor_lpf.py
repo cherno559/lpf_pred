@@ -995,12 +995,11 @@ elif nav == "Simulador de Jornada":
         c2.write(f"**Partidos de la Fecha {jornada_elegida}**")
         c2.dataframe(cruces_validos, hide_index=True, use_container_width=True)
         
-        if st.button("SIMULAR JORNADA Y OBTENER TOPS"):
+        if st.button("SIMULAR JORNADA COMPLETA"):
             if len(cruces_validos) == 0:
                 st.warning("⚠️ No hay partidos para simular.")
             else:
                 resultados_jornada = []
-                favoritos_claros = []
                 
                 with st.spinner(f"Procesando simulaciones matemáticas para la Fecha {jornada_elegida}..."):
                     for idx, row in cruces_validos.iterrows():
@@ -1025,12 +1024,6 @@ elif nav == "Simulador de Jornada":
                         else:
                             pos_a, pos_b = 50.0, 50.0
                             
-                        # Identificar favoritos contundentes (>60% probabilidad de victoria)
-                        if sim["victoria"] > 0.60:
-                            favoritos_claros.append({"Equipo": ea, "Rival": eb, "Prob": sim["victoria"], "Condición": "Local"})
-                        elif sim["derrota"] > 0.60:
-                            favoritos_claros.append({"Equipo": eb, "Rival": ea, "Prob": sim["derrota"], "Condición": "Visitante"})
-                            
                         # Guardamos resultados del Local
                         resultados_jornada.append({
                             "Equipo": ea, "Condición": "Local", "Rival": eb,
@@ -1051,76 +1044,73 @@ elif nav == "Simulador de Jornada":
                 
                 df_res = pd.DataFrame(resultados_jornada)
                 
-                # CREACIÓN DEL POWER SCORE (Fórmula integral de rendimiento)
-                df_res["Power_Score"] = (df_res["Prob_Victoria"] * 100) + (df_res["xG_Favor"] * 15) - (df_res["xG_Contra"] * 10) + (df_res["Arco_Favor"] * 2.5) + (df_res["Posesion"] * 0.2)
+                # Índice para el arquero (Relación entre tiros recibidos al arco y xG concedido)
+                df_res["Indice_Arquero"] = df_res["Arco_Contra"] / (df_res["xG_Contra"] + 0.5)
                 
-                # --- INICIO DE RENDERIZADO VISUAL ---
-                
-                # 1. TARJETAS DE FAVORITOS CLAROS
-                if favoritos_claros:
-                    st.markdown('<div class="section-header">🎯 Favoritos Claros (>60% Probabilidad)</div>', unsafe_allow_html=True)
-                    # Creamos dinámicamente columnas dependiendo de cuántos favoritos haya
-                    cols = st.columns(len(favoritos_claros[:4])) 
-                    for i, fav in enumerate(favoritos_claros[:4]):
-                        with cols[i]:
-                            st.markdown(f"""
-                            <div style="background:#141417; border: 1px solid #ED1A3B; border-radius: 8px; padding: 15px; text-align: center; box-shadow: 0 4px 12px rgba(237, 26, 59, 0.15);">
-                                <div style="font-size:0.75rem; color:#888890; text-transform:uppercase; letter-spacing:1px;">{fav['Condición']} vs {fav['Rival']}</div>
-                                <div style="font-family:'Bebas Neue', sans-serif; font-size:2rem; color:#ffffff; margin: 8px 0; letter-spacing: 1px;">{fav['Equipo']}</div>
-                                <div style="font-size:1.8rem; font-weight:800; color:#ED1A3B;">{fav['Prob']*100:.1f}%</div>
-                            </div>
-                            """, unsafe_allow_html=True)
-                
-                # 2. TOP 5 - POWER RANKING GLOBAL (Sin background_gradient para evitar el error)
-                st.markdown('<div class="section-header">🔥 Top 5 de Rendimiento (Power Score)</div>', unsafe_allow_html=True)
-                st.info("💡 **Power Score:** Es un índice integral calculado por el motor. Suma la probabilidad de victoria matemática, el dominio de posesión, generación ofensiva (xG / Tiros al arco) y penaliza el xG concedido.")
-                
-                top5_general = df_res.nlargest(5, "Power_Score")[["Equipo", "Power_Score", "Prob_Victoria", "xG_Favor", "xG_Contra", "Posesion", "Rival"]]
-                top5_general.columns = ["Equipo", "Power Score", "Prob. Victoria", "xG Favor", "xG Contra", "Posesión %", "Rival"]
-                
-                st.dataframe(
-                    top5_general.style.format({
-                        "Power Score": "{:.1f}",
-                        "Prob. Victoria": lambda x: f"{x*100:.1f}%",
-                        "xG Favor": "{:.2f}",
-                        "xG Contra": "{:.2f}",
-                        "Posesión %": "{:.1f}%"
-                    }), 
-                    hide_index=True, 
-                    use_container_width=True
-                )
+                # Función auxiliar para formatear tablas y poner la estrella a los 5 primeros
+                def format_ranking(df_temp, sort_col, ascending, cols_to_show, rename_dict=None):
+                    temp = df_temp.sort_values(by=sort_col, ascending=ascending).reset_index(drop=True)
+                    temp["Pos"] = temp.index + 1
+                    # Agregar la estrella a los primeros 5
+                    temp["Equipo"] = temp.apply(lambda r: f"⭐ {r['Equipo']}" if r["Pos"] <= 5 else r["Equipo"], axis=1)
+                    # Reordenar las columnas
+                    final_cols = ["Pos", "Equipo"] + [c for c in cols_to_show if c != "Equipo"]
+                    temp = temp[final_cols]
+                    if rename_dict:
+                        temp = temp.rename(columns=rename_dict)
+                    return temp
 
-                # 3. DESTACADOS TÁCTICOS POR LÍNEA
-                st.markdown('<div class="section-header">🏅 Destacados Tácticos Específicos</div>', unsafe_allow_html=True)
-                col1, col2 = st.columns(2)
+                st.markdown('<div class="section-header">📊 Rankings de la Jornada (Clasificación General)</div>', unsafe_allow_html=True)
                 
-                with col1:
-                    st.markdown("### 🛡️ Mejor Bloque Defensivo")
-                    st.markdown("<span style='color:#a0a0a8; font-size:0.85rem;'>Equipos con menor xG esperado en contra.</span>", unsafe_allow_html=True)
-                    top_def = df_res.nsmallest(3, "xG_Contra")[["Equipo", "xG_Contra", "Tiros_Contra", "Rival"]]
-                    top_def.columns = ["Equipo", "xG Concedido", "Tiros Recibidos", "Rival"]
-                    st.dataframe(top_def.style.format("{:.2f}", subset=["xG Concedido", "Tiros Recibidos"]), hide_index=True, use_container_width=True)
+                # Creamos las pestañas (Tabs) para separar cada análisis
+                tab1, tab2, tab3, tab4, tab5 = st.tabs([
+                    "📈 Prob. Victoria", "🧤 Mejor Arquero", "🛡️ Mejor Defensa", "🧭 Mejor Medio", "⚔️ Mejor Delantera"
+                ])
+                
+                with tab1:
+                    st.markdown("### 📈 Probabilidad de Victoria")
+                    st.caption("Ordenado por la probabilidad matemática de ganar el encuentro.")
+                    df_vic = format_ranking(df_res, "Prob_Victoria", False, 
+                                            ["Prob_Victoria", "xG_Favor", "xG_Contra", "Condición", "Rival"],
+                                            {"Prob_Victoria": "Prob. de Ganar"})
+                    st.dataframe(df_vic.style.format({"Prob. de Ganar": "{:.1%}", "xG_Favor": "{:.2f}", "xG_Contra": "{:.2f}"}), 
+                                 hide_index=True, use_container_width=True)
 
-                with col2:
-                    st.markdown("### ⚔️ Mayor Amenaza Ofensiva")
-                    st.markdown("<span style='color:#a0a0a8; font-size:0.85rem;'>Equipos con mayor xG esperado a favor.</span>", unsafe_allow_html=True)
-                    top_del = df_res.nlargest(3, "xG_Favor")[["Equipo", "xG_Favor", "Tiros_Favor", "Rival"]]
-                    top_del.columns = ["Equipo", "xG Generado", "Tiros Totales", "Rival"]
-                    st.dataframe(top_del.style.format("{:.2f}", subset=["xG Generado", "Tiros Totales"]), hide_index=True, use_container_width=True)
-                    
-                # 4. TABLA COMPLETA CON TODAS LAS MÉTRICAS
-                st.markdown('<div class="section-header">📊 Resumen Estadístico Completo de la Fecha</div>', unsafe_allow_html=True)
-                
-                resumen_styler = df_res.sort_values(by="Power_Score", ascending=False).drop(columns=["Power_Score"]).style.format({
-                    "Prob_Victoria": lambda x: f"{x*100:.1f}%",
-                    "xG_Favor": "{:.2f}", "xG_Contra": "{:.2f}", 
-                    "Tiros_Favor": "{:.1f}", "Tiros_Contra": "{:.1f}", 
-                    "Arco_Favor": "{:.1f}", "Arco_Contra": "{:.1f}", 
-                    "Ocasiones_Favor": "{:.1f}", "Ocasiones_Contra": "{:.1f}", 
-                    "Posesion": "{:.1f}%"
-                })
-                
-                st.dataframe(resumen_styler, hide_index=True, use_container_width=True)
+                with tab2:
+                    st.markdown("### 🧤 Posible Mejor Arquero")
+                    st.caption("Ordenado por el 'Índice Arquero': premia atajadas proyectadas en relación a la calidad de los tiros (xG).")
+                    df_arq = format_ranking(df_res, "Indice_Arquero", False, 
+                                            ["Indice_Arquero", "Arco_Contra", "xG_Contra", "Rival"],
+                                            {"Indice_Arquero": "Índice", "Arco_Contra": "Tiros Arco en Contra", "xG_Contra": "xG Concedido"})
+                    st.dataframe(df_arq.style.format({"Índice": "{:.2f}", "Tiros Arco en Contra": "{:.1f}", "xG Concedido": "{:.2f}"}), 
+                                 hide_index=True, use_container_width=True)
+
+                with tab3:
+                    st.markdown("### 🛡️ Posible Mejor Defensa")
+                    st.caption("Ordenado por solidez: los que menos Goles Esperados (xG) y tiros van a conceder.")
+                    df_def = format_ranking(df_res, "xG_Contra", True, 
+                                            ["xG_Contra", "Ocasiones_Contra", "Tiros_Contra", "Rival"],
+                                            {"xG_Contra": "xG Concedido", "Ocasiones_Contra": "Ocasiones Concedidas", "Tiros_Contra": "Tiros Concedidos"})
+                    st.dataframe(df_def.style.format({"xG Concedido": "{:.2f}", "Ocasiones Concedidas": "{:.1f}", "Tiros Concedidos": "{:.1f}"}), 
+                                 hide_index=True, use_container_width=True)
+
+                with tab4:
+                    st.markdown("### 🧭 Posible Mejor Mediocampo")
+                    st.caption("Ordenado por proyección de dominio territorial (Posesión).")
+                    df_med = format_ranking(df_res, "Posesion", False, 
+                                            ["Posesion", "xG_Favor", "xG_Contra", "Rival"],
+                                            {"Posesion": "Posesión %", "xG_Favor": "xG Generado", "xG_Contra": "xG Concedido"})
+                    st.dataframe(df_med.style.format({"Posesión %": "{:.1f}%", "xG Generado": "{:.2f}", "xG Concedido": "{:.2f}"}), 
+                                 hide_index=True, use_container_width=True)
+
+                with tab5:
+                    st.markdown("### ⚔️ Posible Mejor Delantera")
+                    st.caption("Ordenado por volumen y peligro ofensivo (xG a favor).")
+                    df_del = format_ranking(df_res, "xG_Favor", False, 
+                                            ["xG_Favor", "Ocasiones_Favor", "Arco_Favor", "Rival"],
+                                            {"xG_Favor": "xG Generado", "Ocasiones_Favor": "Ocasiones Creadas", "Arco_Favor": "Tiros al Arco a Favor"})
+                    st.dataframe(df_del.style.format({"xG Generado": "{:.2f}", "Ocasiones Creadas": "{:.1f}", "Tiros al Arco a Favor": "{:.1f}"}), 
+                                 hide_index=True, use_container_width=True)
 
 elif nav == "Métricas Globales":
     st.markdown('<div class="section-header">Rankings de Rendimiento</div>', unsafe_allow_html=True)
