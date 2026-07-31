@@ -1011,7 +1011,7 @@ elif nav == "Simulador de Jornada":
                             
                         # Cálculos matemáticos del motor
                         la, lb = calcular_lambdas(df, ea, eb, True, tabla)
-                        sim = montecarlo(la, lb) # <-- NUEVO: Obtenemos probabilidades exactas
+                        sim = montecarlo(la, lb) 
                         
                         tiros_a, tiros_b = proyectar_metrica(df, ea, eb, "Tiros totales", True, tabla)
                         arco_a, arco_b   = proyectar_metrica(df, ea, eb, "Tiros al arco", True, tabla)
@@ -1052,7 +1052,6 @@ elif nav == "Simulador de Jornada":
                 df_res = pd.DataFrame(resultados_jornada)
                 
                 # CREACIÓN DEL POWER SCORE (Fórmula integral de rendimiento)
-                # Combina % de Victoria, Goles Esperados Netos, Tiros al Arco y Posesión.
                 df_res["Power_Score"] = (df_res["Prob_Victoria"] * 100) + (df_res["xG_Favor"] * 15) - (df_res["xG_Contra"] * 10) + (df_res["Arco_Favor"] * 2.5) + (df_res["Posesion"] * 0.2)
                 
                 # --- INICIO DE RENDERIZADO VISUAL ---
@@ -1060,7 +1059,7 @@ elif nav == "Simulador de Jornada":
                 # 1. TARJETAS DE FAVORITOS CLAROS
                 if favoritos_claros:
                     st.markdown('<div class="section-header">🎯 Favoritos Claros (>60% Probabilidad)</div>', unsafe_allow_html=True)
-                    # Creamos dinámicamente columnas dependiendo de cuántos favoritos haya (máximo 4 por fila para no romper el diseño)
+                    # Creamos dinámicamente columnas dependiendo de cuántos favoritos haya
                     cols = st.columns(len(favoritos_claros[:4])) 
                     for i, fav in enumerate(favoritos_claros[:4]):
                         with cols[i]:
@@ -1072,7 +1071,7 @@ elif nav == "Simulador de Jornada":
                             </div>
                             """, unsafe_allow_html=True)
                 
-                # 2. TOP 5 - POWER RANKING GLOBAL
+                # 2. TOP 5 - POWER RANKING GLOBAL (Sin background_gradient para evitar el error)
                 st.markdown('<div class="section-header">🔥 Top 5 de Rendimiento (Power Score)</div>', unsafe_allow_html=True)
                 st.info("💡 **Power Score:** Es un índice integral calculado por el motor. Suma la probabilidad de victoria matemática, el dominio de posesión, generación ofensiva (xG / Tiros al arco) y penaliza el xG concedido.")
                 
@@ -1086,7 +1085,7 @@ elif nav == "Simulador de Jornada":
                         "xG Favor": "{:.2f}",
                         "xG Contra": "{:.2f}",
                         "Posesión %": "{:.1f}%"
-                    })
+                    }), 
                     hide_index=True, 
                     use_container_width=True
                 )
