@@ -614,9 +614,6 @@ def contexto_tactica_clash(adn: pd.DataFrame, eq_a: str, eq_b: str) -> str:
     tags_b_html = render_tags_html(tags_b)
     clash_html  = "<br>".join(clash_lines)
 
-    # FIX: textwrap.dedent() evita que Streamlit interprete la indentación de
-    # esta función (4 espacios, por estar dentro del cuerpo de la función)
-    # como un bloque de código Markdown en vez de HTML.
     return textwrap.dedent(f"""
     <div class="tactica-clash">
         <div class="tactica-title">Contexto Táctico del Choque</div>
@@ -643,7 +640,6 @@ def calcular_rachas(df: pd.DataFrame) -> pd.DataFrame:
     dr = df[df["Métrica"] == "Resultado"].copy()
     dx = df[df["Métrica"] == "xG_Estimado"].copy()
     
-    # Creamos una columna de orden lógico (Histórico primero = 0, Actual = 1)
     dr["Orden_Cat"] = np.where(dr["Categoria"] == "Histórico", 0, 1)
     dx["Orden_Cat"] = np.where(dx["Categoria"] == "Histórico", 0, 1)
     
@@ -651,7 +647,6 @@ def calcular_rachas(df: pd.DataFrame) -> pd.DataFrame:
     rows = []
 
     for eq in equipos:
-        # Ordenamos primero por Categoría y después por Fecha
         d_eq = dr[dr["Equipo"] == eq].sort_values(["Orden_Cat", "nFecha"])
         if d_eq.empty: continue
 
@@ -665,7 +660,6 @@ def calcular_rachas(df: pd.DataFrame) -> pd.DataFrame:
         pts6 = sum(3 if r == "V" else (1 if r == "E" else 0) for r in ultimas6)
         pts3 = sum(3 if r == "V" else (1 if r == "E" else 0) for r in resultados[-3:])
 
-        # También corregimos el ordenamiento acá
         dxg = dx[dx["Equipo"] == eq].sort_values(["Orden_Cat", "nFecha"])
         xg_vals = dxg["Propio"].values
         
@@ -707,14 +701,12 @@ def fig_momentum_timeline(df: pd.DataFrame, equipo: str) -> go.Figure:
     
     if dr.empty: return go.Figure()
 
-    # Aplicamos el mismo parche de ordenamiento para el gráfico temporal
     dr["Orden_Cat"] = np.where(dr["Categoria"] == "Histórico", 0, 1)
     dx["Orden_Cat"] = np.where(dx["Categoria"] == "Histórico", 0, 1)
     
     dr = dr.sort_values(["Orden_Cat", "nFecha"])
     dx = dx.sort_values(["Orden_Cat", "nFecha"])
 
-    # Generamos etiquetas dinámicas para el Eje X para no repetir los números (Ej: APE-14, CLA-1)
     fechas_labels = dr.apply(lambda r: f"{r['Torneo'][:3].upper()}-{r['nFecha']}", axis=1).tolist()
     
     pts_parciales = []
@@ -725,7 +717,6 @@ def fig_momentum_timeline(df: pd.DataFrame, equipo: str) -> go.Figure:
         
     xg_vals = dx["Propio"].values
     
-    # Alinear longitudes de los datos por seguridad
     min_len = min(len(fechas_labels), len(xg_vals))
     fechas_labels = fechas_labels[:min_len]
     pts_parciales = pts_parciales[:min_len]
