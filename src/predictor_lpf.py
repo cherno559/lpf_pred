@@ -62,9 +62,6 @@ html, body, [class*="css"] { font-family: 'Manrope', sans-serif; background-colo
 .stSelectbox>div>div, .stTextInput>div>div, .stRadio>div>div { background-color: #141417 !important; border: 1px solid #2a2a30 !important; color: #ffffff !important; border-radius: 4px !important; }
 [data-testid="stSidebar"] { background-color: #0f0f12 !important; border-right: 1px solid #1f1f24 !important; }
 .sidebar-logo { font-family: 'Bebas Neue', sans-serif; font-size: 2.5rem; color: #ED1A3B; letter-spacing: 2px; text-align: center; margin-bottom: 30px; border-bottom: 1px solid #1f1f24; padding-bottom: 20px; }
-.stTabs [data-baseweb="tab-list"] { background: transparent !important; gap: 8px; }
-.stTabs [data-baseweb="tab"] { font-family: 'Manrope', sans-serif !important; background: #141417 !important; border: 1px solid #2a2a30 !important; border-radius: 4px !important; color: #888890 !important; }
-.stTabs [aria-selected="true"] { background: #ED1A3B !important; color: white !important; border-color: #ED1A3B !important; }
 
 /* ── ADN Táctico ─────────────────────────────────────────── */
 .tag-badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; margin: 3px 4px; }
@@ -1133,56 +1130,66 @@ elif nav == "Simulador de Jornada":
                     return temp
 
                 st.markdown('<div class="section-header">📊 Rankings de la Jornada (Clasificación General)</div>', unsafe_allow_html=True)
+                st.caption("💡 *Tip: Pasá el cursor sobre cualquier tabla y tocá el ícono de las flechas (arriba a la derecha) para verla en pantalla completa.*")
                 
-                # Creamos las pestañas (Tabs) para separar cada análisis
-                tab1, tab2, tab3, tab4, tab5 = st.tabs([
-                    "📈 Prob. Victoria", "🧤 Mejor Arquero", "🛡️ Mejor Defensa", "🧭 Mejor Medio", "⚔️ Mejor Delantera"
-                ])
+                # --- CUADRÍCULA DE COLUMNAS (Sustituye a las pestañas) ---
                 
-                with tab1:
-                    st.markdown("### 📈 Probabilidad de Victoria")
-                    st.caption("Ordenado por la probabilidad matemática de ganar el encuentro.")
+                # Fila 1
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.markdown("### 📈 Prob. de Victoria")
                     df_vic = format_ranking(df_res, "Prob_Victoria", False, 
                                             ["Prob_Victoria", "xG_Favor", "xG_Contra", "Condición", "Rival"],
                                             {"Prob_Victoria": "Prob. de Ganar"})
                     st.dataframe(df_vic.style.format({"Prob. de Ganar": "{:.1%}", "xG_Favor": "{:.2f}", "xG_Contra": "{:.2f}"}), 
-                                 hide_index=True, use_container_width=True)
+                                 hide_index=True, use_container_width=True, height=280)
 
-                with tab2:
+                with col2:
                     st.markdown("### 🧤 Posible Mejor Arquero")
-                    st.caption("Ordenado por el 'Índice Arquero': premia atajadas proyectadas en relación a la calidad de los tiros (xG).")
                     df_arq = format_ranking(df_res, "Indice_Arquero", False, 
                                             ["Indice_Arquero", "Arco_Contra", "xG_Contra", "Rival"],
                                             {"Indice_Arquero": "Índice", "Arco_Contra": "Tiros Arco en Contra", "xG_Contra": "xG Concedido"})
                     st.dataframe(df_arq.style.format({"Índice": "{:.2f}", "Tiros Arco en Contra": "{:.1f}", "xG Concedido": "{:.2f}"}), 
-                                 hide_index=True, use_container_width=True)
+                                 hide_index=True, use_container_width=True, height=280)
 
-                with tab3:
+                st.markdown("<br>", unsafe_allow_html=True)
+                
+                # Fila 2
+                col3, col4 = st.columns(2)
+                
+                with col3:
                     st.markdown("### 🛡️ Posible Mejor Defensa")
-                    st.caption("Ordenado por solidez: los que menos Goles Esperados (xG) y tiros van a conceder.")
                     df_def = format_ranking(df_res, "xG_Contra", True, 
                                             ["xG_Contra", "Ocasiones_Contra", "Tiros_Contra", "Rival"],
                                             {"xG_Contra": "xG Concedido", "Ocasiones_Contra": "Ocasiones Concedidas", "Tiros_Contra": "Tiros Concedidos"})
                     st.dataframe(df_def.style.format({"xG Concedido": "{:.2f}", "Ocasiones Concedidas": "{:.1f}", "Tiros Concedidos": "{:.1f}"}), 
-                                 hide_index=True, use_container_width=True)
+                                 hide_index=True, use_container_width=True, height=280)
 
-                with tab4:
-                    st.markdown("### 🧭 Posible Mejor Mediocampo")
-                    st.caption("Ordenado por proyección de dominio territorial (Posesión).")
+                with col4:
+                    st.markdown("### 🧭 Posible Mejor Medio")
                     df_med = format_ranking(df_res, "Posesion", False, 
                                             ["Posesion", "xG_Favor", "xG_Contra", "Rival"],
                                             {"Posesion": "Posesión %", "xG_Favor": "xG Generado", "xG_Contra": "xG Concedido"})
                     st.dataframe(df_med.style.format({"Posesión %": "{:.1f}%", "xG Generado": "{:.2f}", "xG Concedido": "{:.2f}"}), 
-                                 hide_index=True, use_container_width=True)
-
-                with tab5:
+                                 hide_index=True, use_container_width=True, height=280)
+                
+                st.markdown("<br>", unsafe_allow_html=True)
+                
+                # Fila 3
+                col5, col6 = st.columns(2)
+                
+                with col5:
                     st.markdown("### ⚔️ Posible Mejor Delantera")
-                    st.caption("Ordenado por volumen y peligro ofensivo (xG a favor).")
                     df_del = format_ranking(df_res, "xG_Favor", False, 
                                             ["xG_Favor", "Ocasiones_Favor", "Arco_Favor", "Rival"],
                                             {"xG_Favor": "xG Generado", "Ocasiones_Favor": "Ocasiones Creadas", "Arco_Favor": "Tiros al Arco a Favor"})
                     st.dataframe(df_del.style.format({"xG Generado": "{:.2f}", "Ocasiones Creadas": "{:.1f}", "Tiros al Arco a Favor": "{:.1f}"}), 
-                                 hide_index=True, use_container_width=True)
+                                 hide_index=True, use_container_width=True, height=280)
+                
+                # Col 6 queda vacía para equilibrar la cuadrícula si sólo hay 5 métricas
+                with col6:
+                    pass
 
 elif nav == "Métricas Globales":
     st.markdown('<div class="section-header">Rankings de Rendimiento</div>', unsafe_allow_html=True)
