@@ -1,7 +1,8 @@
 """
 Plataforma de Rendimiento LPF 2026 - Completa (Etapas 1, 2, Value Betting y Guion Técnico Nativo)
 """
-import re, os, math
+import re, os, math, textwrap
+from datetime import datetime
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -13,6 +14,7 @@ import streamlit as st
 # ──────────────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="LPF Analytics | Rendimiento",
+    page_icon="⚽",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -612,7 +614,10 @@ def contexto_tactica_clash(adn: pd.DataFrame, eq_a: str, eq_b: str) -> str:
     tags_b_html = render_tags_html(tags_b)
     clash_html  = "<br>".join(clash_lines)
 
-    return f"""
+    # FIX: textwrap.dedent() evita que Streamlit interprete la indentación de
+    # esta función (4 espacios, por estar dentro del cuerpo de la función)
+    # como un bloque de código Markdown en vez de HTML.
+    return textwrap.dedent(f"""
     <div class="tactica-clash">
         <div class="tactica-title">Contexto Táctico del Choque</div>
         <div class="tactica-row">
@@ -629,7 +634,7 @@ def contexto_tactica_clash(adn: pd.DataFrame, eq_a: str, eq_b: str) -> str:
             </div>
         </div>
         <div class="tactica-insight">{clash_html}</div>
-    </div>"""
+    </div>""")
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  ★  RACHAS Y MOMENTUM
@@ -818,8 +823,18 @@ with st.sidebar:
 datos    = cargar_excel(archivos_a_cargar)
 df       = construir_df(datos)
 
+if not opciones_disponibles:
+    st.error(
+        "⚠️ **No se encontró ninguna base de datos.**\n\n"
+        "Este sistema espera los archivos Excel en:\n"
+        "- `data/actual/` (temporada en curso, ej. `clausura26.xlsx`)\n"
+        "- `data/historico/` (temporadas pasadas, ej. `apertura26.xlsx`)\n\n"
+        "Creá esas carpetas junto a este script y colocá ahí tus archivos."
+    )
+    st.stop()
+
 if df.empty:
-    st.error("⚠️ No se seleccionaron datos o las carpetas están vacías. Elegí un torneo en la barra lateral.")
+    st.warning("⚠️ Elegí al menos una base de datos en la barra lateral para continuar.")
     st.stop()
 
 torneos_cargados = list(df["Torneo"].unique())
@@ -844,12 +859,51 @@ def _cached_rachas(dataframe): return calcular_rachas(dataframe)
 adn_df    = _cached_adn(df)
 rachas_df = _cached_rachas(df)
 
-st.markdown("""
+_ultima_actualizacion = max(
+    (os.path.getmtime(a) for a in archivos_a_cargar if os.path.exists(a)),
+    default=None
+)
+_fecha_datos = (
+    datetime.fromtimestamp(_ultima_actualizacion).strftime("%d/%m/%Y %H:%M")
+    if _ultima_actualizacion else "sin datos cargados"
+)
+
+st.markdown(f"""
 <div class="hero-banner">
-    <div class="hero-subtitle">Base de Datos LPF 2026</div>
+    <div class="hero-subtitle">Liga Profesional de Fútbol · Argentina 2026</div>
     <h1 class="hero-title">PLATAFORMA DE RENDIMIENTO</h1>
+    <div style="color:#888890;font-size:0.8rem;margin-top:8px;">
+        📅 Datos actualizados: {_fecha_datos} &nbsp;|&nbsp; 🗂️ Fuentes activas: {len(archivos_a_cargar)}
+    </div>
 </div>
 """, unsafe_allow_html=True)
+
+with st.expander("ℹ️ Metodología del modelo"):
+    st.markdown("""
+**Motor de predicción:** distribución de Poisson bivariada con ajuste
+Dixon-Coles (`ρ`) para corregir la subestimación de empates y resultados
+bajos (0-0, 1-0, 0-1, 1-1), típica del Poisson independiente puro.
+
+**Fuerza de ataque/defensa (`λ`):** se calcula combinando el rendimiento
+observado del equipo (goles reales + xG estimado a partir de tiros y
+ocasiones claras) con un *prior* bayesiano basado en la jerarquía de
+mercado del plantel — así un equipo con pocos partidos jugados no queda
+sub o sobre-representado por una muestra chica.
+
+**Ajustes de estilo:** el modelo suma modificadores cuando detecta un
+choque de perfiles tácticos claro (ej. posesión dominante vs. bloque
+bajo, o déficit defensivo marcado).
+
+**Cuotas "Real" vs. "Casa":** la columna "Real" es la probabilidad pura
+del modelo convertida a cuota (1 / probabilidad); "Casa" le aplica un
+margen (*overround*) típico de casa de apuestas, solo a fines
+comparativos/educativos.
+
+⚠️ *Esta es una herramienta de análisis estadístico, no una recomendación
+de apuesta. Los resultados deportivos tienen variables que ningún modelo
+captura por completo (lesiones de último momento, decisiones arbitrales,
+clima, etc.). Jugá con responsabilidad.*
+""")
 
 if nav == "Predicción de Partidos":
     st.markdown('<div class="section-header">Módulo Predictivo</div>', unsafe_allow_html=True)
@@ -1248,3 +1302,14 @@ elif nav == "Rachas y Momentum":
                 st.markdown(f"""<div class="momentum-card" style="margin-bottom:20px;"><div class="momentum-team">{eq_m}</div><div class="momentum-label">Racha completa</div><div style="margin:8px 0 14px;">{"".join(f'<span class="racha-dot {"racha-v" if r=="V" else ("racha-e" if r=="E" else "racha-d")}">{r}</span>' for r in row_m["Resultados"])}</div><div style="display:flex;gap:30px;flex-wrap:wrap;"><div><div class="momentum-label">Estado</div><div class="{row_m["EstadoCls"]}">{row_m["Estado"]}</div></div><div><div class="momentum-label">xG reciente</div><div style="font-size:1.1rem;font-weight:800;color:#ED1A3B;">{row_m["xGRec"]:.2f}</div></div><div><div class="momentum-label">Tendencia xG</div><div style="font-size:1.1rem;font-weight:800;color:{delta_color};">{delta_str}</div></div></div></div>""", unsafe_allow_html=True)
                 st.markdown('<div class="section-header">Evolución Temporal</div>', unsafe_allow_html=True)
                 st.plotly_chart(fig_momentum_timeline(df, eq_m), use_container_width=True)
+# ──────────────────────────────────────────────────────────────────────
+# FOOTER
+# ──────────────────────────────────────────────────────────────────────
+st.markdown("<hr style='border-color:#1f1f24; margin-top:50px;'>", unsafe_allow_html=True)
+st.markdown(
+    "<div style='text-align:center; color:#555560; font-size:0.75rem; padding:10px 0 30px;'>"
+    "LPF Analytics v1.1 &nbsp;·&nbsp; Modelo estadístico propio (Poisson + Dixon-Coles) &nbsp;·&nbsp; "
+    "Uso analítico/educativo — no constituye asesoramiento de apuestas"
+    "</div>",
+    unsafe_allow_html=True,
+)
