@@ -321,25 +321,39 @@ def _get_prior(tabla: pd.DataFrame, eq: str):
         return 1.0, 1.0
     return float(tabla.loc[eq, "prior_atk"]), float(tabla.loc[eq, "prior_def"])
 
-def _adjusted_rate(d_spec, metrica, col, max_fecha_torneo, tabla, is_attack):
-    df_m = d_spec[d_spec["Métrica"] == metrica]
+def _adjusted_rate(d_all, metrica, col, max_fecha_torneo, tabla, is_attack, target_cond):
+    """
+    Calcula la tasa ajustada usando EL HISTORIAL COMPLETO del equipo (Local y Visitante),
+    pero aplicándole un peso extra del 50% (x1.5) a los partidos que coincidan con la condición objetivo.
+    """
+    df_m = d_all[d_all["Métrica"] == metrica]
     if df_m.empty:
         return np.nan
-    fechas    = df_m["nFecha"].values
-    categoria = df_m["Categoria"].values
-    valores   = df_m[col].values
-    rivales   = df_m["Rival"].values
-    valores_ajustados = []
+        
+    fechas      = df_m["nFecha"].values
+    categoria   = df_m["Categoria"].values
+    valores     = df_m[col].values
+    rivales     = df_m["Rival"].values
+    condiciones = df_m["Condicion"].values
     
-    for v, r in zip(valores, rivales):
+    valores_ajustados = []
+    pesos = []
+    
+    for v, r, c_match, f, cat in zip(valores, rivales, condiciones, fechas, categoria):
         pa_r, pd_r = _get_prior(tabla, r)
         adj = v / pd_r if (is_attack and pd_r > 0) else v / pa_r if (not is_attack and pa_r > 0) else v
         valores_ajustados.append(adj)
         
-    w = np.where(categoria == "Histórico", PESO_HISTORICO, 
-         np.where(fechas >= (max_fecha_torneo - N_RECENCIA + 1), PESO_RECIENTE, PESO_NORMAL))
-         
-    return float(np.average(valores_ajustados, weights=w))
+        # Peso base por temporalidad
+        w = PESO_HISTORICO if cat == "Histórico" else (PESO_RECIENTE if f >= (max_fecha_torneo - N_RECENCIA + 1) else PESO_NORMAL)
+        
+        # PLUS POR CONDICIÓN: Si el partido fue en la misma condición que proyectamos, pesa un 50% más
+        if c_match == target_cond:
+            w *= 1.5
+            
+        pesos.append(w)
+        
+    return float(np.average(valores_ajustados, weights=pesos))
 
 @st.cache_data(ttl=120, show_spinner=False)
 def _league_stats(df):
@@ -356,14 +370,15 @@ def _league_stats(df):
         rh, rv = W_XG * xh + (1 - W_XG) * gh, W_XG * xv + (1 - W_XG) * gv
     return {"ref_home": rh, "ref_away": rv, "ref_all": (rh + rv) / 2}
 
-def _strength(df, eq, cond, league, max_fecha_torneo: int, tabla: pd.DataFrame):
-    d_eq   = df[df["Equipo"] == eq]
-    d_spec = d_eq[d_eq["Condicion"] == cond]
-    g_atk = _adjusted_rate(d_spec, "Resultado",   "Propio",    max_fecha_torneo, tabla, is_attack=True)
-    x_atk = _adjusted_rate(d_spec, "xG_Estimado", "Propio",    max_fecha_torneo, tabla, is_attack=True)
-    g_def = _adjusted_rate(d_spec, "Resultado",   "Concedido", max_fecha_torneo, tabla, is_attack=False)
-    x_def = _adjusted_rate(d_spec, "xG_Estimado", "Concedido", max_fecha_torneo, tabla, is_attack=False)
-    n_s   = len(d_spec[d_spec["Métrica"] == "Resultado"])
+def _strength(df, eq, target_cond, league, max_fecha_torneo: int, tabla: pd.DataFrame):
+    d_eq = df[df["Equipo"] == eq]  # ACA TOMAMOS TODOS LOS PARTIDOS (modelo holístico)
+    
+    g_atk = _adjusted_rate(d_eq, "Resultado",   "Propio",    max_fecha_torneo, tabla, is_attack=True,  target_cond=target_cond)
+    x_atk = _adjusted_rate(d_eq, "xG_Estimado", "Propio",    max_fecha_torneo, tabla, is_attack=True,  target_cond=target_cond)
+    g_def = _adjusted_rate(d_eq, "Resultado",   "Concedido", max_fecha_torneo, tabla, is_attack=False, target_cond=target_cond)
+    x_def = _adjusted_rate(d_eq, "xG_Estimado", "Concedido", max_fecha_torneo, tabla, is_attack=False, target_cond=target_cond)
+    
+    n_s = len(d_eq[d_eq["Métrica"] == "Resultado"])  # Muestra total mucho más robusta
 
     def combine(g, x):
         if np.isnan(g) and np.isnan(x): return np.nan
@@ -372,16 +387,23 @@ def _strength(df, eq, cond, league, max_fecha_torneo: int, tabla: pd.DataFrame):
         return W_XG * x + (1 - W_XG) * g
 
     atk_val, def_val = combine(g_atk, x_atk), combine(g_def, x_def)
-    rh, ra   = league["ref_home"], league["ref_away"]
-    ref_f, ref_a = (rh, ra) if cond == "Local" else (ra, rh)
+    
+    # Referencia de liga cruzada para normalizar
+    rh, ra = league["ref_home"], league["ref_away"]
+    ref_f, ref_a = (rh, ra) if target_cond == "Local" else (ra, rh)
+    
     atk_obs = (atk_val / ref_f) if (not np.isnan(atk_val) and ref_f > 0) else np.nan
     def_obs = (def_val / ref_a) if (not np.isnan(def_val) and ref_a > 0) else np.nan
+    
     prior_atk, prior_def = _get_prior(tabla, eq)
     n = n_s if n_s > 0 else 0
+    
     atk_obs = atk_obs if not np.isnan(atk_obs) else prior_atk
     def_obs = def_obs if not np.isnan(def_obs) else prior_def
+    
     atk_post = (n * atk_obs  + K_PRIOR * prior_atk) / (n + K_PRIOR)
     def_post = (n * def_obs  + K_PRIOR * prior_def)  / (n + K_PRIOR)
+    
     return atk_post, def_post, n
 
 def calcular_lambdas(df, eq_a, eq_b, es_loc, tabla):
@@ -424,32 +446,34 @@ def proyectar_metrica(df, eq_a, eq_b, metrica, es_loc, tabla):
     
     ca, cb = ("Local", "Visitante") if es_loc else ("Visitante", "Local")
     
-    # 1. Promedio ofensivo propio del equipo A y B según condición
-    d_a = df_m[(df_m["Equipo"] == eq_a) & (df_m["Condicion"] == ca)]
-    base_a = d_a["Propio"].mean() if not d_a.empty else df_m["Propio"].mean()
+    # Función auxiliar para sacar promedio usando todos los partidos pero ponderando más la condición buscada
+    def _mean_with_cond(d_eq, target_cond, col):
+        if d_eq.empty: return df_m[col].mean()
+        conds = d_eq["Condicion"].values
+        vals = d_eq[col].values
+        w = np.where(conds == target_cond, 1.5, 1.0)
+        return np.average(vals, weights=w)
+        
+    d_a = df_m[df_m["Equipo"] == eq_a]
+    base_a = _mean_with_cond(d_a, ca, "Propio")
+    concede_a = _mean_with_cond(d_a, ca, "Concedido")
     
-    d_b = df_m[(df_m["Equipo"] == eq_b) & (df_m["Condicion"] == cb)]
-    base_b = d_b["Propio"].mean() if not d_b.empty else df_m["Propio"].mean()
-    
-    # 2. Promedio de tiros CONCEDIDOS por el rival
-    d_b_conc = df_m[(df_m["Equipo"] == eq_b) & (df_m["Condicion"] == cb)]
-    concede_b = d_b_conc["Concedido"].mean() if not d_b_conc.empty else df_m["Concedido"].mean()
-    
-    d_a_conc = df_m[(df_m["Equipo"] == eq_a) & (df_m["Condicion"] == ca)]
-    concede_a = d_a_conc["Concedido"].mean() if not d_a_conc.empty else df_m["Concedido"].mean()
+    d_b = df_m[df_m["Equipo"] == eq_b]
+    base_b = _mean_with_cond(d_b, cb, "Propio")
+    concede_b = _mean_with_cond(d_b, cb, "Concedido")
     
     # Promedio general de la liga
     media_liga = df_m["Propio"].mean() if not df_m.empty else 1.0
     if media_liga == 0: media_liga = 1.0
 
-    # 3. Factor defensivo con SUAVIZADO (damping) para evitar inflar las métricas
-    factor_crudo_b = concede_b / media_liga if media_liga > 0 else 1.0
-    factor_def_b = 1.0 + (factor_crudo_b - 1.0) * 0.5  # Suavizado al 50%
+    # Factor defensivo con SUAVIZADO (damping)
+    factor_crudo_b = concede_b / media_liga
+    factor_def_b = 1.0 + (factor_crudo_b - 1.0) * 0.5 
 
-    factor_crudo_a = concede_a / media_liga if media_liga > 0 else 1.0
-    factor_def_a = 1.0 + (factor_crudo_a - 1.0) * 0.5  # Suavizado al 50%
+    factor_crudo_a = concede_a / media_liga
+    factor_def_a = 1.0 + (factor_crudo_a - 1.0) * 0.5 
 
-    # 4. Proyección final con regresión a la media
+    # Proyección final
     val_a = base_a * factor_def_b
     val_b = base_b * factor_def_a
     
@@ -1342,7 +1366,7 @@ elif nav == "Rachas y Momentum":
 st.markdown("<hr style='border-color:#1f1f24; margin-top:50px;'>", unsafe_allow_html=True)
 st.markdown(
     "<div style='text-align:center; color:#555560; font-size:0.75rem; padding:10px 0 30px;'>"
-    "LPF Analytics v1.1 &nbsp;·&nbsp; Modelo estadístico propio (Poisson + Dixon-Coles) &nbsp;·&nbsp; "
+    "LPF Analytics v1.1 &nbsp;·&nbsp; Modelo estadístico holístico ponderado (Poisson + Dixon-Coles) &nbsp;·&nbsp; "
     "Uso analítico/educativo — no constituye asesoramiento de apuestas"
     "</div>",
     unsafe_allow_html=True,
