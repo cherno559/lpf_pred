@@ -1055,36 +1055,72 @@ elif nav == "Simulador de Jornada":
             (df_historico["Métrica"] == "Resultado")
         ].drop_duplicates(subset=["Equipo", "Rival"])
         
-        # 4. Invertimos las localías para el Clausura
+        # 4. Invertimos las localías para el Clausura y agregamos las columnas de rotación (booleanas)
         cruces_validos = pd.DataFrame({
+            "Rotación L": False,                             # Checkbox Local
             "Local": df_fecha_apertura["Rival"].values,      
-            "Visitante": df_fecha_apertura["Equipo"].values  
+            "Visitante": df_fecha_apertura["Equipo"].values, 
+            "Rotación V": False                              # Checkbox Visitante
         })
         
-        c2.write(f"**Partidos de la Fecha {jornada_elegida}**")
-        c2.dataframe(cruces_validos, hide_index=True, use_container_width=True)
+        c2.write(f"**Partidos de la Fecha {jornada_elegida}** (Marcá la casilla si el equipo rota por Copa)")
         
+        # Transformamos el dataframe en un editor interactivo
+        cruces_editados = c2.data_editor(
+            cruces_validos,
+            column_config={
+                "Rotación L": st.column_config.CheckboxColumn("Rotación 🔄", default=False),
+                "Rotación V": st.column_config.CheckboxColumn("Rotación 🔄", default=False),
+            },
+            hide_index=True,
+            use_container_width=True
+        )
+        
+        # Parámetro de penalización: ¿Cuántos goles esperados (xG) le restamos al equipo suplente?
+        PENALIDAD_XG = 0.35 
+
         if st.button("SIMULAR JORNADA COMPLETA"):
-            if len(cruces_validos) == 0:
+            if len(cruces_editados) == 0:
                 st.warning("⚠️ No hay partidos para simular.")
             else:
                 resultados_jornada = []
                 
                 with st.spinner(f"Procesando simulaciones matemáticas para la Fecha {jornada_elegida}..."):
-                    for idx, row in cruces_validos.iterrows():
+                    # Iteramos sobre el dataframe EDITADO (con los checkboxes tildados)
+                    for idx, row in cruces_editados.iterrows():
                         ea = row["Local"]
                         eb = row["Visitante"]
+                        rota_local = row["Rotación L"]
+                        rota_visitante = row["Rotación V"]
                         
                         if ea == eb: continue
                             
                         # Cálculos matemáticos del motor
                         la, lb = calcular_lambdas(df, ea, eb, True, tabla)
+
+                        # --- APLICAMOS EL HÁNDICAP POR ROTACIÓN ---
+                        # Si rotan, bajamos su xG (forzando un mínimo de 0.1 para que el motor no rompa)
+                        if rota_local: 
+                            la = max(0.1, la - PENALIDAD_XG)
+                        if rota_visitante: 
+                            lb = max(0.1, lb - PENALIDAD_XG)
+                        # ------------------------------------------
+
                         sim = montecarlo(la, lb) 
                         
+                        # Proyección de métricas secundarias
                         tiros_a, tiros_b = proyectar_metrica(df, ea, eb, "Tiros totales", True, tabla)
                         arco_a, arco_b   = proyectar_metrica(df, ea, eb, "Tiros al arco", True, tabla)
                         ocas_a, ocas_b   = proyectar_metrica(df, ea, eb, "Ocasiones claras", True, tabla)
                         pos_a, pos_b     = proyectar_metrica(df, ea, eb, "Posesión de balón", True, tabla)
+
+                        # Opcional: También podés aplicar penalidad a la posesión y tiros si rotan
+                        if rota_local:
+                            pos_a *= 0.9  # Pierde 10% de control
+                            tiros_a *= 0.8 # Patea 20% menos
+                        if rota_visitante:
+                            pos_b *= 0.9
+                            tiros_b *= 0.8
                         
                         tot_pos = pos_a + pos_b
                         if tot_pos > 0:
