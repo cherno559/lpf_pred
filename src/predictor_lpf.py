@@ -346,6 +346,9 @@ def _adjusted_rate(d_all, metrica, col, max_fecha_torneo, tabla, is_attack, targ
         # TOPE DE ACCIÓN: Nunca puede ser tan alta por un solo partido de suerte
         adj = min(adj, 3.5)
         
+        # ¡ESTA ES LA LÍNEA QUE FALTABA!
+        valores_ajustados.append(adj)
+        
         w = PESO_HISTORICO if cat == "Histórico" else (PESO_RECIENTE if f >= (max_fecha_torneo - N_RECENCIA + 1) else PESO_NORMAL)
         
         # PLUS CONDICIÓN FIX: Suavizado al 10%
@@ -354,9 +357,11 @@ def _adjusted_rate(d_all, metrica, col, max_fecha_torneo, tabla, is_attack, targ
             
         pesos.append(w)
         
+    # Validamos que no intente promediar listas vacías
+    if not valores_ajustados or sum(pesos) == 0:
+        return np.nan
+        
     return float(np.average(valores_ajustados, weights=pesos))
-
-@st.cache_data(ttl=120, show_spinner=False)
 def _league_stats(df):
     dr = df[df["Métrica"] == "Resultado"]
     dx = df[df["Métrica"] == "xG_Estimado"]
