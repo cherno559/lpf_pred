@@ -101,52 +101,49 @@ html, body, [class*="css"] { font-family: 'Manrope', sans-serif; background-colo
 # ──────────────────────────────────────────────────────────────────────
 # PARÁMETROS DEL MOTOR Y JERARQUÍAS
 # ──────────────────────────────────────────────────────────────────────
-W_XG = 0.60
-K_SHRINK = 6.0
-K_PRIOR  = 15.0
-PRIOR_ATK_SCALE = 0.40
-PRIOR_DEF_SCALE = 0.30
-DC_RHO = -0.15
+W_XG = 0.65  # Mayor peso al xG para estabilizar la media y reducir varianza
+K_PRIOR  = 12.0 # Ancla de Jerarquía (Gravedad alta)
+DC_RHO = -0.15 # Compensación de empates para LPF
 MAX_GOALS_MATRIX = 7
-N_RECENCIA, PESO_RECIENTE, PESO_NORMAL = 5, 1.3, 1.0
-PESO_HISTORICO = 0.4
-LAM_MIN, LAM_MAX = 0.30, 5.00
+N_RECENCIA, PESO_RECIENTE, PESO_NORMAL = 5, 1.20, 1.0
+PESO_HISTORICO = 0.75 # Memoria a largo plazo restaurada
+LAM_MIN, LAM_MAX = 0.30, 4.50
 
 # ──────────────────────────────────────────────────────────────────────
-# JERARQUÍAS DE MERCADO (Clausura 2026 - Actualizado con Damping)
+# JERARQUÍAS DE MERCADO (Clausura 2026 - Actualizado)
 # Media de liga: 33.76 M€ = 1.000
 # ──────────────────────────────────────────────────────────────────────
 JERARQUIA_EQUIPOS = {
-    "River Plate": 1.149,
-    "Boca Juniors": 1.126,
-    "Racing Club": 1.059,
-    "Rosario Central": 1.037,
-    "Estudiantes de La Plata": 1.027,
-    "Talleres": 1.018,
-    "San Lorenzo": 1.013,
-    "Lanús": 1.010,
-    "Argentinos Juniors": 1.006,
-    "Independiente": 1.006,
-    "Tigre": 1.005,
-    "Vélez Sarsfield": 1.002,
-    "Independiente Rivadavia": 1.001,
-    "Platense": 0.996,
-    "Newell's Old Boys": 0.992,
-    "Belgrano": 0.989,
-    "Gimnasia y Esgrima La Plata": 0.988,
-    "Defensa y Justicia": 0.977,
-    "Huracán": 0.977,
-    "Instituto": 0.977,
-    "Unión": 0.969,
-    "Barracas Central": 0.971,
-    "Banfield": 0.969,
-    "Sarmiento": 0.967,
-    "Gimnasia de Mendoza": 0.965,
-    "Atlético Tucumán": 0.964,
-    "Deportivo Riestra": 0.962,
-    "Central Córdoba": 0.958,
-    "Aldosivi": 0.963,
-    "Estudiantes de Río Cuarto": 0.955
+    "River Plate": 1.180,
+    "Boca Juniors": 1.150,
+    "Racing Club": 1.080,
+    "Estudiantes de La Plata": 1.060,
+    "San Lorenzo": 1.050,
+    "Talleres": 1.040,
+    "Rosario Central": 1.030,
+    "Independiente": 1.030,
+    "Lanús": 1.020,
+    "Vélez Sarsfield": 1.020,
+    "Argentinos Juniors": 1.010,
+    "Defensa y Justicia": 1.000,
+    "Huracán": 0.990,
+    "Newell's Old Boys": 0.990,
+    "Tigre": 0.985,
+    "Platense": 0.985,
+    "Belgrano": 0.980,
+    "Gimnasia y Esgrima La Plata": 0.980,
+    "Unión": 0.970,
+    "Instituto": 0.970,
+    "Banfield": 0.970,
+    "Atlético Tucumán": 0.965,
+    "Sarmiento": 0.960,
+    "Central Córdoba": 0.960,
+    "Barracas Central": 0.955,
+    "Independiente Rivadavia": 0.955,
+    "Deportivo Riestra": 0.950,
+    "Gimnasia de Mendoza": 0.950,
+    "Aldosivi": 0.945,
+    "Estudiantes de Río Cuarto": 0.945
 }
 
 RED, WHITE, GRAY = "#ED1A3B", "#ffffff", "#4a4a52"
@@ -303,16 +300,15 @@ def calcular_tabla(df: pd.DataFrame, condicion: str = "General") -> pd.DataFrame
                      "GF": gf, "GC": gc, "PTS": pts, "PPJ": ppj, "EFEC%": efec})
     tabla = pd.DataFrame(rows).sort_values(["EFEC%", "PTS", "GF"], ascending=[False, False, False]).reset_index(drop=True)
     tabla["Pos"] = tabla.index + 1
-    ppj_mean = tabla["PPJ"].mean()
-    tabla["PPJ_norm"]  = tabla["PPJ"] / ppj_mean if ppj_mean > 0 else 1.0
-    tabla["prior_atk"] = (1.0 + (tabla["PPJ_norm"] - 1.0) * PRIOR_ATK_SCALE).clip(0.4, 2.5)
-    tabla["prior_def"] = (1.0 - (tabla["PPJ_norm"] - 1.0) * PRIOR_DEF_SCALE).clip(0.4, 2.5)
     
-    # ETAPA 2: Aplicamos el factor de jerarquía de mercado
+    # ETAPA 2: FIX JERARQUÍA ABSOLUTA (Sin "doble conteo" del PPJ en racha)
+    tabla["prior_atk"] = 1.0
+    tabla["prior_def"] = 1.0
     for eq in tabla.index:
         nombre_eq = tabla.loc[eq, "Equipo"]
         factor = JERARQUIA_EQUIPOS.get(nombre_eq, 1.0)
-        tabla.loc[eq, "prior_atk"] = tabla.loc[eq, "prior_atk"] * factor
+        tabla.loc[eq, "prior_atk"] = factor
+        tabla.loc[eq, "prior_def"] = (1 / factor) if factor > 0 else 1.0
 
     return tabla.set_index("Equipo")
 
@@ -323,8 +319,7 @@ def _get_prior(tabla: pd.DataFrame, eq: str):
 
 def _adjusted_rate(d_all, metrica, col, max_fecha_torneo, tabla, is_attack, target_cond):
     """
-    Calcula la tasa ajustada usando EL HISTORIAL COMPLETO del equipo (Local y Visitante),
-    pero aplicándole un peso extra del 50% (x1.5) a los partidos que coincidan con la condición objetivo.
+    Calcula la tasa ajustada usando el historial, previniendo errores de media y explosiones de datos.
     """
     df_m = d_all[d_all["Métrica"] == metrica]
     if df_m.empty:
@@ -341,15 +336,21 @@ def _adjusted_rate(d_all, metrica, col, max_fecha_torneo, tabla, is_attack, targ
     
     for v, r, c_match, f, cat in zip(valores, rivales, condiciones, fechas, categoria):
         pa_r, pd_r = _get_prior(tabla, r)
-        adj = v / pd_r if (is_attack and pd_r > 0) else v / pa_r if (not is_attack and pa_r > 0) else v
-        valores_ajustados.append(adj)
         
-        # Peso base por temporalidad
+        # MATAGIGANTES FIX: Límite duro al divisor para evitar que la media explote a números irreales
+        pd_r_safe = max(pd_r, 0.80) 
+        pa_r_safe = max(pa_r, 0.80)
+        
+        adj = v / pd_r_safe if (is_attack and pd_r_safe > 0) else v / pa_r_safe if (not is_attack and pa_r_safe > 0) else v
+        
+        # TOPE DE ACCIÓN: Nunca puede ser tan alta por un solo partido de suerte
+        adj = min(adj, 3.5)
+        
         w = PESO_HISTORICO if cat == "Histórico" else (PESO_RECIENTE if f >= (max_fecha_torneo - N_RECENCIA + 1) else PESO_NORMAL)
         
-        # PLUS POR CONDICIÓN: Si el partido fue en la misma condición que proyectamos, pesa un 50% más
+        # PLUS CONDICIÓN FIX: Suavizado al 10%
         if c_match == target_cond:
-            w *= 1.2
+            w *= 1.10
             
         pesos.append(w)
         
@@ -371,14 +372,14 @@ def _league_stats(df):
     return {"ref_home": rh, "ref_away": rv, "ref_all": (rh + rv) / 2}
 
 def _strength(df, eq, target_cond, league, max_fecha_torneo: int, tabla: pd.DataFrame):
-    d_eq = df[df["Equipo"] == eq]  # ACA TOMAMOS TODOS LOS PARTIDOS (modelo holístico)
+    d_eq = df[df["Equipo"] == eq]
     
     g_atk = _adjusted_rate(d_eq, "Resultado",   "Propio",    max_fecha_torneo, tabla, is_attack=True,  target_cond=target_cond)
     x_atk = _adjusted_rate(d_eq, "xG_Estimado", "Propio",    max_fecha_torneo, tabla, is_attack=True,  target_cond=target_cond)
     g_def = _adjusted_rate(d_eq, "Resultado",   "Concedido", max_fecha_torneo, tabla, is_attack=False, target_cond=target_cond)
     x_def = _adjusted_rate(d_eq, "xG_Estimado", "Concedido", max_fecha_torneo, tabla, is_attack=False, target_cond=target_cond)
     
-    n_s = len(d_eq[d_eq["Métrica"] == "Resultado"])  # Muestra total mucho más robusta
+    n_s = len(d_eq[d_eq["Métrica"] == "Resultado"])
 
     def combine(g, x):
         if np.isnan(g) and np.isnan(x): return np.nan
@@ -388,7 +389,6 @@ def _strength(df, eq, target_cond, league, max_fecha_torneo: int, tabla: pd.Data
 
     atk_val, def_val = combine(g_atk, x_atk), combine(g_def, x_def)
     
-    # Referencia de liga cruzada para normalizar
     rh, ra = league["ref_home"], league["ref_away"]
     ref_f, ref_a = (rh, ra) if target_cond == "Local" else (ra, rh)
     
@@ -396,13 +396,16 @@ def _strength(df, eq, target_cond, league, max_fecha_torneo: int, tabla: pd.Data
     def_obs = (def_val / ref_a) if (not np.isnan(def_val) and ref_a > 0) else np.nan
     
     prior_atk, prior_def = _get_prior(tabla, eq)
+    
+    # DILUCIÓN FIX: Topeamos 'n' para que no anule el prior bayesiano con el tiempo
     n = n_s if n_s > 0 else 0
+    n_effective = min(n, 15)
     
     atk_obs = atk_obs if not np.isnan(atk_obs) else prior_atk
     def_obs = def_obs if not np.isnan(def_obs) else prior_def
     
-    atk_post = (n * atk_obs  + K_PRIOR * prior_atk) / (n + K_PRIOR)
-    def_post = (n * def_obs  + K_PRIOR * prior_def)  / (n + K_PRIOR)
+    atk_post = (n_effective * atk_obs  + K_PRIOR * prior_atk) / (n_effective + K_PRIOR)
+    def_post = (n_effective * def_obs  + K_PRIOR * prior_def) / (n_effective + K_PRIOR)
     
     return atk_post, def_post, n
 
@@ -421,19 +424,19 @@ def calcular_lambdas(df, eq_a, eq_b, es_loc, tabla):
     la = (l["ref_home"] if ca == "Local" else l["ref_away"]) * aa * db
     lb = (l["ref_home"] if cb == "Local" else l["ref_away"]) * ab * da
 
-    # --- ETAPA 2: MODIFICADORES POR CHOQUE DE ESTILOS ---
+    # --- ETAPA 2: MODIFICADORES TÁCTICOS (Suavizados) ---
     adn_temp = calcular_adn_tactico(df)
     if not adn_temp.empty and eq_a in adn_temp.index and eq_b in adn_temp.index:
         tags_a = set(t for t, _ in adn_temp.loc[eq_a, "Tags"]) if isinstance(adn_temp.loc[eq_a, "Tags"], list) else set()
         tags_b = set(t for t, _ in adn_temp.loc[eq_b, "Tags"]) if isinstance(adn_temp.loc[eq_b, "Tags"], list) else set()
         
         if "POSESIÓN DOMINANTE" in tags_a and "BLOQUE BAJO" in tags_b:
-            la += 0.12  
-            lb -= 0.08  
+            la += 0.04  
+            lb -= 0.02  
         if "DÉFICIT DEFENSIVO" in tags_a:
-            lb += 0.10
+            lb += 0.04
         if "DÉFICIT DEFENSIVO" in tags_b:
-            la += 0.10
+            la += 0.04
     # ----------------------------------------------------
 
     return (round(float(np.clip(la, LAM_MIN, LAM_MAX)), 3),
@@ -446,12 +449,11 @@ def proyectar_metrica(df, eq_a, eq_b, metrica, es_loc, tabla):
     
     ca, cb = ("Local", "Visitante") if es_loc else ("Visitante", "Local")
     
-    # Función auxiliar para sacar promedio usando todos los partidos pero ponderando más la condición buscada
     def _mean_with_cond(d_eq, target_cond, col):
         if d_eq.empty: return df_m[col].mean()
         conds = d_eq["Condicion"].values
         vals = d_eq[col].values
-        w = np.where(conds == target_cond, 1.5, 1.0)
+        w = np.where(conds == target_cond, 1.15, 1.0)
         return np.average(vals, weights=w)
         
     d_a = df_m[df_m["Equipo"] == eq_a]
@@ -462,18 +464,15 @@ def proyectar_metrica(df, eq_a, eq_b, metrica, es_loc, tabla):
     base_b = _mean_with_cond(d_b, cb, "Propio")
     concede_b = _mean_with_cond(d_b, cb, "Concedido")
     
-    # Promedio general de la liga
     media_liga = df_m["Propio"].mean() if not df_m.empty else 1.0
     if media_liga == 0: media_liga = 1.0
 
-    # Factor defensivo con SUAVIZADO (damping)
     factor_crudo_b = concede_b / media_liga
     factor_def_b = 1.0 + (factor_crudo_b - 1.0) * 0.5 
 
     factor_crudo_a = concede_a / media_liga
     factor_def_a = 1.0 + (factor_crudo_a - 1.0) * 0.5 
 
-    # Proyección final
     val_a = base_a * factor_def_b
     val_b = base_b * factor_def_a
     
@@ -1366,7 +1365,7 @@ elif nav == "Rachas y Momentum":
 st.markdown("<hr style='border-color:#1f1f24; margin-top:50px;'>", unsafe_allow_html=True)
 st.markdown(
     "<div style='text-align:center; color:#555560; font-size:0.75rem; padding:10px 0 30px;'>"
-    "LPF Analytics v1.1 &nbsp;·&nbsp; Modelo estadístico holístico ponderado (Poisson + Dixon-Coles) &nbsp;·&nbsp; "
+    "LPF Analytics v1.2 &nbsp;·&nbsp; Modelo estadístico holístico ponderado (Poisson + Dixon-Coles) &nbsp;·&nbsp; "
     "Uso analítico/educativo — no constituye asesoramiento de apuestas"
     "</div>",
     unsafe_allow_html=True,
