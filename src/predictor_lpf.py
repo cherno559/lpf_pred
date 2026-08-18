@@ -103,7 +103,7 @@ html, body, [class*="css"] { font-family: 'Manrope', sans-serif; background-colo
 # ──────────────────────────────────────────────────────────────────────
 W_XG = 0.60
 K_SHRINK = 6.0
-K_PRIOR  = 5.0
+K_PRIOR  = 15.0
 PRIOR_ATK_SCALE = 0.40
 PRIOR_DEF_SCALE = 0.30
 DC_RHO = -0.10
@@ -349,7 +349,7 @@ def _adjusted_rate(d_all, metrica, col, max_fecha_torneo, tabla, is_attack, targ
         
         # PLUS POR CONDICIÓN: Si el partido fue en la misma condición que proyectamos, pesa un 50% más
         if c_match == target_cond:
-            w *= 1.5
+            w *= 1.2
             
         pesos.append(w)
         
