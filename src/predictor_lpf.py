@@ -137,7 +137,7 @@ JERARQUIA_EQUIPOS = {
     "Defensa y Justicia": 0.977,
     "Huracán": 0.977,
     "Instituto": 0.977,
-    "Unión": 0.974,
+    "Unión": 0.969,
     "Barracas Central": 0.971,
     "Banfield": 0.969,
     "Sarmiento": 0.967,
