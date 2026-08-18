@@ -145,7 +145,7 @@ JERARQUIA_EQUIPOS = {
     "Atlético Tucumán": 0.964,
     "Deportivo Riestra": 0.962,
     "Central Córdoba": 0.958,
-    "Aldosivi": 0.957,
+    "Aldosivi": 0.963,
     "Estudiantes de Río Cuarto": 0.955
 }
 
