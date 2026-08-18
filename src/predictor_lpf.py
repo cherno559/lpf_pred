@@ -113,37 +113,41 @@ LAM_MIN, LAM_MAX = 0.30, 4.50
 # JERARQUÍAS DE MERCADO (Clausura 2026 - Actualizado)
 # Media de liga: 33.76 M€ = 1.000
 # ──────────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────
+# JERARQUÍAS DE MERCADO (Actualizado Transfermarkt - Apertura 2026)
+# Basado en la tasación oficial de planteles en millones de euros.
+# ──────────────────────────────────────────────────────────────────────
 JERARQUIA_EQUIPOS = {
-    "River Plate": 1.180,
-    "Boca Juniors": 1.150,
-    "Racing Club": 1.080,
-    "Estudiantes de La Plata": 1.060,
-    "San Lorenzo": 1.050,
-    "Talleres": 1.040,
-    "Rosario Central": 1.030,
-    "Independiente": 1.030,
-    "Lanús": 1.020,
-    "Vélez Sarsfield": 1.020,
-    "Argentinos Juniors": 1.010,
-    "Defensa y Justicia": 1.000,
-    "Huracán": 0.990,
-    "Newell's Old Boys": 0.990,
-    "Tigre": 0.985,
-    "Platense": 0.985,
-    "Belgrano": 0.980,
-    "Gimnasia y Esgrima La Plata": 0.980,
-    "Unión": 0.970,
-    "Instituto": 0.970,
-    "Banfield": 0.970,
-    "Atlético Tucumán": 0.965,
-    "Sarmiento": 0.960,
-    "Central Córdoba": 0.960,
-    "Barracas Central": 0.955,
-    "Independiente Rivadavia": 0.955,
-    "Deportivo Riestra": 0.950,
-    "Gimnasia de Mendoza": 0.950,
-    "Aldosivi": 0.945,
-    "Estudiantes de Río Cuarto": 0.945
+    "River Plate": 1.250,                 # 148,25 mill. €
+    "Boca Juniors": 1.150,                # 109,55 mill. €
+    "Racing Club": 1.080,                 # 66,48 mill. €
+    "Rosario Central": 1.065,             # 58,38 mill. €
+    "Estudiantes de La Plata": 1.050,     # 48,20 mill. €
+    "San Lorenzo": 1.045,                 # 44,30 mill. €
+    "Talleres": 1.040,                    # 43,85 mill. €
+    "Independiente Rivadavia": 1.035,     # 39,33 mill. €
+    "Independiente": 1.030,               # 38,68 mill. €
+    "Argentinos Juniors": 1.025,          # 38,35 mill. €
+    "Lanús": 1.025,                       # 38,10 mill. €
+    "Tigre": 1.020,                       # 36,75 mill. €
+    "Platense": 1.000,                    # 31,23 mill. €
+    "Newell's Old Boys": 0.995,           # 29,58 mill. €
+    "Gimnasia y Esgrima La Plata": 0.990, # 27,03 mill. €
+    "Belgrano": 0.990,                    # 26,98 mill. €
+    "Defensa y Justicia": 0.985,          # 26,40 mill. €
+    "Vélez Sarsfield": 0.970,             # 21,48 mill. €
+    "Huracán": 0.965,                     # 20,53 mill. €
+    "Unión": 0.960,                       # 18,93 mill. €
+    "Barracas Central": 0.955,            # 18,10 mill. €
+    "Instituto": 0.950,                   # 17,45 mill. €
+    "Gimnasia de Mendoza": 0.945,         # 16,00 mill. €
+    "Sarmiento": 0.940,                   # 13,83 mill. €
+    "Banfield": 0.935,                    # 12,68 mill. €
+    "Atlético Tucumán": 0.930,            # 11,55 mill. €
+    "Aldosivi": 0.925,                    # 10,43 mill. €
+    "Deportivo Riestra": 0.925,           # 10,24 mill. €
+    "Central Córdoba": 0.920,             # 8,03 mill. €
+    "Estudiantes de Río Cuarto": 0.915    # 6,45 mill. €
 }
 
 RED, WHITE, GRAY = "#ED1A3B", "#ffffff", "#4a4a52"
