@@ -367,8 +367,9 @@ def _league_stats(df):
         rh, rv = W_XG * xh + (1 - W_XG) * gh, W_XG * xv + (1 - W_XG) * gv
     return {"ref_home": rh, "ref_away": rv, "ref_all": (rh + rv) / 2}
 
-def _strength(df, eq, target_cond, league, max_fecha_torneo: int, tabla: pd.DataFrame):
-    d_eq = df[df["Equipo"] == eq]
+def _strength(df_actual, eq, target_cond, league, max_fecha_torneo: int, tabla: pd.DataFrame):
+    # El DataFrame recibido (df_actual) ya viene aislado del histórico por calcular_lambdas
+    d_eq = df_actual[df_actual["Equipo"] == eq]
     
     g_atk = _adjusted_rate(d_eq, "Resultado",   "Propio",    max_fecha_torneo, tabla, is_attack=True,  target_cond=target_cond)
     x_atk = _adjusted_rate(d_eq, "xG_Estimado", "Propio",    max_fecha_torneo, tabla, is_attack=True,  target_cond=target_cond)
@@ -399,27 +400,35 @@ def _strength(df, eq, target_cond, league, max_fecha_torneo: int, tabla: pd.Data
     atk_obs = atk_obs if not np.isnan(atk_obs) else prior_atk
     def_obs = def_obs if not np.isnan(def_obs) else prior_def
     
+    # Cálculo Bayesiano final
     atk_post = (n_effective * atk_obs  + K_PRIOR * prior_atk) / (n_effective + K_PRIOR)
     def_post = (n_effective * def_obs  + K_PRIOR * prior_def) / (n_effective + K_PRIOR)
     
     return atk_post, def_post, n
 
 def calcular_lambdas(df, eq_a, eq_b, es_loc, tabla):
-    l = _league_stats(df)
+    # 1. AISLAMIENTO DE FIXTURE: Excluir histórico para cálculos estadísticos
     df_actual = df[df["Categoria"] == "Actual"]
-    if not df_actual.empty:
-        max_fecha_torneo = int(df_actual["nFecha"].max())
-    else:
-        max_fecha_torneo = int(df["nFecha"].max())
+    
+    # Fallback de seguridad por si el torneo recién empieza y no hay datos actuales
+    if df_actual.empty:
+        df_actual = df
+        
+    # Las medias de liga se calculan EXCLUSIVAMENTE con el torneo en curso
+    l = _league_stats(df_actual)
+    max_fecha_torneo = int(df_actual["nFecha"].max()) if not df_actual.empty else 1
         
     ca, cb = ("Local", "Visitante") if es_loc else ("Visitante", "Local")
-    aa, da, na = _strength(df, eq_a, ca, l, max_fecha_torneo, tabla)
-    ab, db, nb = _strength(df, eq_b, cb, l, max_fecha_torneo, tabla)
+    
+    # Fuerzas calculadas con el df_actual purgado
+    aa, da, na = _strength(df_actual, eq_a, ca, l, max_fecha_torneo, tabla)
+    ab, db, nb = _strength(df_actual, eq_b, cb, l, max_fecha_torneo, tabla)
     
     la = (l["ref_home"] if ca == "Local" else l["ref_away"]) * aa * db
     lb = (l["ref_home"] if cb == "Local" else l["ref_away"]) * ab * da
 
-    adn_temp = calcular_adn_tactico(df)
+    # Ajuste por ADN Táctico
+    adn_temp = calcular_adn_tactico(df_actual)
     if not adn_temp.empty and eq_a in adn_temp.index and eq_b in adn_temp.index:
         tags_a = set(t for t, _ in adn_temp.loc[eq_a, "Tags"]) if isinstance(adn_temp.loc[eq_a, "Tags"], list) else set()
         tags_b = set(t for t, _ in adn_temp.loc[eq_b, "Tags"]) if isinstance(adn_temp.loc[eq_b, "Tags"], list) else set()
@@ -431,6 +440,31 @@ def calcular_lambdas(df, eq_a, eq_b, es_loc, tabla):
             lb += 0.04
         if "DÉFICIT DEFENSIVO" in tags_b:
             la += 0.04
+
+    # Identificación estricta de local y visitante para el overround
+    eq_local = eq_a if ca == "Local" else eq_b
+    eq_visit = eq_b if cb == "Visitante" else eq_a
+    
+    lambda_local = la if ca == "Local" else lb
+    lambda_visit = lb if cb == "Visitante" else la
+
+    # 2. APLICACIÓN MARKET OVERROUND (Exponente de jerarquía)
+    jerarquia_local = JERARQUIA_EQUIPOS.get(eq_local, 1.0)
+    if jerarquia_local > 1.15:
+        # Esto inflará la cuota de goles del equipo Elite de forma no lineal
+        lambda_local = lambda_local ** 1.35
+
+    # 3. PENALIZACIÓN DE MERCADO (Efecto "Miedo Escénico")
+    grandes = ["River Plate", "Boca Juniors", "Racing Club", "Independiente", "San Lorenzo"]
+    if eq_local in grandes:
+        # Reducción del xG visitante frente a la disparidad presupuestaria
+        lambda_visit *= 0.90
+
+    # Reasignación de variables originales
+    if ca == "Local":
+        la, lb = lambda_local, lambda_visit
+    else:
+        lb, la = lambda_local, lambda_visit
 
     return (round(float(np.clip(la, LAM_MIN, LAM_MAX)), 3),
             round(float(np.clip(lb, LAM_MIN, LAM_MAX)), 3))
