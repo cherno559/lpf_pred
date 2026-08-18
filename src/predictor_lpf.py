@@ -106,7 +106,7 @@ K_PRIOR  = 12.0 # Ancla de Jerarquía (Gravedad alta)
 DC_RHO = -0.15 # Compensación de empates para LPF
 MAX_GOALS_MATRIX = 7
 N_RECENCIA, PESO_RECIENTE, PESO_NORMAL = 5, 1.20, 1.0
-PESO_HISTORICO = 0.75 # Memoria a largo plazo restaurada
+PESO_HISTORICO = 0.01 # Memoria a largo plazo restaurada
 LAM_MIN, LAM_MAX = 0.30, 4.50
 
 # ──────────────────────────────────────────────────────────────────────
