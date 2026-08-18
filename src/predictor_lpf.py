@@ -1,5 +1,5 @@
 """
-Plataforma de Rendimiento LPF 2026 - Completa (Etapas 1, 2, Value Betting y Guion Técnico Nativo)
+Plataforma de Rendimiento LPF 2026 - Completa (Bet365 Tuning Edition)
 """
 import re, os, math, textwrap
 from datetime import datetime
@@ -106,7 +106,7 @@ K_PRIOR  = 12.0
 DC_RHO = -0.15 
 MAX_GOALS_MATRIX = 7
 N_RECENCIA, PESO_RECIENTE, PESO_NORMAL = 5, 1.20, 1.0
-PESO_HISTORICO = 0.75 
+PESO_HISTORICO = 0.01  # Minimizado para purgar contaminación
 LAM_MIN, LAM_MAX = 0.30, 4.50
 
 # ──────────────────────────────────────────────────────────────────────
@@ -121,20 +121,21 @@ JERARQUIA_EQUIPOS = {
     "San Lorenzo": 1.045,                 
     "Talleres": 1.040,                    
     "Independiente Rivadavia": 1.035,     
-    "Independiente": 1.030,               
+    "CA Independiente": 1.030,
+    "Independiente": 1.030,
     "Argentinos Juniors": 1.025,          
     "Lanús": 1.025,                       
     "Tigre": 1.020,                       
     "Platense": 1.000,                    
     "Newell's Old Boys": 0.995,           
-    "Gimnasia y Esgrima La Plata": 0.990, 
+    "Gimnasia y Esgrima": 0.990, 
     "Belgrano": 0.990,                    
     "Defensa y Justicia": 0.985,          
     "Vélez Sarsfield": 0.970,             
     "Huracán": 0.965,                     
-    "Unión": 0.960,                       
+    "Unión de Santa Fe": 0.960,                       
     "Barracas Central": 0.955,            
-    "Instituto": 0.950,                   
+    "Instituto De Córdoba": 0.950,                   
     "Gimnasia de Mendoza": 0.945,         
     "Sarmiento": 0.940,                   
     "Banfield": 0.935,                    
@@ -342,8 +343,12 @@ def _adjusted_rate(d_all, metrica, col, max_fecha_torneo, tabla, is_attack, targ
         
         w = PESO_HISTORICO if cat == "Histórico" else (PESO_RECIENTE if f >= (max_fecha_torneo - N_RECENCIA + 1) else PESO_NORMAL)
         
+        # 3. REFUERZO DE LOCALÍA AGRESIVO (Bet365 standard)
         if c_match == target_cond:
-            w *= 1.10
+            if target_cond == "Local":
+                w *= 1.35 
+            else:
+                w *= 1.15
             
         pesos.append(w)
         
@@ -368,7 +373,6 @@ def _league_stats(df):
     return {"ref_home": rh, "ref_away": rv, "ref_all": (rh + rv) / 2}
 
 def _strength(df_actual, eq, target_cond, league, max_fecha_torneo: int, tabla: pd.DataFrame):
-    # El DataFrame recibido (df_actual) ya viene aislado del histórico por calcular_lambdas
     d_eq = df_actual[df_actual["Equipo"] == eq]
     
     g_atk = _adjusted_rate(d_eq, "Resultado",   "Propio",    max_fecha_torneo, tabla, is_attack=True,  target_cond=target_cond)
@@ -400,34 +404,29 @@ def _strength(df_actual, eq, target_cond, league, max_fecha_torneo: int, tabla: 
     atk_obs = atk_obs if not np.isnan(atk_obs) else prior_atk
     def_obs = def_obs if not np.isnan(def_obs) else prior_def
     
-    # Cálculo Bayesiano final
     atk_post = (n_effective * atk_obs  + K_PRIOR * prior_atk) / (n_effective + K_PRIOR)
     def_post = (n_effective * def_obs  + K_PRIOR * prior_def) / (n_effective + K_PRIOR)
     
     return atk_post, def_post, n
 
 def calcular_lambdas(df, eq_a, eq_b, es_loc, tabla):
-    # 1. AISLAMIENTO DE FIXTURE: Excluir histórico para cálculos estadísticos
+    # 1. AISLAMIENTO ESTRÍCTO DE FIXTURE
     df_actual = df[df["Categoria"] == "Actual"]
-    
-    # Fallback de seguridad por si el torneo recién empieza y no hay datos actuales
     if df_actual.empty:
         df_actual = df
         
-    # Las medias de liga se calculan EXCLUSIVAMENTE con el torneo en curso
     l = _league_stats(df_actual)
     max_fecha_torneo = int(df_actual["nFecha"].max()) if not df_actual.empty else 1
         
     ca, cb = ("Local", "Visitante") if es_loc else ("Visitante", "Local")
     
-    # Fuerzas calculadas con el df_actual purgado
     aa, da, na = _strength(df_actual, eq_a, ca, l, max_fecha_torneo, tabla)
     ab, db, nb = _strength(df_actual, eq_b, cb, l, max_fecha_torneo, tabla)
     
     la = (l["ref_home"] if ca == "Local" else l["ref_away"]) * aa * db
     lb = (l["ref_home"] if cb == "Local" else l["ref_away"]) * ab * da
 
-    # Ajuste por ADN Táctico
+    # Modificadores de estilo táctico
     adn_temp = calcular_adn_tactico(df_actual)
     if not adn_temp.empty and eq_a in adn_temp.index and eq_b in adn_temp.index:
         tags_a = set(t for t, _ in adn_temp.loc[eq_a, "Tags"]) if isinstance(adn_temp.loc[eq_a, "Tags"], list) else set()
@@ -441,30 +440,29 @@ def calcular_lambdas(df, eq_a, eq_b, es_loc, tabla):
         if "DÉFICIT DEFENSIVO" in tags_b:
             la += 0.04
 
-    # Identificación estricta de local y visitante para el overround
+    # 2. MARKET OVERROUND Y PROTECCIÓN LOCAL (Bet365 Logic)
     eq_local = eq_a if ca == "Local" else eq_b
     eq_visit = eq_b if cb == "Visitante" else eq_a
     
     lambda_local = la if ca == "Local" else lb
     lambda_visit = lb if cb == "Visitante" else la
 
-    # 2. APLICACIÓN MARKET OVERROUND (Exponente de jerarquía)
     jerarquia_local = JERARQUIA_EQUIPOS.get(eq_local, 1.0)
-    if jerarquia_local > 1.15:
-        # Esto inflará la cuota de goles del equipo Elite de forma no lineal
+    
+    # Exponente de potencia para bajar drásticamente la cuota de favoritos
+    if jerarquia_local >= 1.10:
+        lambda_local = lambda_local ** 2.5
+    elif jerarquia_local >= 1.03:
         lambda_local = lambda_local ** 1.35
 
-    # 3. PENALIZACIÓN DE MERCADO (Efecto "Miedo Escénico")
-    grandes = ["River Plate", "Boca Juniors", "Racing Club", "Independiente", "San Lorenzo"]
+    # 3. PENALIZACIÓN DE MERCADO AL VISITANTE
+    grandes = ["River Plate", "Boca Juniors", "Racing Club", "CA Independiente", "Independiente", "San Lorenzo", "Belgrano"]
     if eq_local in grandes:
-        # Reducción del xG visitante frente a la disparidad presupuestaria
-        lambda_visit *= 0.90
+        lambda_visit *= 0.85
 
-    # Reasignación de variables originales
-    if ca == "Local":
-        la, lb = lambda_local, lambda_visit
-    else:
-        lb, la = lambda_local, lambda_visit
+    # Reasignar para salida
+    la = lambda_local if ca == "Local" else lambda_visit
+    lb = lambda_visit if cb == "Visitante" else lambda_local
 
     return (round(float(np.clip(la, LAM_MIN, LAM_MAX)), 3),
             round(float(np.clip(lb, LAM_MIN, LAM_MAX)), 3))
@@ -517,7 +515,10 @@ def montecarlo(la, lb):
     M[0, 1] = max(M[0, 1] * (1 + la * rho),       0.0)
     M[1, 0] = max(M[1, 0] * (1 + lb * rho),        0.0)
     M[1, 1] = max(M[1, 1] * (1 - rho),             0.0)
+    
+    # 5. VALIDACIÓN DE PROBABILIDAD (Normalización pura)
     M /= M.sum()
+    
     return {
         "victoria": float(np.tril(M, -1).sum()),
         "empate":   float(np.trace(M)),
@@ -812,7 +813,6 @@ with st.sidebar:
     st.markdown('<div class="sidebar-logo">LPF SCOUTING</div>', unsafe_allow_html=True)
     
     rutas_base = {
-        "Histórico": "data/historico",
         "Actual": "data/actual"
     }
     
@@ -860,7 +860,6 @@ if not opciones_disponibles:
         "⚠️ **No se encontró ninguna base de datos.**\n\n"
         "Este sistema espera los archivos Excel en:\n"
         "- `data/actual/` (temporada en curso, ej. `clausura26.xlsx`)\n"
-        "- `data/historico/` (temporadas pasadas, ej. `apertura26.xlsx`)\n"
     )
     st.stop()
 
@@ -917,7 +916,8 @@ bajos (0-0, 1-0, 0-1, 1-1), típica del Poisson independiente puro.
 
 **Fuerza de ataque/defensa (`λ`):** se calcula combinando el rendimiento
 observado del equipo con un *prior* bayesiano basado en la jerarquía de
-mercado de Transfermarkt.
+mercado de Transfermarkt. A los equipos locales de alta jerarquía se les aplica 
+un overround de cuota alineado a los mercados internacionales (Bet365 Tuning).
 """)
 
 if nav == "Predicción de Partidos":
@@ -932,7 +932,7 @@ if nav == "Predicción de Partidos":
         la, lb = calcular_lambdas(df, ea, eb, loc, tabla)
         sim    = montecarlo(la, lb)
         
-        margen = 1.11
+        margen = 1.075 # Margen más alineado a mercado maduro
         r_loc = 1 / sim['victoria'] if sim['victoria'] > 0 else 0.0
         r_emp = 1 / sim['empate']   if sim['empate'] > 0   else 0.0
         r_vis = 1 / sim['derrota']  if sim['derrota'] > 0  else 0.0
@@ -1045,7 +1045,7 @@ if nav == "Predicción de Partidos":
 elif nav == "Simulador de Jornada":
     st.markdown('<div class="section-header">Simulador de Jornada Automático (Inversión de Fixture)</div>', unsafe_allow_html=True)
     
-    # CARGA AISLADA DEL HISTÓRICO EXCLUSIVAMENTE PARA EL FIXTURE
+    # 1. CARGA AISLADA DEL HISTÓRICO EXCLUSIVAMENTE PARA EL FIXTURE
     ruta_apertura_fija = "data/historico/apertura26.xlsx"
     df_fixture_temp = None
     
@@ -1138,6 +1138,7 @@ elif nav == "Simulador de Jornada":
                     else:
                         pos_a, pos_b = 50.0, 50.0
                         
+                    # Agregamos los datos al registro combinando el cruce (evitamos pérdidas)
                     resultados_jornada.append({
                         "Equipo": ea, "Condición": "Local", "Rival": eb,
                         "Prob_Victoria": sim["victoria"],
@@ -1329,7 +1330,7 @@ elif nav == "Rachas y Momentum":
 st.markdown("<hr style='border-color:#1f1f24; margin-top:50px;'>", unsafe_allow_html=True)
 st.markdown(
     "<div style='text-align:center; color:#555560; font-size:0.75rem; padding:10px 0 30px;'>"
-    "LPF Analytics v1.3 &nbsp;·&nbsp; Modelo estadístico holístico ponderado (Poisson + Dixon-Coles) &nbsp;·&nbsp; "
+    "LPF Analytics v2.0 &nbsp;·&nbsp; Bet365 Tuning Model &nbsp;·&nbsp; "
     "Uso analítico/educativo — no constituye asesoramiento de apuestas"
     "</div>",
     unsafe_allow_html=True,
