@@ -101,53 +101,48 @@ html, body, [class*="css"] { font-family: 'Manrope', sans-serif; background-colo
 # ──────────────────────────────────────────────────────────────────────
 # PARÁMETROS DEL MOTOR Y JERARQUÍAS
 # ──────────────────────────────────────────────────────────────────────
-W_XG = 0.65  # Mayor peso al xG para estabilizar la media y reducir varianza
-K_PRIOR  = 12.0 # Ancla de Jerarquía (Gravedad alta)
-DC_RHO = -0.15 # Compensación de empates para LPF
+W_XG = 0.65  
+K_PRIOR  = 12.0 
+DC_RHO = -0.15 
 MAX_GOALS_MATRIX = 7
 N_RECENCIA, PESO_RECIENTE, PESO_NORMAL = 5, 1.20, 1.0
-PESO_HISTORICO = 0.01 # Memoria a largo plazo restaurada
+PESO_HISTORICO = 0.75 
 LAM_MIN, LAM_MAX = 0.30, 4.50
 
 # ──────────────────────────────────────────────────────────────────────
-# JERARQUÍAS DE MERCADO (Clausura 2026 - Actualizado)
-# Media de liga: 33.76 M€ = 1.000
-# ──────────────────────────────────────────────────────────────────────
-# ──────────────────────────────────────────────────────────────────────
 # JERARQUÍAS DE MERCADO (Actualizado Transfermarkt - Apertura 2026)
-# Basado en la tasación oficial de planteles en millones de euros.
 # ──────────────────────────────────────────────────────────────────────
 JERARQUIA_EQUIPOS = {
-    "River Plate": 1.250,                 # 148,25 mill. €
-    "Boca Juniors": 1.150,                # 109,55 mill. €
-    "Racing Club": 1.080,                 # 66,48 mill. €
-    "Rosario Central": 1.065,             # 58,38 mill. €
-    "Estudiantes de La Plata": 1.050,     # 48,20 mill. €
-    "San Lorenzo": 1.045,                 # 44,30 mill. €
-    "Talleres": 1.040,                    # 43,85 mill. €
-    "Independiente Rivadavia": 1.035,     # 39,33 mill. €
-    "Independiente": 1.030,               # 38,68 mill. €
-    "Argentinos Juniors": 1.025,          # 38,35 mill. €
-    "Lanús": 1.025,                       # 38,10 mill. €
-    "Tigre": 1.020,                       # 36,75 mill. €
-    "Platense": 1.000,                    # 31,23 mill. €
-    "Newell's Old Boys": 0.995,           # 29,58 mill. €
-    "Gimnasia y Esgrima La Plata": 0.990, # 27,03 mill. €
-    "Belgrano": 0.990,                    # 26,98 mill. €
-    "Defensa y Justicia": 0.985,          # 26,40 mill. €
-    "Vélez Sarsfield": 0.970,             # 21,48 mill. €
-    "Huracán": 0.965,                     # 20,53 mill. €
-    "Unión": 0.960,                       # 18,93 mill. €
-    "Barracas Central": 0.955,            # 18,10 mill. €
-    "Instituto": 0.950,                   # 17,45 mill. €
-    "Gimnasia de Mendoza": 0.945,         # 16,00 mill. €
-    "Sarmiento": 0.940,                   # 13,83 mill. €
-    "Banfield": 0.935,                    # 12,68 mill. €
-    "Atlético Tucumán": 0.930,            # 11,55 mill. €
-    "Aldosivi": 0.925,                    # 10,43 mill. €
-    "Deportivo Riestra": 0.925,           # 10,24 mill. €
-    "Central Córdoba": 0.920,             # 8,03 mill. €
-    "Estudiantes de Río Cuarto": 0.915    # 6,45 mill. €
+    "River Plate": 1.250,                 
+    "Boca Juniors": 1.150,                
+    "Racing Club": 1.080,                 
+    "Rosario Central": 1.065,             
+    "Estudiantes de La Plata": 1.050,     
+    "San Lorenzo": 1.045,                 
+    "Talleres": 1.040,                    
+    "Independiente Rivadavia": 1.035,     
+    "Independiente": 1.030,               
+    "Argentinos Juniors": 1.025,          
+    "Lanús": 1.025,                       
+    "Tigre": 1.020,                       
+    "Platense": 1.000,                    
+    "Newell's Old Boys": 0.995,           
+    "Gimnasia y Esgrima La Plata": 0.990, 
+    "Belgrano": 0.990,                    
+    "Defensa y Justicia": 0.985,          
+    "Vélez Sarsfield": 0.970,             
+    "Huracán": 0.965,                     
+    "Unión": 0.960,                       
+    "Barracas Central": 0.955,            
+    "Instituto": 0.950,                   
+    "Gimnasia de Mendoza": 0.945,         
+    "Sarmiento": 0.940,                   
+    "Banfield": 0.935,                    
+    "Atlético Tucumán": 0.930,            
+    "Aldosivi": 0.925,                    
+    "Deportivo Riestra": 0.925,           
+    "Central Córdoba": 0.920,             
+    "Estudiantes de Río Cuarto": 0.915    
 }
 
 RED, WHITE, GRAY = "#ED1A3B", "#ffffff", "#4a4a52"
@@ -305,7 +300,6 @@ def calcular_tabla(df: pd.DataFrame, condicion: str = "General") -> pd.DataFrame
     tabla = pd.DataFrame(rows).sort_values(["EFEC%", "PTS", "GF"], ascending=[False, False, False]).reset_index(drop=True)
     tabla["Pos"] = tabla.index + 1
     
-    # ETAPA 2: FIX JERARQUÍA ABSOLUTA (Sin "doble conteo" del PPJ en racha)
     tabla["prior_atk"] = 1.0
     tabla["prior_def"] = 1.0
     for eq in tabla.index:
@@ -322,9 +316,6 @@ def _get_prior(tabla: pd.DataFrame, eq: str):
     return float(tabla.loc[eq, "prior_atk"]), float(tabla.loc[eq, "prior_def"])
 
 def _adjusted_rate(d_all, metrica, col, max_fecha_torneo, tabla, is_attack, target_cond):
-    """
-    Calcula la tasa ajustada usando el historial, previniendo errores de media y explosiones de datos.
-    """
     df_m = d_all[d_all["Métrica"] == metrica]
     if df_m.empty:
         return np.nan
@@ -341,31 +332,27 @@ def _adjusted_rate(d_all, metrica, col, max_fecha_torneo, tabla, is_attack, targ
     for v, r, c_match, f, cat in zip(valores, rivales, condiciones, fechas, categoria):
         pa_r, pd_r = _get_prior(tabla, r)
         
-        # MATAGIGANTES FIX: Límite duro al divisor para evitar que la media explote a números irreales
         pd_r_safe = max(pd_r, 0.80) 
         pa_r_safe = max(pa_r, 0.80)
         
         adj = v / pd_r_safe if (is_attack and pd_r_safe > 0) else v / pa_r_safe if (not is_attack and pa_r_safe > 0) else v
-        
-        # TOPE DE ACCIÓN: Nunca puede ser tan alta por un solo partido de suerte
         adj = min(adj, 3.5)
         
-        # ¡ESTA ES LA LÍNEA QUE FALTABA!
         valores_ajustados.append(adj)
         
         w = PESO_HISTORICO if cat == "Histórico" else (PESO_RECIENTE if f >= (max_fecha_torneo - N_RECENCIA + 1) else PESO_NORMAL)
         
-        # PLUS CONDICIÓN FIX: Suavizado al 10%
         if c_match == target_cond:
             w *= 1.10
             
         pesos.append(w)
         
-    # Validamos que no intente promediar listas vacías
     if not valores_ajustados or sum(pesos) == 0:
         return np.nan
         
     return float(np.average(valores_ajustados, weights=pesos))
+
+@st.cache_data(ttl=120, show_spinner=False)
 def _league_stats(df):
     dr = df[df["Métrica"] == "Resultado"]
     dx = df[df["Métrica"] == "xG_Estimado"]
@@ -406,7 +393,6 @@ def _strength(df, eq, target_cond, league, max_fecha_torneo: int, tabla: pd.Data
     
     prior_atk, prior_def = _get_prior(tabla, eq)
     
-    # DILUCIÓN FIX: Topeamos 'n' para que no anule el prior bayesiano con el tiempo
     n = n_s if n_s > 0 else 0
     n_effective = min(n, 15)
     
@@ -433,7 +419,6 @@ def calcular_lambdas(df, eq_a, eq_b, es_loc, tabla):
     la = (l["ref_home"] if ca == "Local" else l["ref_away"]) * aa * db
     lb = (l["ref_home"] if cb == "Local" else l["ref_away"]) * ab * da
 
-    # --- ETAPA 2: MODIFICADORES TÁCTICOS (Suavizados) ---
     adn_temp = calcular_adn_tactico(df)
     if not adn_temp.empty and eq_a in adn_temp.index and eq_b in adn_temp.index:
         tags_a = set(t for t, _ in adn_temp.loc[eq_a, "Tags"]) if isinstance(adn_temp.loc[eq_a, "Tags"], list) else set()
@@ -446,7 +431,6 @@ def calcular_lambdas(df, eq_a, eq_b, es_loc, tabla):
             lb += 0.04
         if "DÉFICIT DEFENSIVO" in tags_b:
             la += 0.04
-    # ----------------------------------------------------
 
     return (round(float(np.clip(la, LAM_MIN, LAM_MAX)), 3),
             round(float(np.clip(lb, LAM_MIN, LAM_MAX)), 3))
@@ -523,9 +507,6 @@ def top3_marcadores(M, ea, eb):
         </div>"""
     return f'<div class="top3-container">{cards}</div>'
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  ★  ADN TÁCTICO — MOTOR DE PATRONES
-# ══════════════════════════════════════════════════════════════════════════════
 def _safe_mean(df, equipo, metrica, col="Propio", condicion=None):
     d = df[(df["Equipo"] == equipo) & (df["Métrica"] == metrica)]
     if condicion: d = d[d["Condicion"] == condicion]
@@ -662,9 +643,6 @@ def contexto_tactica_clash(adn: pd.DataFrame, eq_a: str, eq_b: str) -> str:
         <div class="tactica-insight">{clash_html}</div>
     </div>""")
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  ★  RACHAS Y MOMENTUM
-# ══════════════════════════════════════════════════════════════════════════════
 def calcular_rachas(df: pd.DataFrame) -> pd.DataFrame:
     dr = df[df["Métrica"] == "Resultado"].copy()
     dx = df[df["Métrica"] == "xG_Estimado"].copy()
@@ -813,10 +791,10 @@ with st.sidebar:
                     opciones_archivos[nombre_amigable] = os.path.join(ruta_carpeta, archivo)
     
     opciones_disponibles = list(opciones_archivos.keys())
-    defaults = [opt for opt in opciones_disponibles if "clausura" in opt.lower() or "apertura" in opt.lower()]
+    defaults = [opt for opt in opciones_disponibles if "clausura" in opt.lower()]
     
     torneos_seleccionados_nombres = st.multiselect(
-        "Bases de Datos a Utilizar:",
+        "Bases de Datos a Utilizar (Dejar solo Actual/Clausura):",
         options=opciones_disponibles,
         default=defaults if defaults else (opciones_disponibles[:1] if opciones_disponibles else [])
     )
@@ -848,8 +826,7 @@ if not opciones_disponibles:
         "⚠️ **No se encontró ninguna base de datos.**\n\n"
         "Este sistema espera los archivos Excel en:\n"
         "- `data/actual/` (temporada en curso, ej. `clausura26.xlsx`)\n"
-        "- `data/historico/` (temporadas pasadas, ej. `apertura26.xlsx`)\n\n"
-        "Creá esas carpetas junto a este script y colocá ahí tus archivos."
+        "- `data/historico/` (temporadas pasadas, ej. `apertura26.xlsx`)\n"
     )
     st.stop()
 
@@ -905,24 +882,8 @@ Dixon-Coles (`ρ`) para corregir la subestimación de empates y resultados
 bajos (0-0, 1-0, 0-1, 1-1), típica del Poisson independiente puro.
 
 **Fuerza de ataque/defensa (`λ`):** se calcula combinando el rendimiento
-observado del equipo (goles reales + xG estimado a partir de tiros y
-ocasiones claras) con un *prior* bayesiano basado en la jerarquía de
-mercado del plantel — así un equipo con pocos partidos jugados no queda
-sub o sobre-representado por una muestra chica.
-
-**Ajustes de estilo:** el modelo suma modificadores cuando detecta un
-choque de perfiles tácticos claro (ej. posesión dominante vs. bloque
-bajo, o déficit defensivo marcado).
-
-**Cuotas "Real" vs. "Casa":** la columna "Real" es la probabilidad pura
-del modelo convertida a cuota (1 / probabilidad); "Casa" le aplica un
-margen (*overround*) típico de casa de apuestas, solo a fines
-comparativos/educativos.
-
-⚠️ *Esta es una herramienta de análisis estadístico, no una recomendación
-de apuesta. Los resultados deportivos tienen variables que ningún modelo
-captura por completo (lesiones de último momento, decisiones arbitrales,
-clima, etc.). Jugá con responsabilidad.*
+observado del equipo con un *prior* bayesiano basado en la jerarquía de
+mercado de Transfermarkt.
 """)
 
 if nav == "Predicción de Partidos":
@@ -937,9 +898,7 @@ if nav == "Predicción de Partidos":
         la, lb = calcular_lambdas(df, ea, eb, loc, tabla)
         sim    = montecarlo(la, lb)
         
-        # --- CÁLCULO DE CUOTAS: REAL vs CASA (Realidad LPF) ---
         margen = 1.11
-        
         r_loc = 1 / sim['victoria'] if sim['victoria'] > 0 else 0.0
         r_emp = 1 / sim['empate']   if sim['empate'] > 0   else 0.0
         r_vis = 1 / sim['derrota']  if sim['derrota'] > 0  else 0.0
@@ -1000,7 +959,6 @@ if nav == "Predicción de Partidos":
         ctx = contexto_tactica_clash(adn_df, ea, eb)
         if ctx: st.markdown(ctx, unsafe_allow_html=True)
 
-      # --- GUION TÉCNICO Y PROYECCIÓN DE MÉTRICAS (Separado por Equipo) ---
         tiros_a, tiros_b = proyectar_metrica(df, ea, eb, "Tiros totales", loc, tabla)
         arco_a, arco_b   = proyectar_metrica(df, ea, eb, "Tiros al arco", loc, tabla)
         ocas_a, ocas_b   = proyectar_metrica(df, ea, eb, "Ocasiones claras", loc, tabla)
@@ -1022,10 +980,7 @@ if nav == "Predicción de Partidos":
         
         with st.container():
             st.info("⚡ ESTIMACIÓN MATEMÁTICA DE MÉTRICAS CLAVE PARA EL ENCUENTRO")
-            
-            # Dos columnas principales: Izquierda Local, Derecha Visitante
             col_local, col_vis = st.columns(2)
-            
             with col_local:
                 st.markdown(f"<h4 style='color: #ED1A3B; border-bottom: 2px solid #ED1A3B; padding-bottom: 5px;'>🏠 {ea} (Local)</h4>", unsafe_allow_html=True)
                 st.metric("Tiros Totales Proyectados", f"{tiros_a:.1f}")
@@ -1033,7 +988,6 @@ if nav == "Predicción de Partidos":
                 st.metric("Ocasiones Claras", f"{ocas_a:.1f}")
                 st.metric("Goles Esperados (xG)", f"{la:.2f}")
                 st.metric("Posesión Estimada", f"{pos_a:.0f}%")
-                
             with col_vis:
                 st.markdown(f"<h4 style='color: #ffffff; border-bottom: 2px solid #2a2a35; padding-bottom: 5px;'>✈️ {eb} (Visitante)</h4>", unsafe_allow_html=True)
                 st.metric("Tiros Totales Proyectados", f"{tiros_b:.1f}")
@@ -1041,12 +995,6 @@ if nav == "Predicción de Partidos":
                 st.metric("Ocasiones Claras", f"{ocas_b:.1f}")
                 st.metric("Goles Esperados (xG)", f"{lb:.2f}")
                 st.metric("Posesión Estimada", f"{pos_b:.0f}%")
-
-            st.markdown(f"""
-            <p style="color: #a0a0a8; font-size: 0.85rem; margin-top: 15px; margin-bottom: 0; line-height: 1.5; border-top: 1px solid #2a2a35; padding-top: 12px;">
-                <strong>💡 Lectura analítica:</strong> El modelo proyecta un desarrollo donde el marcador más probable es el <strong>{i_top}-{j_top}</strong> ({top_score_prob*100:.1f}%). Las tasas de remates y conversión esperadas reflejan el impacto de los bloques defensivos y las jerarquías de plantel configuradas.
-            </p>
-            """, unsafe_allow_html=True)
 
         if not rachas_df.empty and ea in rachas_df.index and eb in rachas_df.index:
             st.markdown('<div class="section-header">Forma Reciente</div>', unsafe_allow_html=True)
@@ -1056,208 +1004,183 @@ if nav == "Predicción de Partidos":
                     row_m = rachas_df.loc[eq_m]
                     dots  = render_racha_dots(row_m["Ultimas6"])
                     col_ui.markdown(f"""<div class="momentum-card"><div class="momentum-team">{eq_m}</div><div class="momentum-label">Últimas {len(row_m["Ultimas6"])} fechas</div><div style="margin-bottom:10px;">{dots}</div><div class="momentum-label">Estado de forma</div><div class="{row_m["EstadoCls"]}">{row_m["Estado"]}</div><div style="font-size:0.78rem;color:#555560;margin-top:6px;">xG reciente: {row_m["xGRec"]:.2f} &nbsp;|&nbsp; Pts últimas 3: {row_m["Pts3"]}</div></div>""", unsafe_allow_html=True)
-        
-        with st.expander("Parámetros del Motor (Lambdas y Priors)"):
-            pa_a, pd_a = _get_prior(tabla, ea)
-            pa_b, pd_b = _get_prior(tabla, eb)
-            st.code(f"λ {ea}: {la:.3f} (Atk Prior: {pa_a:.2f})\nλ {eb}: {lb:.3f} (Atk Prior: {pd_b:.2f})")
             
         st.markdown('<div class="section-header">Matriz de Resultados</div>', unsafe_allow_html=True)
         st.plotly_chart(fig_score_matrix(sim["matrix"], ea, eb), use_container_width=True)
 
 elif nav == "Simulador de Jornada":
-    st.markdown('<div class="section-header">Simulador de Jornada Automático</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-header">Simulador de Jornada Automático (Inversión de Fixture)</div>', unsafe_allow_html=True)
     
-    # 1. Filtramos solo los datos del Apertura (Histórico)
-    df_historico = df[df["Categoria"] == "Histórico"]
+    # CARGA AISLADA DEL HISTÓRICO EXCLUSIVAMENTE PARA EL FIXTURE
+    ruta_apertura_fija = "data/historico/apertura26.xlsx"
+    df_fixture_temp = None
     
-    if df_historico.empty:
-        st.warning("⚠️ No hay datos históricos (Apertura) cargados para invertir el fixture. Revisá la selección en la barra lateral.")
-    else:
-        # 2. Obtenemos las fechas disponibles
-        fechas_disponibles = sorted(df_historico["nFecha"].unique())
-        
-        c1, c2 = st.columns([1, 3])
-        jornada_elegida = c1.selectbox("Seleccionar Fecha a Simular:", fechas_disponibles)
-        
-        # 3. Filtramos los partidos de esa fecha exacta
-        df_fecha_apertura = df_historico[
-            (df_historico["nFecha"] == jornada_elegida) & 
-            (df_historico["Condicion"] == "Local") &
-            (df_historico["Métrica"] == "Resultado")
-        ].drop_duplicates(subset=["Equipo", "Rival"])
-        
-        # 4. Invertimos las localías para el Clausura y agregamos las columnas de rotación (booleanas)
-        cruces_validos = pd.DataFrame({
-            "Rotación L": False,                             # Checkbox Local
-            "Local": df_fecha_apertura["Rival"].values,      
-            "Visitante": df_fecha_apertura["Equipo"].values, 
-            "Rotación V": False                              # Checkbox Visitante
-        })
-        
-        c2.write(f"**Partidos de la Fecha {jornada_elegida}** (Marcá la casilla si el equipo rota por Copa)")
-        
-        # Transformamos el dataframe en un editor interactivo
-        cruces_editados = c2.data_editor(
-            cruces_validos,
-            column_config={
-                "Rotación L": st.column_config.CheckboxColumn("Rotación 🔄", default=False),
-                "Rotación V": st.column_config.CheckboxColumn("Rotación 🔄", default=False),
-            },
-            hide_index=True,
-            use_container_width=True
-        )
-        
-        # Parámetro de penalización: ¿Cuántos goles esperados (xG) le restamos al equipo suplente?
-        PENALIDAD_XG = 0.35 
+    if os.path.exists(ruta_apertura_fija):
+        xl_apertura = pd.ExcelFile(ruta_apertura_fija, engine="openpyxl")
+        datos_fixture = {}
+        for hoja in xl_apertura.sheet_names:
+            if re.search(r"fecha\s*\d+", hoja, re.IGNORECASE):
+                df_h = pd.read_excel(xl_apertura, sheet_name=hoja, header=None)
+                datos_fixture[f"Histórico||Apertura||{hoja}"] = _procesar_dataframe(df_h)
+        if datos_fixture:
+            df_fixture_temp = construir_df(datos_fixture)
 
-        if st.button("SIMULAR JORNADA COMPLETA"):
-            if len(cruces_editados) == 0:
-                st.warning("⚠️ No hay partidos para simular.")
-            else:
-                resultados_jornada = []
-                
-                with st.spinner(f"Procesando simulaciones matemáticas para la Fecha {jornada_elegida}..."):
-                    # Iteramos sobre el dataframe EDITADO (con los checkboxes tildados)
-                    for idx, row in cruces_editados.iterrows():
-                        ea = row["Local"]
-                        eb = row["Visitante"]
-                        rota_local = row["Rotación L"]
-                        rota_visitante = row["Rotación V"]
+    if df_fixture_temp is None or df_fixture_temp.empty:
+        st.warning("⚠️ No se pudo cargar automáticamente el archivo histórico en `data/historico/apertura26.xlsx` para invertir el fixture. Usando datos actuales.")
+        df_fixture_temp = df
+
+    fechas_disponibles = sorted(df_fixture_temp["nFecha"].unique())
+    
+    c1, c2 = st.columns([1, 3])
+    jornada_elegida = c1.selectbox("Seleccionar Fecha del Fixture a Invertir:", fechas_disponibles)
+    
+    df_fecha_apertura = df_fixture_temp[
+        (df_fixture_temp["nFecha"] == jornada_elegida) & 
+        (df_fixture_temp["Condicion"] == "Local") &
+        (df_fixture_temp["Métrica"] == "Resultado")
+    ].drop_duplicates(subset=["Equipo", "Rival"])
+    
+    cruces_validos = pd.DataFrame({
+        "Rotación L": False,                             
+        "Local": df_fecha_apertura["Rival"].values,      
+        "Visitante": df_fecha_apertura["Equipo"].values, 
+        "Rotación V": False                              
+    })
+    
+    c2.write(f"**Partidos de la Fecha {jornada_elegida} (Localías Invertidas para el Clausura)**")
+    
+    cruces_editados = c2.data_editor(
+        cruces_validos,
+        column_config={
+            "Rotación L": st.column_config.CheckboxColumn("Rotación 🔄", default=False),
+            "Rotación V": st.column_config.CheckboxColumn("Rotación 🔄", default=False),
+        },
+        hide_index=True,
+        use_container_width=True
+    )
+    
+    PENALIDAD_XG = 0.35 
+
+    if st.button("SIMULAR JORNADA COMPLETA"):
+        if len(cruces_editados) == 0:
+            st.warning("⚠️ No hay partidos para simular.")
+        else:
+            resultados_jornada = []
+            
+            with st.spinner(f"Procesando simulaciones matemáticas para la Fecha {jornada_elegida}..."):
+                for idx, row in cruces_editados.iterrows():
+                    ea = row["Local"]
+                    eb = row["Visitante"]
+                    rota_local = row["Rotación L"]
+                    rota_visitante = row["Rotación V"]
+                    
+                    if ea == eb: continue
                         
-                        if ea == eb: continue
-                            
-                        # Cálculos matemáticos del motor
-                        la, lb = calcular_lambdas(df, ea, eb, True, tabla)
+                    la, lb = calcular_lambdas(df, ea, eb, True, tabla)
 
-                        # --- APLICAMOS EL HÁNDICAP POR ROTACIÓN ---
-                        # Si rotan, bajamos su xG (forzando un mínimo de 0.1 para que el motor no rompa)
-                        if rota_local: 
-                            la = max(0.1, la - PENALIDAD_XG)
-                        if rota_visitante: 
-                            lb = max(0.1, lb - PENALIDAD_XG)
-                        # ------------------------------------------
+                    if rota_local: 
+                        la = max(0.1, la - PENALIDAD_XG)
+                    if rota_visitante: 
+                        lb = max(0.1, lb - PENALIDAD_XG)
 
-                        sim = montecarlo(la, lb) 
+                    sim = montecarlo(la, lb) 
+                    
+                    tiros_a, tiros_b = proyectar_metrica(df, ea, eb, "Tiros totales", True, tabla)
+                    arco_a, arco_b   = proyectar_metrica(df, ea, eb, "Tiros al arco", True, tabla)
+                    ocas_a, ocas_b   = proyectar_metrica(df, ea, eb, "Ocasiones claras", True, tabla)
+                    pos_a, pos_b     = proyectar_metrica(df, ea, eb, "Posesión de balón", True, tabla)
+
+                    if rota_local:
+                        pos_a *= 0.9  
+                        tiros_a *= 0.8 
+                    if rota_visitante:
+                        pos_b *= 0.9
+                        tiros_b *= 0.8
+                    
+                    tot_pos = pos_a + pos_b
+                    if tot_pos > 0:
+                        pos_a = (pos_a / tot_pos) * 100
+                        pos_b = (pos_b / tot_pos) * 100
+                    else:
+                        pos_a, pos_b = 50.0, 50.0
                         
-                        # Proyección de métricas secundarias
-                        tiros_a, tiros_b = proyectar_metrica(df, ea, eb, "Tiros totales", True, tabla)
-                        arco_a, arco_b   = proyectar_metrica(df, ea, eb, "Tiros al arco", True, tabla)
-                        ocas_a, ocas_b   = proyectar_metrica(df, ea, eb, "Ocasiones claras", True, tabla)
-                        pos_a, pos_b     = proyectar_metrica(df, ea, eb, "Posesión de balón", True, tabla)
+                    resultados_jornada.append({
+                        "Equipo": ea, "Condición": "Local", "Rival": eb,
+                        "Prob_Victoria": sim["victoria"],
+                        "xG_Favor": la, "xG_Contra": lb, "Tiros_Favor": tiros_a, "Tiros_Contra": tiros_b,
+                        "Arco_Favor": arco_a, "Arco_Contra": arco_b, "Ocasiones_Favor": ocas_a, "Ocasiones_Contra": ocas_b,
+                        "Posesion": pos_a
+                    })
+                    
+                    resultados_jornada.append({
+                        "Equipo": eb, "Condición": "Visitante", "Rival": ea,
+                        "Prob_Victoria": sim["derrota"],
+                        "xG_Favor": lb, "xG_Contra": la, "Tiros_Favor": tiros_b, "Tiros_Contra": tiros_a,
+                        "Arco_Favor": arco_b, "Arco_Contra": arco_a, "Ocasiones_Favor": ocas_b, "Ocasiones_Contra": ocas_a,
+                        "Posesion": pos_b
+                    })
+            
+            df_res = pd.DataFrame(resultados_jornada)
+            df_res["Indice_Arquero"] = df_res["Arco_Contra"] / (df_res["xG_Contra"] + 0.5)
+            
+            def format_ranking(df_temp, sort_col, ascending, cols_to_show, rename_dict=None):
+                temp = df_temp.sort_values(by=sort_col, ascending=ascending).reset_index(drop=True)
+                temp["Pos"] = temp.index + 1
+                temp["Equipo"] = temp.apply(lambda r: f"⭐ {r['Equipo']}" if r["Pos"] <= 5 else r["Equipo"], axis=1)
+                final_cols = ["Pos", "Equipo"] + [c for c in cols_to_show if c != "Equipo"]
+                temp = temp[final_cols]
+                if rename_dict:
+                    temp = temp.rename(columns=rename_dict)
+                return temp
 
-                        # Opcional: También podés aplicar penalidad a la posesión y tiros si rotan
-                        if rota_local:
-                            pos_a *= 0.9  # Pierde 10% de control
-                            tiros_a *= 0.8 # Patea 20% menos
-                        if rota_visitante:
-                            pos_b *= 0.9
-                            tiros_b *= 0.8
-                        
-                        tot_pos = pos_a + pos_b
-                        if tot_pos > 0:
-                            pos_a = (pos_a / tot_pos) * 100
-                            pos_b = (pos_b / tot_pos) * 100
-                        else:
-                            pos_a, pos_b = 50.0, 50.0
-                            
-                        # Guardamos resultados del Local
-                        resultados_jornada.append({
-                            "Equipo": ea, "Condición": "Local", "Rival": eb,
-                            "Prob_Victoria": sim["victoria"],
-                            "xG_Favor": la, "xG_Contra": lb, "Tiros_Favor": tiros_a, "Tiros_Contra": tiros_b,
-                            "Arco_Favor": arco_a, "Arco_Contra": arco_b, "Ocasiones_Favor": ocas_a, "Ocasiones_Contra": ocas_b,
-                            "Posesion": pos_a
-                        })
-                        
-                        # Guardamos resultados del Visitante
-                        resultados_jornada.append({
-                            "Equipo": eb, "Condición": "Visitante", "Rival": ea,
-                            "Prob_Victoria": sim["derrota"],
-                            "xG_Favor": lb, "xG_Contra": la, "Tiros_Favor": tiros_b, "Tiros_Contra": tiros_a,
-                            "Arco_Favor": arco_b, "Arco_Contra": arco_a, "Ocasiones_Favor": ocas_b, "Ocasiones_Contra": ocas_a,
-                            "Posesion": pos_b
-                        })
-                
-                df_res = pd.DataFrame(resultados_jornada)
-                
-                # Índice para el arquero (Relación entre tiros recibidos al arco y xG concedido)
-                df_res["Indice_Arquero"] = df_res["Arco_Contra"] / (df_res["xG_Contra"] + 0.5)
-                
-                # Función auxiliar para formatear tablas y poner la estrella a los 5 primeros
-                def format_ranking(df_temp, sort_col, ascending, cols_to_show, rename_dict=None):
-                    temp = df_temp.sort_values(by=sort_col, ascending=ascending).reset_index(drop=True)
-                    temp["Pos"] = temp.index + 1
-                    # Agregar la estrella a los primeros 5
-                    temp["Equipo"] = temp.apply(lambda r: f"⭐ {r['Equipo']}" if r["Pos"] <= 5 else r["Equipo"], axis=1)
-                    # Reordenar las columnas
-                    final_cols = ["Pos", "Equipo"] + [c for c in cols_to_show if c != "Equipo"]
-                    temp = temp[final_cols]
-                    if rename_dict:
-                        temp = temp.rename(columns=rename_dict)
-                    return temp
+            st.markdown('<div class="section-header">📊 Rankings de la Jornada (Clasificación General)</div>', unsafe_allow_html=True)
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown("### 📈 Prob. de Victoria")
+                df_vic = format_ranking(df_res, "Prob_Victoria", False, 
+                                        ["Prob_Victoria", "xG_Favor", "xG_Contra", "Condición", "Rival"],
+                                        {"Prob_Victoria": "Prob. de Ganar"})
+                st.dataframe(df_vic.style.format({"Prob. de Ganar": "{:.1%}", "xG_Favor": "{:.2f}", "xG_Contra": "{:.2f}"}), 
+                             hide_index=True, use_container_width=True, height=280)
 
-                st.markdown('<div class="section-header">📊 Rankings de la Jornada (Clasificación General)</div>', unsafe_allow_html=True)
-                st.caption("💡 *Tip: Pasá el cursor sobre cualquier tabla y tocá el ícono de las flechas (arriba a la derecha) para verla en pantalla completa.*")
-                
-                # --- CUADRÍCULA DE COLUMNAS (Sustituye a las pestañas) ---
-                
-                # Fila 1
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    st.markdown("### 📈 Prob. de Victoria")
-                    df_vic = format_ranking(df_res, "Prob_Victoria", False, 
-                                            ["Prob_Victoria", "xG_Favor", "xG_Contra", "Condición", "Rival"],
-                                            {"Prob_Victoria": "Prob. de Ganar"})
-                    st.dataframe(df_vic.style.format({"Prob. de Ganar": "{:.1%}", "xG_Favor": "{:.2f}", "xG_Contra": "{:.2f}"}), 
-                                 hide_index=True, use_container_width=True, height=280)
+            with col2:
+                st.markdown("### 🧤 Posible Mejor Arquero")
+                df_arq = format_ranking(df_res, "Indice_Arquero", False, 
+                                        ["Indice_Arquero", "Arco_Contra", "xG_Contra", "Rival"],
+                                        {"Indice_Arquero": "Índice", "Arco_Contra": "Tiros Arco en Contra", "xG_Contra": "xG Concedido"})
+                st.dataframe(df_arq.style.format({"Índice": "{:.2f}", "Tiros Arco en Contra": "{:.1f}", "xG Concedido": "{:.2f}"}), 
+                             hide_index=True, use_container_width=True, height=280)
 
-                with col2:
-                    st.markdown("### 🧤 Posible Mejor Arquero")
-                    df_arq = format_ranking(df_res, "Indice_Arquero", False, 
-                                            ["Indice_Arquero", "Arco_Contra", "xG_Contra", "Rival"],
-                                            {"Indice_Arquero": "Índice", "Arco_Contra": "Tiros Arco en Contra", "xG_Contra": "xG Concedido"})
-                    st.dataframe(df_arq.style.format({"Índice": "{:.2f}", "Tiros Arco en Contra": "{:.1f}", "xG Concedido": "{:.2f}"}), 
-                                 hide_index=True, use_container_width=True, height=280)
+            st.markdown("<br>", unsafe_allow_html=True)
+            col3, col4 = st.columns(2)
+            with col3:
+                st.markdown("### 🛡️ Posible Mejor Defensa")
+                df_def = format_ranking(df_res, "xG_Contra", True, 
+                                        ["xG_Contra", "Ocasiones_Contra", "Tiros_Contra", "Rival"],
+                                        {"xG_Contra": "xG Concedido", "Ocasiones_Contra": "Ocasiones Concedidas", "Tiros_Contra": "Tiros Concedidos"})
+                st.dataframe(df_def.style.format({"xG Concedido": "{:.2f}", "Ocasiones Concedidas": "{:.1f}", "Tiros Concedidos": "{:.1f}"}), 
+                             hide_index=True, use_container_width=True, height=280)
 
-                st.markdown("<br>", unsafe_allow_html=True)
-                
-                # Fila 2
-                col3, col4 = st.columns(2)
-                
-                with col3:
-                    st.markdown("### 🛡️ Posible Mejor Defensa")
-                    df_def = format_ranking(df_res, "xG_Contra", True, 
-                                            ["xG_Contra", "Ocasiones_Contra", "Tiros_Contra", "Rival"],
-                                            {"xG_Contra": "xG Concedido", "Ocasiones_Contra": "Ocasiones Concedidas", "Tiros_Contra": "Tiros Concedidos"})
-                    st.dataframe(df_def.style.format({"xG Concedido": "{:.2f}", "Ocasiones Concedidas": "{:.1f}", "Tiros Concedidos": "{:.1f}"}), 
-                                 hide_index=True, use_container_width=True, height=280)
-
-                with col4:
-                    st.markdown("### 🧭 Posible Mejor Medio")
-                    df_med = format_ranking(df_res, "Posesion", False, 
-                                            ["Posesion", "xG_Favor", "xG_Contra", "Rival"],
-                                            {"Posesion": "Posesión %", "xG_Favor": "xG Generado", "xG_Contra": "xG Concedido"})
-                    st.dataframe(df_med.style.format({"Posesión %": "{:.1f}%", "xG Generado": "{:.2f}", "xG Concedido": "{:.2f}"}), 
-                                 hide_index=True, use_container_width=True, height=280)
-                
-                st.markdown("<br>", unsafe_allow_html=True)
-                
-                # Fila 3
-                col5, col6 = st.columns(2)
-                
-                with col5:
-                    st.markdown("### ⚔️ Posible Mejor Delantera")
-                    df_del = format_ranking(df_res, "xG_Favor", False, 
-                                            ["xG_Favor", "Ocasiones_Favor", "Arco_Favor", "Rival"],
-                                            {"xG_Favor": "xG Generado", "Ocasiones_Favor": "Ocasiones Creadas", "Arco_Favor": "Tiros al Arco a Favor"})
-                    st.dataframe(df_del.style.format({"xG Generado": "{:.2f}", "Ocasiones Creadas": "{:.1f}", "Tiros al Arco a Favor": "{:.1f}"}), 
-                                 hide_index=True, use_container_width=True, height=280)
-                
-                # Col 6 queda vacía para equilibrar la cuadrícula si sólo hay 5 métricas
-                with col6:
-                    pass
+            with col4:
+                st.markdown("### 🧭 Posible Mejor Medio")
+                df_med = format_ranking(df_res, "Posesion", False, 
+                                        ["Posesion", "xG_Favor", "xG_Contra", "Rival"],
+                                        {"Posesion": "Posesión %", "xG_Favor": "xG Generado", "xG_Contra": "xG Concedido"})
+                st.dataframe(df_med.style.format({"Posesión %": "{:.1f}%", "xG Generado": "{:.2f}", "xG Concedido": "{:.2f}"}), 
+                             hide_index=True, use_container_width=True, height=280)
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+            col5, col6 = st.columns(2)
+            with col5:
+                st.markdown("### ⚔️ Posible Mejor Delantera")
+                df_del = format_ranking(df_res, "xG_Favor", False, 
+                                        ["xG_Favor", "Ocasiones_Favor", "Arco_Favor", "Rival"],
+                                        {"xG_Favor": "xG Generado", "Ocasiones_Favor": "Ocasiones Creadas", "Arco_Favor": "Tiros al Arco a Favor"})
+                st.dataframe(df_del.style.format({"xG Generado": "{:.2f}", "Ocasiones Creadas": "{:.1f}", "Tiros al Arco a Favor": "{:.1f}"}), 
+                             hide_index=True, use_container_width=True, height=280)
+            with col6:
+                pass
 
 elif nav == "Métricas Globales":
     st.markdown('<div class="section-header">Rankings de Rendimiento</div>', unsafe_allow_html=True)
@@ -1368,13 +1291,11 @@ elif nav == "Rachas y Momentum":
                 st.markdown(f"""<div class="momentum-card" style="margin-bottom:20px;"><div class="momentum-team">{eq_m}</div><div class="momentum-label">Racha completa</div><div style="margin:8px 0 14px;">{"".join(f'<span class="racha-dot {"racha-v" if r=="V" else ("racha-e" if r=="E" else "racha-d")}">{r}</span>' for r in row_m["Resultados"])}</div><div style="display:flex;gap:30px;flex-wrap:wrap;"><div><div class="momentum-label">Estado</div><div class="{row_m["EstadoCls"]}">{row_m["Estado"]}</div></div><div><div class="momentum-label">xG reciente</div><div style="font-size:1.1rem;font-weight:800;color:#ED1A3B;">{row_m["xGRec"]:.2f}</div></div><div><div class="momentum-label">Tendencia xG</div><div style="font-size:1.1rem;font-weight:800;color:{delta_color};">{delta_str}</div></div></div></div>""", unsafe_allow_html=True)
                 st.markdown('<div class="section-header">Evolución Temporal</div>', unsafe_allow_html=True)
                 st.plotly_chart(fig_momentum_timeline(df, eq_m), use_container_width=True)
-# ──────────────────────────────────────────────────────────────────────
-# FOOTER
-# ──────────────────────────────────────────────────────────────────────
+
 st.markdown("<hr style='border-color:#1f1f24; margin-top:50px;'>", unsafe_allow_html=True)
 st.markdown(
     "<div style='text-align:center; color:#555560; font-size:0.75rem; padding:10px 0 30px;'>"
-    "LPF Analytics v1.2 &nbsp;·&nbsp; Modelo estadístico holístico ponderado (Poisson + Dixon-Coles) &nbsp;·&nbsp; "
+    "LPF Analytics v1.3 &nbsp;·&nbsp; Modelo estadístico holístico ponderado (Poisson + Dixon-Coles) &nbsp;·&nbsp; "
     "Uso analítico/educativo — no constituye asesoramiento de apuestas"
     "</div>",
     unsafe_allow_html=True,
