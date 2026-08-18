@@ -1,5 +1,5 @@
 """
-Plataforma de Rendimiento LPF 2026 - Completa (Bet365 Tuning Edition)
+Plataforma de Rendimiento LPF 2026 - Completa (Bet365 Delta Tuning)
 """
 import re, os, math, textwrap
 from datetime import datetime
@@ -343,12 +343,12 @@ def _adjusted_rate(d_all, metrica, col, max_fecha_torneo, tabla, is_attack, targ
         
         w = PESO_HISTORICO if cat == "Histórico" else (PESO_RECIENTE if f >= (max_fecha_torneo - N_RECENCIA + 1) else PESO_NORMAL)
         
-        # 3. REFUERZO DE LOCALÍA AGRESIVO (Bet365 standard)
+        # Leve refuerzo base a la condición actual
         if c_match == target_cond:
             if target_cond == "Local":
-                w *= 1.35 
+                w *= 1.20 
             else:
-                w *= 1.15
+                w *= 1.10
             
         pesos.append(w)
         
@@ -440,25 +440,33 @@ def calcular_lambdas(df, eq_a, eq_b, es_loc, tabla):
         if "DÉFICIT DEFENSIVO" in tags_b:
             la += 0.04
 
-    # 2. MARKET OVERROUND Y PROTECCIÓN LOCAL (Bet365 Logic)
+    # 2. MARKET OVERROUND Y PROTECCIÓN LOCAL (Diferencial Lineal Bet365)
     eq_local = eq_a if ca == "Local" else eq_b
     eq_visit = eq_b if cb == "Visitante" else eq_a
     
     lambda_local = la if ca == "Local" else lb
     lambda_visit = lb if cb == "Visitante" else la
 
-    jerarquia_local = JERARQUIA_EQUIPOS.get(eq_local, 1.0)
+    j_local = JERARQUIA_EQUIPOS.get(eq_local, 1.0)
+    j_visit = JERARQUIA_EQUIPOS.get(eq_visit, 1.0)
     
-    # Exponente de potencia para bajar drásticamente la cuota de favoritos
-    if jerarquia_local >= 1.10:
-        lambda_local = lambda_local ** 2.5
-    elif jerarquia_local >= 1.03:
-        lambda_local = lambda_local ** 1.35
-
-    # 3. PENALIZACIÓN DE MERCADO AL VISITANTE
-    grandes = ["River Plate", "Boca Juniors", "Racing Club", "CA Independiente", "Independiente", "San Lorenzo", "Belgrano"]
-    if eq_local in grandes:
-        lambda_visit *= 0.85
+    # Diferencia de jerarquía en el duelo
+    delta = j_local - j_visit
+    
+    # Bono agresivo de localía base
+    bono_cancha = 1.20  
+    freno_visita = 0.85 
+    
+    # Multiplicador suave y controlado
+    ajuste_local = bono_cancha * (1.0 + (delta * 1.5))
+    ajuste_visit = freno_visita * (1.0 - (delta * 1.2))
+    
+    # Topes de seguridad para evitar que se rompa el guion técnico
+    ajuste_local = np.clip(ajuste_local, 0.8, 2.2)
+    ajuste_visit = np.clip(ajuste_visit, 0.5, 1.5)
+    
+    lambda_local *= ajuste_local
+    lambda_visit *= ajuste_visit
 
     # Reasignar para salida
     la = lambda_local if ca == "Local" else lambda_visit
@@ -516,7 +524,7 @@ def montecarlo(la, lb):
     M[1, 0] = max(M[1, 0] * (1 + lb * rho),        0.0)
     M[1, 1] = max(M[1, 1] * (1 - rho),             0.0)
     
-    # 5. VALIDACIÓN DE PROBABILIDAD (Normalización pura)
+    # NORMALIZACIÓN FINAL
     M /= M.sum()
     
     return {
@@ -916,8 +924,8 @@ bajos (0-0, 1-0, 0-1, 1-1), típica del Poisson independiente puro.
 
 **Fuerza de ataque/defensa (`λ`):** se calcula combinando el rendimiento
 observado del equipo con un *prior* bayesiano basado en la jerarquía de
-mercado de Transfermarkt. A los equipos locales de alta jerarquía se les aplica 
-un overround de cuota alineado a los mercados internacionales (Bet365 Tuning).
+mercado de Transfermarkt. A los equipos se les aplica un diferencial de 
+mercado para alinear las cuotas al estándar de Bet365.
 """)
 
 if nav == "Predicción de Partidos":
@@ -932,7 +940,7 @@ if nav == "Predicción de Partidos":
         la, lb = calcular_lambdas(df, ea, eb, loc, tabla)
         sim    = montecarlo(la, lb)
         
-        margen = 1.075 # Margen más alineado a mercado maduro
+        margen = 1.075 # Margen más alineado a mercado maduro (Bet365 style)
         r_loc = 1 / sim['victoria'] if sim['victoria'] > 0 else 0.0
         r_emp = 1 / sim['empate']   if sim['empate'] > 0   else 0.0
         r_vis = 1 / sim['derrota']  if sim['derrota'] > 0  else 0.0
@@ -1138,7 +1146,7 @@ elif nav == "Simulador de Jornada":
                     else:
                         pos_a, pos_b = 50.0, 50.0
                         
-                    # Agregamos los datos al registro combinando el cruce (evitamos pérdidas)
+                    # Agregamos los datos al registro combinando el cruce (evitamos pérdidas de visitante)
                     resultados_jornada.append({
                         "Equipo": ea, "Condición": "Local", "Rival": eb,
                         "Prob_Victoria": sim["victoria"],
@@ -1330,7 +1338,7 @@ elif nav == "Rachas y Momentum":
 st.markdown("<hr style='border-color:#1f1f24; margin-top:50px;'>", unsafe_allow_html=True)
 st.markdown(
     "<div style='text-align:center; color:#555560; font-size:0.75rem; padding:10px 0 30px;'>"
-    "LPF Analytics v2.0 &nbsp;·&nbsp; Bet365 Tuning Model &nbsp;·&nbsp; "
+    "LPF Analytics v2.1 &nbsp;·&nbsp; Linear Delta Tuning (Bet365 Alignment) &nbsp;·&nbsp; "
     "Uso analítico/educativo — no constituye asesoramiento de apuestas"
     "</div>",
     unsafe_allow_html=True,
