@@ -112,6 +112,9 @@ LAM_MIN, LAM_MAX = 0.30, 4.50
 # ──────────────────────────────────────────────────────────────────────
 # JERARQUÍAS DE MERCADO (Actualizado Transfermarkt - Apertura 2026)
 # ──────────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────
+# JERARQUÍAS DE MERCADO (Con Nombres Exactos de la Base de Datos)
+# ──────────────────────────────────────────────────────────────────────
 JERARQUIA_EQUIPOS = {
     "River Plate": 1.250,                 
     "Boca Juniors": 1.150,                
@@ -119,23 +122,23 @@ JERARQUIA_EQUIPOS = {
     "Rosario Central": 1.065,             
     "Estudiantes de La Plata": 1.050,     
     "San Lorenzo": 1.045,                 
-    "Talleres": 1.040,                    
+    "CA Talleres": 1.040,                    
     "Independiente Rivadavia": 1.035,     
-    "Independiente": 1.030,               
+    "CA Independiente": 1.030,               
     "Argentinos Juniors": 1.025,          
-    "Lanús": 1.025,                       
+    "CA Lanús": 1.025,                       
     "Tigre": 1.020,                       
-    "Platense": 1.000,                    
+    "Club Atlético Platense": 1.000,                    
     "Newell's Old Boys": 0.995,           
-    "Gimnasia y Esgrima La Plata": 0.990, 
-    "Belgrano": 0.990,                    
+    "Gimnasia y Esgrima": 0.990, 
+    "Club Atlético Belgrano": 0.990,                    
     "Defensa y Justicia": 0.985,          
     "Vélez Sarsfield": 0.970,             
     "Huracán": 0.965,                     
-    "Unión": 0.960,                       
+    "Club Atlético Unión de Santa Fe": 0.960,                       
     "Barracas Central": 0.955,            
-    "Instituto": 0.950,                   
-    "Gimnasia de Mendoza": 0.945,         
+    "Instituto De Córdoba": 0.950,                   
+    "Gimnasia y Esgrima Mendoza": 0.945,         
     "Sarmiento": 0.940,                   
     "Banfield": 0.935,                    
     "Atlético Tucumán": 0.930,            
