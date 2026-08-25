@@ -107,7 +107,7 @@ DC_RHO = -0.15
 MAX_GOALS_MATRIX = 7
 N_RECENCIA, PESO_RECIENTE, PESO_NORMAL = 5, 1.20, 1.0
 PESO_HISTORICO = 0.75 
-LAM_MIN, LAM_MAX = 0.30, 4.50
+LAM_MIN, LAM_MAX = 0.15, 6.00
 
 # ──────────────────────────────────────────────────────────────────────
 # JERARQUÍAS DE MERCADO (Actualizado Transfermarkt - Apertura 2026)
@@ -1142,6 +1142,11 @@ elif nav == "Simulador de Jornada":
                     pt_a, pt_b       = proyectar_metrica(df, ea, eb, "Pases totales", True, tabla)
                     gev_a, gev_b     = proyectar_metrica(df, ea, eb, "Goles evitados (arquero)", True, tabla)
                     xgot_a, xgot_b   = proyectar_metrica(df, ea, eb, "xG al arco (xGOT)", True, tabla)
+                    ataj_a, ataj_b   = proyectar_metrica(df, ea, eb, "Atajadas del arquero", True, tabla)
+                    quit_a, quit_b   = proyectar_metrica(df, ea, eb, "Quites", True, tabla)
+                    inter_a, inter_b = proyectar_metrica(df, ea, eb, "Intercepciones", True, tabla)
+                    desp_a, desp_b   = proyectar_metrica(df, ea, eb, "Despejes", True, tabla)
+                    tda_a, tda_b     = proyectar_metrica(df, ea, eb, "Tiros dentro del área", True, tabla)
 
                     if rota_local:
                         pos_a *= 0.9  
@@ -1164,7 +1169,9 @@ elif nav == "Simulador de Jornada":
                         "Arco_Favor": arco_a, "Arco_Contra": arco_b, "Ocasiones_Favor": ocas_a, "Ocasiones_Contra": ocas_b,
                         "Posesion": pos_a, "Corners_Favor": corn_a, "Regates_pct": reg_a,
                         "Precision_Pases": (pp_a / pt_a * 100) if pt_a > 0 else 0.0,
-                        "Goles_Evitados": gev_a, "xGOT_Contra": xgot_b,
+                        "Goles_Evitados": gev_a, "xGOT_Contra": xgot_b, "Atajadas": ataj_a,
+                        "Quites": quit_a, "Intercepciones": inter_a, "Despejes": desp_a,
+                        "Tiros_Area_Favor": tda_a,
                     })
                     
                     resultados_jornada.append({
@@ -1174,7 +1181,9 @@ elif nav == "Simulador de Jornada":
                         "Arco_Favor": arco_b, "Arco_Contra": arco_a, "Ocasiones_Favor": ocas_b, "Ocasiones_Contra": ocas_a,
                         "Posesion": pos_b, "Corners_Favor": corn_b, "Regates_pct": reg_b,
                         "Precision_Pases": (pp_b / pt_b * 100) if pt_b > 0 else 0.0,
-                        "Goles_Evitados": gev_b, "xGOT_Contra": xgot_a,
+                        "Goles_Evitados": gev_b, "xGOT_Contra": xgot_a, "Atajadas": ataj_b,
+                        "Quites": quit_b, "Intercepciones": inter_b, "Despejes": desp_b,
+                        "Tiros_Area_Favor": tda_b,
                     })
             
             df_res = pd.DataFrame(resultados_jornada)
@@ -1190,76 +1199,65 @@ elif nav == "Simulador de Jornada":
                     temp = temp.rename(columns=rename_dict)
                 return temp
 
-            st.markdown('<div class="section-header">📊 Rankings de la Jornada (Clasificación General)</div>', unsafe_allow_html=True)
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                st.markdown("### 📈 Prob. de Victoria")
-                df_vic = format_ranking(df_res, "Prob_Victoria", False, 
+            st.markdown('<div class="section-header">📊 Rankings de la Jornada — Por Zona de Cancha</div>', unsafe_allow_html=True)
+
+            tab_gen, tab_ark, tab_def, tab_med, tab_ata = st.tabs([
+                "🏆 General", "🧤 Portería", "🛡️ Defensa", "🧭 Mediocampo", "⚔️ Ataque"
+            ])
+
+            with tab_gen:
+                df_vic = format_ranking(df_res, "Prob_Victoria", False,
                                         ["Prob_Victoria", "xG_Favor", "xG_Contra", "Condición", "Rival"],
                                         {"Prob_Victoria": "Prob. de Ganar"})
-                st.dataframe(df_vic.style.format({"Prob. de Ganar": "{:.1%}", "xG_Favor": "{:.2f}", "xG_Contra": "{:.2f}"}), 
-                             hide_index=True, use_container_width=True, height=280)
+                st.dataframe(df_vic.style.format({"Prob. de Ganar": "{:.1%}", "xG_Favor": "{:.2f}", "xG_Contra": "{:.2f}"}),
+                             hide_index=True, use_container_width=True, height=320)
 
-            with col2:
-                st.markdown("### 🧤 Posible Mejor Arquero")
-                df_arq = format_ranking(df_res, "Indice_Arquero", False, 
-                                        ["Indice_Arquero", "Goles_Evitados", "xGOT_Contra", "Rival"],
-                                        {"Indice_Arquero": "Índice", "Goles_Evitados": "Goles Evitados", "xGOT_Contra": "xGOT Enfrentado"})
-                st.dataframe(df_arq.style.format({"Índice": "{:.2f}", "Goles Evitados": "{:.2f}", "xGOT Enfrentado": "{:.2f}"}), 
-                             hide_index=True, use_container_width=True, height=280)
+            with tab_ark:
+                st.caption("Ordenado por Índice de Arquero (Goles Evitados ajustado por xGOT enfrentado)")
+                df_arq = format_ranking(df_res, "Indice_Arquero", False,
+                                        ["Indice_Arquero", "Goles_Evitados", "Atajadas", "xGOT_Contra", "Arco_Contra", "Rival"],
+                                        {"Indice_Arquero": "Índice", "Goles_Evitados": "Goles Evitados",
+                                         "Atajadas": "Atajadas Proy.", "xGOT_Contra": "xGOT Enfrentado",
+                                         "Arco_Contra": "Tiros al Arco Recibidos"})
+                st.dataframe(df_arq.style.format({
+                    "Índice": "{:.2f}", "Goles Evitados": "{:.2f}", "Atajadas Proy.": "{:.1f}",
+                    "xGOT Enfrentado": "{:.2f}", "Tiros al Arco Recibidos": "{:.1f}",
+                }), hide_index=True, use_container_width=True, height=320)
 
-            st.markdown("<br>", unsafe_allow_html=True)
-            col3, col4 = st.columns(2)
-            with col3:
-                st.markdown("### 🛡️ Posible Mejor Defensa")
-                df_def = format_ranking(df_res, "xG_Contra", True, 
-                                        ["xG_Contra", "Ocasiones_Contra", "Tiros_Contra", "Rival"],
-                                        {"xG_Contra": "xG Concedido", "Ocasiones_Contra": "Ocasiones Concedidas", "Tiros_Contra": "Tiros Concedidos"})
-                st.dataframe(df_def.style.format({"xG Concedido": "{:.2f}", "Ocasiones Concedidas": "{:.1f}", "Tiros Concedidos": "{:.1f}"}), 
-                             hide_index=True, use_container_width=True, height=280)
+            with tab_def:
+                st.caption("Ordenado por xG concedido (menor = mejor defensa proyectada)")
+                df_def = format_ranking(df_res, "xG_Contra", True,
+                                        ["xG_Contra", "Ocasiones_Contra", "Tiros_Contra", "Quites", "Intercepciones", "Despejes", "Rival"],
+                                        {"xG_Contra": "xG Concedido", "Ocasiones_Contra": "Ocasiones Concedidas",
+                                         "Tiros_Contra": "Tiros Concedidos", "Quites": "Quites Proy.",
+                                         "Intercepciones": "Intercepciones Proy.", "Despejes": "Despejes Proy."})
+                st.dataframe(df_def.style.format({
+                    "xG Concedido": "{:.2f}", "Ocasiones Concedidas": "{:.1f}", "Tiros Concedidos": "{:.1f}",
+                    "Quites Proy.": "{:.1f}", "Intercepciones Proy.": "{:.1f}", "Despejes Proy.": "{:.1f}",
+                }), hide_index=True, use_container_width=True, height=320)
 
-            with col4:
-                st.markdown("### 🧭 Posible Mejor Medio")
-                df_med = format_ranking(df_res, "Posesion", False, 
-                                        ["Posesion", "xG_Favor", "xG_Contra", "Rival"],
-                                        {"Posesion": "Posesión %", "xG_Favor": "xG Generado", "xG_Contra": "xG Concedido"})
-                st.dataframe(df_med.style.format({"Posesión %": "{:.1f}%", "xG Generado": "{:.2f}", "xG Concedido": "{:.2f}"}), 
-                             hide_index=True, use_container_width=True, height=280)
-            
-            st.markdown("<br>", unsafe_allow_html=True)
-            col5, col6 = st.columns(2)
-            with col5:
-                st.markdown("### ⚔️ Posible Mejor Delantera")
-                df_del = format_ranking(df_res, "xG_Favor", False, 
-                                        ["xG_Favor", "Ocasiones_Favor", "Arco_Favor", "Rival"],
-                                        {"xG_Favor": "xG Generado", "Ocasiones_Favor": "Ocasiones Creadas", "Arco_Favor": "Tiros al Arco a Favor"})
-                st.dataframe(df_del.style.format({"xG Generado": "{:.2f}", "Ocasiones Creadas": "{:.1f}", "Tiros al Arco a Favor": "{:.1f}"}), 
-                             hide_index=True, use_container_width=True, height=280)
-            with col6:
-                st.markdown("### 🚩 Mejor Estratega de Pelota Parada")
-                df_corn = format_ranking(df_res, "Corners_Favor", False,
-                                        ["Corners_Favor", "Precision_Pases", "Rival"],
-                                        {"Corners_Favor": "Córners a Favor", "Precision_Pases": "Precisión de Pase %"})
-                st.dataframe(df_corn.style.format({"Córners a Favor": "{:.1f}", "Precisión de Pase %": "{:.1f}%"}),
-                             hide_index=True, use_container_width=True, height=280)
+            with tab_med:
+                st.caption("Ordenado por posesión proyectada")
+                df_med = format_ranking(df_res, "Posesion", False,
+                                        ["Posesion", "Precision_Pases", "Corners_Favor", "Regates_pct", "Rival"],
+                                        {"Posesion": "Posesión %", "Precision_Pases": "Precisión de Pase %",
+                                         "Corners_Favor": "Córners a Favor", "Regates_pct": "% Regates Exitosos"})
+                st.dataframe(df_med.style.format({
+                    "Posesión %": "{:.1f}%", "Precisión de Pase %": "{:.1f}%",
+                    "Córners a Favor": "{:.1f}", "% Regates Exitosos": "{:.1f}%",
+                }), hide_index=True, use_container_width=True, height=320)
 
-            st.markdown("<br>", unsafe_allow_html=True)
-            col7, col8 = st.columns(2)
-            with col7:
-                st.markdown("### 🏃 Mayor % de Éxito en Regates")
-                df_reg = format_ranking(df_res, "Regates_pct", False,
-                                        ["Regates_pct", "Posesion", "Rival"],
-                                        {"Regates_pct": "% Regates Exitosos", "Posesion": "Posesión %"})
-                st.dataframe(df_reg.style.format({"% Regates Exitosos": "{:.1f}%", "Posesión %": "{:.1f}%"}),
-                             hide_index=True, use_container_width=True, height=280)
-            with col8:
-                st.markdown("### 🎯 Mayor Precisión de Pase")
-                df_pas = format_ranking(df_res, "Precision_Pases", False,
-                                        ["Precision_Pases", "Posesion", "Rival"],
-                                        {"Precision_Pases": "Precisión de Pase %", "Posesion": "Posesión %"})
-                st.dataframe(df_pas.style.format({"Precisión de Pase %": "{:.1f}%", "Posesión %": "{:.1f}%"}),
-                             hide_index=True, use_container_width=True, height=280)
+            with tab_ata:
+                st.caption("Ordenado por xG generado proyectado")
+                df_del = format_ranking(df_res, "xG_Favor", False,
+                                        ["xG_Favor", "Ocasiones_Favor", "Arco_Favor", "Tiros_Area_Favor", "Tiros_Favor", "Rival"],
+                                        {"xG_Favor": "xG Generado", "Ocasiones_Favor": "Ocasiones Creadas",
+                                         "Arco_Favor": "Tiros al Arco a Favor", "Tiros_Area_Favor": "Tiros Dentro del Área",
+                                         "Tiros_Favor": "Tiros Totales"})
+                st.dataframe(df_del.style.format({
+                    "xG Generado": "{:.2f}", "Ocasiones Creadas": "{:.1f}", "Tiros al Arco a Favor": "{:.1f}",
+                    "Tiros Dentro del Área": "{:.1f}", "Tiros Totales": "{:.1f}",
+                }), hide_index=True, use_container_width=True, height=320)
 
 elif nav == "Métricas Globales":
     st.markdown('<div class="section-header">Rankings de Rendimiento</div>', unsafe_allow_html=True)
