@@ -319,34 +319,21 @@ def _league_stats(df):
 def _strength(df_actual, eq, target_cond, league, max_fecha_torneo: int, tabla: pd.DataFrame):
     d_eq = df_actual[df_actual["Equipo"] == eq]
     
+    # El motor vuelve a su esencia predictiva fuerte: Goles reales y xG.
     g_atk = _adjusted_rate(d_eq, "Resultado", "Propio", max_fecha_torneo, tabla, is_attack=True, target_cond=target_cond)
-    x_atk = _adjusted_rate(d_eq, "xG_Model", "Propio", max_fecha_torneo, tabla, is_attack=True, target_cond=target_cond)
+    x_atk = _adjusted_rate(d_eq, "xG_Estimado", "Propio", max_fecha_torneo, tabla, is_attack=True, target_cond=target_cond)
     g_def = _adjusted_rate(d_eq, "Resultado", "Concedido", max_fecha_torneo, tabla, is_attack=False, target_cond=target_cond)
-    x_def = _adjusted_rate(d_eq, "xG_Model", "Concedido", max_fecha_torneo, tabla, is_attack=False, target_cond=target_cond)
-    
-    tiros_arco = _adjusted_rate(d_eq, "Tiros al arco", "Propio", max_fecha_torneo, tabla, is_attack=True, target_cond=target_cond)
-    goles_evitados = _adjusted_rate(d_eq, "Goles evitados (arquero)", "Propio", max_fecha_torneo, tabla, is_attack=False, target_cond=target_cond)
-    intercepciones = _adjusted_rate(d_eq, "Intercepciones", "Propio", max_fecha_torneo, tabla, is_attack=False, target_cond=target_cond)
+    x_def = _adjusted_rate(d_eq, "xG_Estimado", "Concedido", max_fecha_torneo, tabla, is_attack=False, target_cond=target_cond)
     
     n_s = len(d_eq[d_eq["Métrica"] == "Resultado"])
-    
-    def combine_atk(g, x, tiros):
-        if np.isnan(g) and np.isnan(x): return np.nan
-        val_base = W_XG * (x if not np.isnan(x) else g) + (1 - W_XG) * (g if not np.isnan(g) else x)
-        # Bonus contenido: máximo +/- 5% según volumen de tiros, para no desvirtuar a los que tiran poco pero eficiente.
-        bonus_tiros = 1.0 + (min(max((tiros - 4.5) / 100.0, -0.05), 0.05) if not np.isnan(tiros) else 0)
-        return val_base * bonus_tiros
 
-    def combine_def(g, x, evitados, intercep):
+    def combine(g, x):
         if np.isnan(g) and np.isnan(x): return np.nan
-        val_base = W_XG * (x if not np.isnan(x) else g) + (1 - W_XG) * (g if not np.isnan(g) else x)
-        # Bonus contenido: no castiga a los equipos grandes de posesión que no necesitan interceptar.
-        bonus_arquero = min(max(evitados * 0.05, -0.05), 0.05) if not np.isnan(evitados) else 0
-        bonus_defensa = min(max((intercep - 12) * 0.005, -0.05), 0.05) if not np.isnan(intercep) else 0
-        return max(val_base - bonus_arquero - bonus_defensa, 0.1)
+        if np.isnan(x): return g
+        if np.isnan(g): return x
+        return W_XG * x + (1 - W_XG) * g
 
-    atk_val = combine_atk(g_atk, x_atk, tiros_arco)
-    def_val = combine_def(g_def, x_def, goles_evitados, intercepciones)
+    atk_val, def_val = combine(g_atk, x_atk), combine(g_def, x_def)
     
     rh, ra = league["ref_home"], league["ref_away"]
     ref_f, ref_a = (rh, ra) if target_cond == "Local" else (ra, rh)
@@ -355,14 +342,19 @@ def _strength(df_actual, eq, target_cond, league, max_fecha_torneo: int, tabla: 
     def_obs = (def_val / ref_a) if (not np.isnan(def_val) and ref_a > 0) else np.nan
     
     prior_atk, prior_def = _get_prior(tabla, eq)
-    n_effective = min(n_s if n_s > 0 else 0, 15)
+    
+    n = n_s if n_s > 0 else 0
+    n_effective = min(n, 15)
     
     atk_obs = atk_obs if not np.isnan(atk_obs) else prior_atk
     def_obs = def_obs if not np.isnan(def_obs) else prior_def
     
+    # Restauramos un K_PRIOR de 10.0 en la cabecera del archivo si no lo hiciste, 
+    # para que la jerarquía de plantilla imponga respeto.
     atk_post = (n_effective * atk_obs  + K_PRIOR * prior_atk) / (n_effective + K_PRIOR)
     def_post = (n_effective * def_obs  + K_PRIOR * prior_def) / (n_effective + K_PRIOR)
-    return atk_post, def_post, n_s
+    
+    return atk_post, def_post, n
 
 def calcular_lambdas(df, eq_a, eq_b, es_loc, tabla):
     df_actual = df[df["Categoria"] == "Actual"]
@@ -1141,26 +1133,28 @@ elif nav == "Simulador de Jornada":
                 }), hide_index=True, use_container_width=True, height=320)
 
             with tab_med:
-                st.caption("Ordenado por posesión proyectada")
+                st.caption("Ordenado por control del juego y recuperación")
+                # Limpiamos córners y regates. Sumamos intercepciones y quites al medio.
                 df_med = format_ranking(df_res, "Posesion", False,
-                                        ["Posesion", "Precision_Pases", "Corners_Favor", "Regates_pct", "Rival"],
+                                        ["Posesion", "Precision_Pases", "Quites", "Intercepciones", "Rival"],
                                         {"Posesion": "Posesión %", "Precision_Pases": "Precisión de Pase %",
-                                         "Corners_Favor": "Córners a Favor", "Regates_pct": "% Regates Exitosos"})
+                                         "Quites": "Quites Proy.", "Intercepciones": "Intercepciones Proy."})
                 st.dataframe(df_med.style.format({
                     "Posesión %": "{:.1f}%", "Precisión de Pase %": "{:.1f}%",
-                    "Córners a Favor": "{:.1f}", "% Regates Exitosos": "{:.1f}%",
+                    "Quites Proy.": "{:.1f}", "Intercepciones Proy.": "{:.1f}"
                 }), hide_index=True, use_container_width=True, height=320)
 
             with tab_ata:
                 st.caption("Ordenado por xG generado proyectado")
+                # Mudamos los córners y regates a la sección de desequilibrio ofensivo
                 df_del = format_ranking(df_res, "xG_Favor", False,
-                                        ["xG_Favor", "Ocasiones_Favor", "Arco_Favor", "Tiros_Area_Favor", "Tiros_Favor", "Rival"],
+                                        ["xG_Favor", "Ocasiones_Favor", "Arco_Favor", "Tiros_Area_Favor", "Corners_Favor", "Regates_pct", "Rival"],
                                         {"xG_Favor": "xG Generado", "Ocasiones_Favor": "Ocasiones Creadas",
-                                         "Arco_Favor": "Tiros al Arco a Favor", "Tiros_Area_Favor": "Tiros Dentro del Área",
-                                         "Tiros_Favor": "Tiros Totales"})
+                                         "Arco_Favor": "Tiros al Arco", "Tiros_Area_Favor": "Tiros en Área",
+                                         "Corners_Favor": "Córners Proy.", "Regates_pct": "% Regates Exitosos"})
                 st.dataframe(df_del.style.format({
-                    "xG Generado": "{:.2f}", "Ocasiones Creadas": "{:.1f}", "Tiros al Arco a Favor": "{:.1f}",
-                    "Tiros Dentro del Área": "{:.1f}", "Tiros Totales": "{:.1f}",
+                    "xG Generado": "{:.2f}", "Ocasiones Creadas": "{:.1f}", "Tiros al Arco": "{:.1f}",
+                    "Tiros en Área": "{:.1f}", "Córners Proy.": "{:.1f}", "% Regates Exitosos": "{:.1f}%"
                 }), hide_index=True, use_container_width=True, height=320)
 
 elif nav == "Métricas Globales":
