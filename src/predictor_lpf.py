@@ -751,12 +751,66 @@ elif nav == "Simulador de Jornada":
     
     PENALIDAD_XG = 0.35 
 
+elif nav == "Simulador de Jornada":
+    st.markdown('<div class="section-header">Simulador de Jornada Avanzado</div>', unsafe_allow_html=True)
+    
+    # CARGA AISLADA DEL HISTÓRICO EXCLUSIVAMENTE PARA EL FIXTURE
+    ruta_apertura_fija = "data/historico/apertura26.xlsx"
+    df_fixture_temp = None
+    
+    if os.path.exists(ruta_apertura_fija):
+        xl_apertura = pd.ExcelFile(ruta_apertura_fija, engine="openpyxl")
+        datos_fixture = {}
+        for hoja in xl_apertura.sheet_names:
+            if re.search(r"fecha\s*\d+", hoja, re.IGNORECASE):
+                df_h = pd.read_excel(xl_apertura, sheet_name=hoja, header=None)
+                datos_fixture[f"Histórico||Apertura||{hoja}"] = _procesar_dataframe(df_h)
+        if datos_fixture:
+            df_fixture_temp = construir_df(datos_fixture)
+
+    if df_fixture_temp is None or df_fixture_temp.empty:
+        st.warning("⚠️ No se pudo cargar automáticamente el archivo histórico en `data/historico/apertura26.xlsx` para invertir el fixture. Usando datos actuales.")
+        df_fixture_temp = df
+
+    fechas_disponibles = sorted(df_fixture_temp["nFecha"].unique())
+    
+    c1, c2 = st.columns([1, 3])
+    jornada_elegida = c1.selectbox("Seleccionar Fecha del Fixture a Invertir:", fechas_disponibles)
+    
+    df_fecha_apertura = df_fixture_temp[
+        (df_fixture_temp["nFecha"] == jornada_elegida) & 
+        (df_fixture_temp["Condicion"] == "Local") &
+        (df_fixture_temp["Métrica"] == "Resultado")
+    ].drop_duplicates(subset=["Equipo", "Rival"])
+    
+    # Se invierten Local y Visitante
+    cruces_validos = pd.DataFrame({
+        "Rotación L": False,                             
+        "Local": df_fecha_apertura["Rival"].values,      
+        "Visitante": df_fecha_apertura["Equipo"].values, 
+        "Rotación V": False                              
+    })
+    
+    c2.write(f"**Partidos de la Fecha {jornada_elegida} (Localías Invertidas para el Clausura)**")
+    
+    cruces_editados = c2.data_editor(
+        cruces_validos,
+        column_config={
+            "Rotación L": st.column_config.CheckboxColumn("Rotación 🔄", default=False),
+            "Rotación V": st.column_config.CheckboxColumn("Rotación 🔄", default=False),
+        },
+        hide_index=True,
+        use_container_width=True
+    )
+    
+    PENALIDAD_XG = 0.35 
+
     if st.button("SIMULAR JORNADA COMPLETA (Métricas Extendidas)"):
         if len(cruces_editados) == 0:
             st.warning("⚠️ No hay partidos para simular.")
         else:
             resultados = []
-            with st.spinner(f"Procesando fixture, rotaciones y proyecciones para la Fecha {jornada_elegida}..."):
+            with st.spinner(f"Procesando fixture, rotaciones y proyecciones completas para la Fecha {jornada_elegida}..."):
                 for _, row in cruces_editados.iterrows():
                     ea, eb = row["Local"], row["Visitante"]
                     if ea == eb: continue
@@ -775,7 +829,7 @@ elif nav == "Simulador de Jornada":
                     pos_a, pos_b = proyectar_metrica(df, ea, eb, "Posesión de balón", True, tabla)
                     if rota_local: pos_a *= 0.9  
                     if rota_visitante: pos_b *= 0.9
-                    pos_a, pos_b = ((pos_a / (pos_a + pos_b)), (pos_b / (pos_a + pos_b))) if (pos_a + pos_b) > 0 else (0.5, 0.5)
+                    pos_a, pos_b = ((pos_a / (pos_a + pos_b)) * 100, (pos_b / (pos_a + pos_b)) * 100) if (pos_a + pos_b) > 0 else (50.0, 50.0)
 
                     # Ofensivas
                     arco_a, arco_b = proyectar_metrica(df, ea, eb, "Tiros al arco", True, tabla)
@@ -787,38 +841,87 @@ elif nav == "Simulador de Jornada":
                     if rota_visitante: 
                         arco_b *= 0.8; xgot_b *= 0.8; oc_b *= 0.8
                     
-                    # Defensivas
+                    # Defensivas y Arquero
                     desp_a, desp_b = proyectar_metrica(df, ea, eb, "Despejes", True, tabla)
                     inter_a, inter_b = proyectar_metrica(df, ea, eb, "Intercepciones", True, tabla)
                     govit_a, govit_b = proyectar_metrica(df, ea, eb, "Goles evitados (arquero)", True, tabla)
+                    quites_a, quites_b = proyectar_metrica(df, ea, eb, "Quites", True, tabla)
+                    
+                    # Creación y Medio
+                    pases_a, pases_b = proyectar_metrica(df, ea, eb, "Pases precisos", True, tabla)
                         
-                    resultados.append({"Equipo": ea, "Condición": "Local", "Rival": eb, "Prob": sim["victoria"], "xG": la, "xGC": lb, "xGOT": xgot_a, "xGOT_C": xgot_b, "Despejes": desp_a, "Intercepciones": inter_a, "Pos": pos_a, "Goles_Evitados": govit_a, "Arco": arco_a, "Ocasiones": oc_a})
-                    resultados.append({"Equipo": eb, "Condición": "Visitante", "Rival": ea, "Prob": sim["derrota"], "xG": lb, "xGC": la, "xGOT": xgot_b, "xGOT_C": xgot_a, "Despejes": desp_b, "Intercepciones": inter_b, "Pos": pos_b, "Goles_Evitados": govit_b, "Arco": arco_b, "Ocasiones": oc_b})
+                    resultados.append({
+                        "Equipo": ea, "Condición": "Local", "Rival": eb, 
+                        "Prob": sim["victoria"] * 100, "xG": la, "xGC": lb, "xGOT": xgot_a, "xGOT_C": xgot_b, 
+                        "Despejes": desp_a, "Intercepciones": inter_a, "Quites": quites_a, 
+                        "Pos": pos_a, "Pases_Prec": pases_a, "Goles_Evitados": govit_a, 
+                        "Arco": arco_a, "Ocasiones": oc_a
+                    })
+                    resultados.append({
+                        "Equipo": eb, "Condición": "Visitante", "Rival": ea, 
+                        "Prob": sim["derrota"] * 100, "xG": lb, "xGC": la, "xGOT": xgot_b, "xGOT_C": xgot_a, 
+                        "Despejes": desp_b, "Intercepciones": inter_b, "Quites": quites_b,
+                        "Pos": pos_b, "Pases_Prec": pases_b, "Goles_Evitados": govit_b, 
+                        "Arco": arco_b, "Ocasiones": oc_b
+                    })
             
             df_res = pd.DataFrame(resultados)
             
             st.markdown('<div class="section-header">📊 Rankings de la Jornada (UI Data Science)</div>', unsafe_allow_html=True)
             
+            # FILA 1: Probabilidades y Delanteros
             col1, col2 = st.columns(2)
             with col1:
                 st.markdown("### 📈 Probabilidad de Victoria")
                 df_vic = df_res[["Equipo", "Prob", "xG", "xGC", "Rival"]].sort_values("Prob", ascending=False)
-                st.dataframe(df_vic, column_config={"Prob": st.column_config.ProgressColumn("Prob. Ganar", format="%.1f%%", min_value=0, max_value=1), "xG": st.column_config.NumberColumn(format="%.2f"), "xGC": st.column_config.NumberColumn("xG Concedido", format="%.2f")}, hide_index=True, use_container_width=True, height=280)
+                st.dataframe(df_vic, column_config={
+                    "Prob": st.column_config.ProgressColumn("Prob. Ganar", format="%.2f%%", min_value=0, max_value=100), 
+                    "xG": st.column_config.NumberColumn(format="%.2f"), 
+                    "xGC": st.column_config.NumberColumn("xG Concedido", format="%.2f")
+                }, hide_index=True, use_container_width=True, height=280)
+            
             with col2:
-                st.markdown("### 🧤 Ranking de Arqueros (Goles Evitados)")
-                df_arq = df_res[["Equipo", "Goles_Evitados", "xGOT_C", "Rival"]].sort_values("Goles_Evitados", ascending=False)
-                st.dataframe(df_arq, column_config={"Goles_Evitados": st.column_config.NumberColumn("Goles Evitados", format="%.2f"), "xGOT_C": st.column_config.NumberColumn("xGOT que recibe", format="%.2f")}, hide_index=True, use_container_width=True, height=280)
-
-            st.markdown("<br>", unsafe_allow_html=True)
-            col3, col4 = st.columns(2)
-            with col3:
-                st.markdown("### 🛡️ Muro Defensivo (Intercepciones + Despejes)")
-                df_def = df_res[["Equipo", "Intercepciones", "Despejes", "xGC", "Rival"]].sort_values("Intercepciones", ascending=False)
-                st.dataframe(df_def, column_config={"Intercepciones": st.column_config.NumberColumn(format="%.1f"), "Despejes": st.column_config.NumberColumn(format="%.1f"), "xGC": st.column_config.NumberColumn("xG Concedido", format="%.2f")}, hide_index=True, use_container_width=True, height=280)
-            with col4:
                 st.markdown("### ⚔️ Mejores Delanteras (xG y Ocasiones)")
                 df_del = df_res[["Equipo", "xG", "Ocasiones", "Arco", "Rival"]].sort_values("xG", ascending=False)
-                st.dataframe(df_del, column_config={"xG": st.column_config.NumberColumn("xG a Favor", format="%.2f"), "Ocasiones": st.column_config.NumberColumn("Ocasiones Claras", format="%.1f"), "Arco": st.column_config.NumberColumn("Tiros al Arco", format="%.1f")}, hide_index=True, use_container_width=True, height=280)
+                st.dataframe(df_del, column_config={
+                    "xG": st.column_config.NumberColumn("xG a Favor", format="%.2f"), 
+                    "Ocasiones": st.column_config.NumberColumn("Ocasiones Claras", format="%.1f"), 
+                    "Arco": st.column_config.NumberColumn("Tiros al Arco", format="%.1f")
+                }, hide_index=True, use_container_width=True, height=280)
+
+            st.markdown("<br>", unsafe_allow_html=True)
+            
+            # FILA 2: Medios y Defensas
+            col3, col4 = st.columns(2)
+            with col3:
+                st.markdown("### 🧭 Dominio del Medio (Posesión y Pases)")
+                df_med = df_res[["Equipo", "Pos", "Pases_Prec", "Quites", "Rival"]].sort_values("Pos", ascending=False)
+                st.dataframe(df_med, column_config={
+                    "Pos": st.column_config.ProgressColumn("Posesión", format="%.1f%%", min_value=0, max_value=100),
+                    "Pases_Prec": st.column_config.NumberColumn("Pases Precisos", format="%.0f"),
+                    "Quites": st.column_config.NumberColumn("Quites", format="%.1f")
+                }, hide_index=True, use_container_width=True, height=280)
+
+            with col4:
+                st.markdown("### 🛡️ Muro Defensivo (Intercepciones + Despejes)")
+                df_def = df_res[["Equipo", "Intercepciones", "Despejes", "xGC", "Rival"]].sort_values("Intercepciones", ascending=False)
+                st.dataframe(df_def, column_config={
+                    "Intercepciones": st.column_config.NumberColumn(format="%.1f"), 
+                    "Despejes": st.column_config.NumberColumn(format="%.1f"), 
+                    "xGC": st.column_config.NumberColumn("xG Concedido", format="%.2f")
+                }, hide_index=True, use_container_width=True, height=280)
+
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            # FILA 3: Arqueros
+            col5, col6 = st.columns([1, 1])
+            with col5:
+                st.markdown("### 🧤 Ranking de Arqueros (Goles Evitados)")
+                df_arq = df_res[["Equipo", "Goles_Evitados", "xGOT_C", "Rival"]].sort_values("Goles_Evitados", ascending=False)
+                st.dataframe(df_arq, column_config={
+                    "Goles_Evitados": st.column_config.NumberColumn("Goles Evitados", format="%.2f"), 
+                    "xGOT_C": st.column_config.NumberColumn("xGOT que recibe", format="%.2f")
+                }, hide_index=True, use_container_width=True, height=280)
 elif nav == "Métricas Globales":
     st.markdown('<div class="section-header">Rankings de Rendimiento</div>', unsafe_allow_html=True)
     c1, c2, c3 = st.columns(3)
