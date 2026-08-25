@@ -1134,17 +1134,26 @@ elif nav == "Simulador de Jornada":
                     "xGOT en Contra (Ejecución)": "{:.2f}"
                 }), hide_index=True, use_container_width=True, height=320)
             with tab_def:
-                st.caption("Ordenado por xG concedido (menor = mejor defensa proyectada)")
+                st.caption("Ordenado por xG Concedido (Menor = mejor defensa). Las acciones defensivas son solo contexto de estilo.")
                 df_def = format_ranking(df_res, "xG_Contra", True,
-                                        ["xG_Contra", "Ocasiones_Contra", "Tiros_Contra", "Quites", "Intercepciones", "Despejes", "Rival"],
-                                        {"xG_Contra": "xG Concedido", "Ocasiones_Contra": "Ocasiones Concedidas",
-                                         "Tiros_Contra": "Tiros Concedidos", "Quites": "Quites Proy.",
-                                         "Intercepciones": "Intercepciones Proy.", "Despejes": "Despejes Proy."})
+                                        ["xG_Contra", "Ocasiones_Contra", "Arco_Contra", "Tiros_Contra", "Quites", "Intercepciones", "Despejes", "Rival"],
+                                        {"xG_Contra": "xG Concedido", 
+                                         "Ocasiones_Contra": "Ocasiones Conced.",
+                                         "Arco_Contra": "Tiros al Arco Recibidos",
+                                         "Tiros_Contra": "Tiros Tot. Recibidos", 
+                                         "Quites": "Quites",
+                                         "Intercepciones": "Intercepc.", 
+                                         "Despejes": "Despejes"})
+                
                 st.dataframe(df_def.style.format({
-                    "xG Concedido": "{:.2f}", "Ocasiones Concedidas": "{:.1f}", "Tiros Concedidos": "{:.1f}",
-                    "Quites Proy.": "{:.1f}", "Intercepciones Proy.": "{:.1f}", "Despejes Proy.": "{:.1f}",
+                    "xG Concedido": "{:.2f}", 
+                    "Ocasiones Conced.": "{:.1f}", 
+                    "Tiros al Arco Recibidos": "{:.1f}",
+                    "Tiros Tot. Recibidos": "{:.1f}",
+                    "Quites": "{:.1f}", 
+                    "Intercepc.": "{:.1f}", 
+                    "Despejes": "{:.1f}",
                 }), hide_index=True, use_container_width=True, height=320)
-
             with tab_med:
                 st.caption("Ordenado por control del juego y recuperación")
                 # Limpiamos córners y regates. Sumamos intercepciones y quites al medio.
