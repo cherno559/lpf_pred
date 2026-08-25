@@ -699,7 +699,7 @@ if nav == "Predicción de Partidos":
         st.plotly_chart(fig_score_matrix(sim["matrix"], ea, eb), use_container_width=True)
 
 elif nav == "Simulador de Jornada":
-    st.markdown('<div class="section-header">Simulador de Jornada Automático (Inversión de Fixture)</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-header">Simulador de Jornada Avanzado</div>', unsafe_allow_html=True)
     
     # CARGA AISLADA DEL HISTÓRICO EXCLUSIVAMENTE PARA EL FIXTURE
     ruta_apertura_fija = "data/historico/apertura26.xlsx"
@@ -760,7 +760,7 @@ elif nav == "Simulador de Jornada":
             st.warning("⚠️ No hay partidos para simular.")
         else:
             resultados = []
-            with st.spinner(f"Procesando fixture, rotaciones y proyecciones completas para la Fecha {jornada_elegida}..."):
+            with st.spinner(f"Procesando proyecciones y rankeando con evaluación holística para la Fecha {jornada_elegida}..."):
                 for _, row in cruces_editados.iterrows():
                     ea, eb = row["Local"], row["Visitante"]
                     if ea == eb: continue
@@ -812,12 +812,25 @@ elif nav == "Simulador de Jornada":
             
             df_res = pd.DataFrame(resultados)
             
+            # --- LÓGICA DE ORDENAMIENTO HOLÍSTICO (DATA SCIENCE SCALING) ---
+            # Normalizamos de 0 a 1 para poder sumar métricas de distinta escala (ej: % vs cantidad de pases)
+            def minmax(col):
+                return (col - col.min()) / (col.max() - col.min() + 1e-9)
+
+            df_res["Score_Vic"] = minmax(df_res["Prob"]) + minmax(df_res["xG"]) - minmax(df_res["xGC"])
+            df_res["Score_Del"] = minmax(df_res["xG"]) * 0.5 + minmax(df_res["Ocasiones"]) * 0.3 + minmax(df_res["Arco"]) * 0.2
+            df_res["Score_Med"] = minmax(df_res["Pos"]) * 0.4 + minmax(df_res["Pases_Prec"]) * 0.4 + minmax(df_res["Quites"]) * 0.2
+            # En defensa, restar el xGC (Goles Esperados en Contra) mejora el score
+            df_res["Score_Def"] = minmax(df_res["Intercepciones"]) * 0.4 + minmax(df_res["Despejes"]) * 0.3 - minmax(df_res["xGC"]) * 0.3
+            df_res["Score_Arq"] = minmax(df_res["Goles_Evitados"]) * 0.7 + minmax(df_res["xGOT_C"]) * 0.3
+            
             st.markdown('<div class="section-header">📊 Rankings de la Jornada (UI Data Science)</div>', unsafe_allow_html=True)
             
+            # FILA 1: Probabilidades y Delanteros
             col1, col2 = st.columns(2)
             with col1:
                 st.markdown("### 📈 Probabilidad de Victoria")
-                df_vic = df_res[["Equipo", "Prob", "xG", "xGC", "Rival"]].sort_values("Prob", ascending=False)
+                df_vic = df_res[["Equipo", "Prob", "xG", "xGC", "Rival", "Score_Vic"]].sort_values("Score_Vic", ascending=False).drop(columns=["Score_Vic"])
                 st.dataframe(df_vic, column_config={
                     "Prob": st.column_config.ProgressColumn("Prob. Ganar", format="%.2f%%", min_value=0, max_value=100), 
                     "xG": st.column_config.NumberColumn(format="%.2f"), 
@@ -825,8 +838,8 @@ elif nav == "Simulador de Jornada":
                 }, hide_index=True, use_container_width=True, height=280)
             
             with col2:
-                st.markdown("### ⚔️ Mejores Delanteras (xG y Ocasiones)")
-                df_del = df_res[["Equipo", "xG", "Ocasiones", "Arco", "Rival"]].sort_values("xG", ascending=False)
+                st.markdown("### ⚔️ Mejores Delanteras")
+                df_del = df_res[["Equipo", "xG", "Ocasiones", "Arco", "Rival", "Score_Del"]].sort_values("Score_Del", ascending=False).drop(columns=["Score_Del"])
                 st.dataframe(df_del, column_config={
                     "xG": st.column_config.NumberColumn("xG a Favor", format="%.2f"), 
                     "Ocasiones": st.column_config.NumberColumn("Ocasiones Claras", format="%.1f"), 
@@ -835,10 +848,11 @@ elif nav == "Simulador de Jornada":
 
             st.markdown("<br>", unsafe_allow_html=True)
             
+            # FILA 2: Medios y Defensas
             col3, col4 = st.columns(2)
             with col3:
-                st.markdown("### 🧭 Dominio del Medio (Posesión y Pases)")
-                df_med = df_res[["Equipo", "Pos", "Pases_Prec", "Quites", "Rival"]].sort_values("Pos", ascending=False)
+                st.markdown("### 🧭 Dominio del Medio")
+                df_med = df_res[["Equipo", "Pos", "Pases_Prec", "Quites", "Rival", "Score_Med"]].sort_values("Score_Med", ascending=False).drop(columns=["Score_Med"])
                 st.dataframe(df_med, column_config={
                     "Pos": st.column_config.ProgressColumn("Posesión", format="%.1f%%", min_value=0, max_value=100),
                     "Pases_Prec": st.column_config.NumberColumn("Pases Precisos", format="%.0f"),
@@ -846,8 +860,8 @@ elif nav == "Simulador de Jornada":
                 }, hide_index=True, use_container_width=True, height=280)
 
             with col4:
-                st.markdown("### 🛡️ Muro Defensivo (Intercepciones + Despejes)")
-                df_def = df_res[["Equipo", "Intercepciones", "Despejes", "xGC", "Rival"]].sort_values("Intercepciones", ascending=False)
+                st.markdown("### 🛡️ Muro Defensivo")
+                df_def = df_res[["Equipo", "Intercepciones", "Despejes", "xGC", "Rival", "Score_Def"]].sort_values("Score_Def", ascending=False).drop(columns=["Score_Def"])
                 st.dataframe(df_def, column_config={
                     "Intercepciones": st.column_config.NumberColumn(format="%.1f"), 
                     "Despejes": st.column_config.NumberColumn(format="%.1f"), 
@@ -856,10 +870,11 @@ elif nav == "Simulador de Jornada":
 
             st.markdown("<br>", unsafe_allow_html=True)
 
+            # FILA 3: Arqueros
             col5, col6 = st.columns([1, 1])
             with col5:
-                st.markdown("### 🧤 Ranking de Arqueros (Goles Evitados)")
-                df_arq = df_res[["Equipo", "Goles_Evitados", "xGOT_C", "Rival"]].sort_values("Goles_Evitados", ascending=False)
+                st.markdown("### 🧤 Ranking de Arqueros")
+                df_arq = df_res[["Equipo", "Goles_Evitados", "xGOT_C", "Rival", "Score_Arq"]].sort_values("Score_Arq", ascending=False).drop(columns=["Score_Arq"])
                 st.dataframe(df_arq, column_config={
                     "Goles_Evitados": st.column_config.NumberColumn("Goles Evitados", format="%.2f"), 
                     "xGOT_C": st.column_config.NumberColumn("xGOT que recibe", format="%.2f")
