@@ -1171,16 +1171,21 @@ elif nav == "Simulador de Jornada":
                 }), hide_index=True, use_container_width=True, height=320)
 
             with tab_ata:
-                st.caption("Ordenado por xG generado proyectado")
-                # Mudamos los córners y regates a la sección de desequilibrio ofensivo
+                st.caption("Ordenado por xG Generado. Perfil Ofensivo: volumen de peligro, penetración en el área y puntería.")
                 df_del = format_ranking(df_res, "xG_Favor", False,
-                                        ["xG_Favor", "Ocasiones_Favor", "Arco_Favor", "Tiros_Area_Favor", "Corners_Favor", "Regates_pct", "Rival"],
-                                        {"xG_Favor": "xG Generado", "Ocasiones_Favor": "Ocasiones Creadas",
-                                         "Arco_Favor": "Tiros al Arco", "Tiros_Area_Favor": "Tiros en Área",
-                                         "Corners_Favor": "Córners Proy.", "Regates_pct": "% Regates Exitosos"})
+                                        ["xG_Favor", "Ocasiones_Favor", "Tiros_Area_Favor", "Arco_Favor", "Corners_Favor", "Rival"],
+                                        {"xG_Favor": "xG Generado", 
+                                         "Ocasiones_Favor": "Ocasiones Claras",
+                                         "Tiros_Area_Favor": "Tiros en Área",
+                                         "Arco_Favor": "Tiros al Arco", 
+                                         "Corners_Favor": "Córners Proyectados"})
+                
                 st.dataframe(df_del.style.format({
-                    "xG Generado": "{:.2f}", "Ocasiones Creadas": "{:.1f}", "Tiros al Arco": "{:.1f}",
-                    "Tiros en Área": "{:.1f}", "Córners Proy.": "{:.1f}", "% Regates Exitosos": "{:.1f}%"
+                    "xG Generado": "{:.2f}", 
+                    "Ocasiones Claras": "{:.1f}", 
+                    "Tiros en Área": "{:.1f}",
+                    "Tiros al Arco": "{:.1f}", 
+                    "Córners Proyectados": "{:.1f}"
                 }), hide_index=True, use_container_width=True, height=320)
 
 elif nav == "Métricas Globales":
