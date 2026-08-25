@@ -698,33 +698,94 @@ if nav == "Predicción de Partidos":
         st.plotly_chart(fig_score_matrix(sim["matrix"], ea, eb), use_container_width=True)
 
 elif nav == "Simulador de Jornada":
-    st.markdown('<div class="section-header">Simulador de Jornada Avanzado</div>', unsafe_allow_html=True)
-    df_fixture_temp = df
+    st.markdown('<div class="section-header">Simulador de Jornada Automático (Inversión de Fixture)</div>', unsafe_allow_html=True)
+    
+    # CARGA AISLADA DEL HISTÓRICO EXCLUSIVAMENTE PARA EL FIXTURE
+    ruta_apertura_fija = "data/historico/apertura26.xlsx"
+    df_fixture_temp = None
+    
+    if os.path.exists(ruta_apertura_fija):
+        xl_apertura = pd.ExcelFile(ruta_apertura_fija, engine="openpyxl")
+        datos_fixture = {}
+        for hoja in xl_apertura.sheet_names:
+            if re.search(r"fecha\s*\d+", hoja, re.IGNORECASE):
+                df_h = pd.read_excel(xl_apertura, sheet_name=hoja, header=None)
+                datos_fixture[f"Histórico||Apertura||{hoja}"] = _procesar_dataframe(df_h)
+        if datos_fixture:
+            df_fixture_temp = construir_df(datos_fixture)
+
+    if df_fixture_temp is None or df_fixture_temp.empty:
+        st.warning("⚠️ No se pudo cargar automáticamente el archivo histórico en `data/historico/apertura26.xlsx` para invertir el fixture. Usando datos actuales.")
+        df_fixture_temp = df
+
     fechas_disponibles = sorted(df_fixture_temp["nFecha"].unique())
+    
     c1, c2 = st.columns([1, 3])
-    jornada_elegida = c1.selectbox("Seleccionar Fecha del Fixture:", fechas_disponibles)
+    jornada_elegida = c1.selectbox("Seleccionar Fecha del Fixture a Invertir:", fechas_disponibles)
     
-    df_fecha_apertura = df_fixture_temp[(df_fixture_temp["nFecha"] == jornada_elegida) & (df_fixture_temp["Condicion"] == "Local") & (df_fixture_temp["Métrica"] == "Resultado")].drop_duplicates(subset=["Equipo", "Rival"])
-    cruces_editados = c2.data_editor(pd.DataFrame({"Local": df_fecha_apertura["Equipo"].values, "Visitante": df_fecha_apertura["Rival"].values}), hide_index=True, use_container_width=True)
+    df_fecha_apertura = df_fixture_temp[
+        (df_fixture_temp["nFecha"] == jornada_elegida) & 
+        (df_fixture_temp["Condicion"] == "Local") &
+        (df_fixture_temp["Métrica"] == "Resultado")
+    ].drop_duplicates(subset=["Equipo", "Rival"])
     
+    # Se invierten Local y Visitante
+    cruces_validos = pd.DataFrame({
+        "Rotación L": False,                             
+        "Local": df_fecha_apertura["Rival"].values,      
+        "Visitante": df_fecha_apertura["Equipo"].values, 
+        "Rotación V": False                              
+    })
+    
+    c2.write(f"**Partidos de la Fecha {jornada_elegida} (Localías Invertidas para el Clausura)**")
+    
+    cruces_editados = c2.data_editor(
+        cruces_validos,
+        column_config={
+            "Rotación L": st.column_config.CheckboxColumn("Rotación 🔄", default=False),
+            "Rotación V": st.column_config.CheckboxColumn("Rotación 🔄", default=False),
+        },
+        hide_index=True,
+        use_container_width=True
+    )
+    
+    PENALIDAD_XG = 0.35 
+
     if st.button("SIMULAR JORNADA COMPLETA (Métricas Extendidas)"):
-        if len(cruces_editados) == 0: st.warning("⚠️ No hay partidos para simular.")
+        if len(cruces_editados) == 0:
+            st.warning("⚠️ No hay partidos para simular.")
         else:
             resultados = []
-            with st.spinner(f"Calculando xGOT, Intercepciones y Despejes para la Fecha {jornada_elegida}..."):
+            with st.spinner(f"Procesando fixture, rotaciones y proyecciones para la Fecha {jornada_elegida}..."):
                 for _, row in cruces_editados.iterrows():
                     ea, eb = row["Local"], row["Visitante"]
                     if ea == eb: continue
+                    
+                    rota_local = row["Rotación L"]
+                    rota_visitante = row["Rotación V"]
+                    
                     la, lb = calcular_lambdas(df, ea, eb, True, tabla)
+                    
+                    # Penalidad por rotación (suplentes)
+                    if rota_local: la = max(0.1, la - PENALIDAD_XG)
+                    if rota_visitante: lb = max(0.1, lb - PENALIDAD_XG)
+                    
                     sim = montecarlo(la, lb) 
                     
                     pos_a, pos_b = proyectar_metrica(df, ea, eb, "Posesión de balón", True, tabla)
+                    if rota_local: pos_a *= 0.9  
+                    if rota_visitante: pos_b *= 0.9
                     pos_a, pos_b = ((pos_a / (pos_a + pos_b)), (pos_b / (pos_a + pos_b))) if (pos_a + pos_b) > 0 else (0.5, 0.5)
 
                     # Ofensivas
                     arco_a, arco_b = proyectar_metrica(df, ea, eb, "Tiros al arco", True, tabla)
                     xgot_a, xgot_b = proyectar_metrica(df, ea, eb, "xG al arco (xGOT)", True, tabla)
                     oc_a, oc_b = proyectar_metrica(df, ea, eb, "Ocasiones claras", True, tabla)
+                    
+                    if rota_local: 
+                        arco_a *= 0.8; xgot_a *= 0.8; oc_a *= 0.8
+                    if rota_visitante: 
+                        arco_b *= 0.8; xgot_b *= 0.8; oc_b *= 0.8
                     
                     # Defensivas
                     desp_a, desp_b = proyectar_metrica(df, ea, eb, "Despejes", True, tabla)
@@ -758,7 +819,6 @@ elif nav == "Simulador de Jornada":
                 st.markdown("### ⚔️ Mejores Delanteras (xG y Ocasiones)")
                 df_del = df_res[["Equipo", "xG", "Ocasiones", "Arco", "Rival"]].sort_values("xG", ascending=False)
                 st.dataframe(df_del, column_config={"xG": st.column_config.NumberColumn("xG a Favor", format="%.2f"), "Ocasiones": st.column_config.NumberColumn("Ocasiones Claras", format="%.1f"), "Arco": st.column_config.NumberColumn("Tiros al Arco", format="%.1f")}, hide_index=True, use_container_width=True, height=280)
-
 elif nav == "Métricas Globales":
     st.markdown('<div class="section-header">Rankings de Rendimiento</div>', unsafe_allow_html=True)
     c1, c2, c3 = st.columns(3)
