@@ -101,127 +101,98 @@ html, body, [class*="css"] { font-family: 'Manrope', sans-serif; background-colo
 # ──────────────────────────────────────────────────────────────────────
 # PARÁMETROS DEL MOTOR Y JERARQUÍAS
 # ──────────────────────────────────────────────────────────────────────
-W_XG = 0.65  
-K_PRIOR  = 5.0 
-DC_RHO = -0.15 
+# ──────────────────────────────────────────────────────────────────────
+# PARÁMETROS DEL MOTOR Y JERARQUÍAS (Ajustados para romper el capeo)
+# ──────────────────────────────────────────────────────────────────────
+W_XG = 0.80  # Ahora le creemos un 80% al xG/xGOT y solo 20% a los goles reales (suerte)
+K_PRIOR  = 3.0 # Redujimos drásticamente la "terquedad" del modelo. Ahora reacciona rápido a la actualidad.
+DC_RHO = -0.10 
 MAX_GOALS_MATRIX = 7
-N_RECENCIA, PESO_RECIENTE, PESO_NORMAL = 5, 1.20, 1.0
-PESO_HISTORICO = 0.75 
-LAM_MIN, LAM_MAX = 0.15, 6.00
+N_RECENCIA, PESO_RECIENTE, PESO_NORMAL = 5, 1.35, 1.0 # Aumentamos el peso de los últimos 5 partidos
+PESO_HISTORICO = 0.60 
+LAM_MIN, LAM_MAX = 0.10, 6.00
 
-# ──────────────────────────────────────────────────────────────────────
-# JERARQUÍAS DE MERCADO (Actualizado Transfermarkt - Apertura 2026)
-# ──────────────────────────────────────────────────────────────────────
-# ──────────────────────────────────────────────────────────────────────
-# JERARQUÍAS DE MERCADO (Con Nombres Exactos de la Base de Datos)
-# ──────────────────────────────────────────────────────────────────────
 JERARQUIA_EQUIPOS = {
-    "River Plate": 1.250,                 
-    "Boca Juniors": 1.150,                
-    "Racing Club": 1.080,                 
-    "Rosario Central": 1.065,             
-    "Estudiantes de La Plata": 1.050,     
-    "San Lorenzo": 1.045,                 
-    "CA Talleres": 1.040,                    
-    "Independiente Rivadavia": 1.035,     
-    "CA Independiente": 1.030,               
-    "Argentinos Juniors": 1.025,          
-    "CA Lanús": 1.025,                       
-    "Tigre": 1.020,                       
-    "Club Atlético Platense": 1.000,                    
-    "Newell's Old Boys": 0.995,           
-    "Gimnasia y Esgrima": 0.990, 
-    "Club Atlético Belgrano": 0.990,                    
-    "Defensa y Justicia": 0.985,          
-    "Vélez Sarsfield": 0.970,             
-    "Huracán": 0.965,                     
-    "Club Atlético Unión de Santa Fe": 0.960,                       
-    "Barracas Central": 0.955,            
-    "Instituto De Córdoba": 0.950,                   
-    "Gimnasia y Esgrima Mendoza": 0.945,         
-    "Sarmiento": 0.940,                   
-    "Banfield": 0.935,                    
-    "Atlético Tucumán": 0.930,            
-    "Aldosivi": 0.925,                    
-    "Deportivo Riestra": 0.925,           
-    "Central Córdoba": 0.920,             
-    "Estudiantes de Río Cuarto": 0.915    
+    "River Plate": 1.250, "Boca Juniors": 1.150, "Racing Club": 1.080, "Rosario Central": 1.065,             
+    "Estudiantes de La Plata": 1.050, "San Lorenzo": 1.045, "CA Talleres": 1.040, "Independiente Rivadavia": 1.035,     
+    "CA Independiente": 1.030, "Argentinos Juniors": 1.025, "CA Lanús": 1.025, "Tigre": 1.020,                       
+    "Club Atlético Platense": 1.000, "Newell's Old Boys": 0.995, "Gimnasia y Esgrima": 0.990, 
+    "Club Atlético Belgrano": 0.990, "Defensa y Justicia": 0.985, "Vélez Sarsfield": 0.970,             
+    "Huracán": 0.965, "Club Atlético Unión de Santa Fe": 0.960, "Barracas Central": 0.955,            
+    "Instituto De Córdoba": 0.950, "Gimnasia y Esgrima Mendoza": 0.945, "Sarmiento": 0.940,                   
+    "Banfield": 0.935, "Atlético Tucumán": 0.930, "Aldosivi": 0.925, "Deportivo Riestra": 0.925,           
+    "Central Córdoba": 0.920, "Estudiantes de Río Cuarto": 0.915    
 }
 
 RED, WHITE, GRAY = "#ED1A3B", "#ffffff", "#4a4a52"
-PLOT = dict(
-    font=dict(family="Manrope", size=12, color="#a0a0a8"),
-    paper_bgcolor="rgba(0,0,0,0)",
-    plot_bgcolor="rgba(0,0,0,0)",
-    margin=dict(l=10, r=20, t=36, b=10),
-)
+PLOT = dict(font=dict(family="Manrope", size=12, color="#a0a0a8"), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", margin=dict(l=10, r=20, t=36, b=10))
 
 # ──────────────────────────────────────────────────────────────────────
-# PROCESAMIENTO DE DATOS
+# PROCESAMIENTO DE DATOS (Manejo de Celdas Complejas)
 # ──────────────────────────────────────────────────────────────────────
 def num(v) -> float:
-    if isinstance(v, str):
-        v = v.strip()
-        # Formato "12/22 (55%)" (ej: Regates intentados) -> se queda con el % de éxito
-        m_frac = re.match(r'^\d+\s*/\s*\d+\s*\((-?\d+(?:\.\d+)?)\s*%?\)', v)
-        if m_frac: return float(m_frac.group(1))
-        m = re.match(r'^(-?\d+(?:\.\d+)?)\s*\(', v)
-        if m: return float(m.group(1))
-        v = v.replace('%', '').replace(',', '.').strip()
+    if pd.isna(v): return 0.0
+    if isinstance(v, (int, float)): return float(v)
+    v = str(v).strip()
+    m_complex = re.match(r'^(\d+)\s*/', v)
+    if m_complex: return float(m_complex.group(1))
+    m = re.match(r'^(-?\d+(?:\.\d+)?)\s*\(', v)
+    if m: return float(m.group(1))
+    v = v.replace('%', '').replace(',', '.').strip()
     try: return float(v)
-    except: return 0.0
-
-def num_ratio(v):
-    """Para 'X/Y (Z%)': devuelve (aciertos, intentos) como tupla, o None si no matchea."""
-    if isinstance(v, str):
-        m = re.match(r'^(\d+)\s*/\s*(\d+)\s*\(', v.strip())
-        if m: return int(m.group(1)), int(m.group(2))
-    return None
-
-_SENTINEL_DERIVADAS = re.compile(r'métricas derivadas|métrica calculada', re.IGNORECASE)
+    except (ValueError, TypeError): return 0.0
 
 def _procesar_dataframe(df):
-    partidos, i = [], 0
-    while i < len(df):
-        c0 = str(df.iloc[i, 0]).strip() if pd.notna(df.iloc[i, 0]) else ""
-        if re.search(r"\s+vs\s+", c0, re.IGNORECASE):
-            p = re.split(r"\s+vs\s+", c0, flags=re.IGNORECASE)
-            loc, vis, stats, j = p[0].strip(), p[1].strip(), {}, i + 1
-            while j < len(df):
-                r0 = str(df.iloc[j, 0]).strip() if pd.notna(df.iloc[j, 0]) else ""
-                if re.search(r"\s+vs\s+", r0, re.IGNORECASE): break
-                if r0 == "":
-                    j += 1
+    partidos = []
+    col_0 = df.iloc[:, 0].astype(str)
+    mask_partidos = col_0.str.contains(r'\s+vs\s+', case=False, na=False)
+    
+    df_partidos = df.copy()
+    df_partidos['partido_id'] = mask_partidos.cumsum()
+    df_partidos = df_partidos[df_partidos['partido_id'] > 0]
+    
+    for _, grupo in df_partidos.groupby('partido_id'):
+        titulo = str(grupo.iloc[0, 0])
+        partes = re.split(r'\s+vs\s+', titulo, flags=re.IGNORECASE)
+        if len(partes) < 2: continue
+        
+        loc, vis = partes[0].strip(), partes[1].strip()
+        stats = {}
+        grupo_datos = grupo.iloc[1:]
+        
+        idx_derivadas = grupo_datos.index[grupo_datos.iloc[:, 0].astype(str).str.contains(r'métricas derivadas|métrica calculada', case=False, na=False)]
+        if not idx_derivadas.empty:
+            grupo_datos = grupo_datos.loc[:idx_derivadas[0]-1]
+            
+        for _, row in grupo_datos.iterrows():
+            metrica = str(row[0]).strip()
+            if not metrica or metrica.lower() in ("métrica", "metrica", loc.lower(), "nan"):
+                continue
+                
+            v_loc = row[1]
+            v_vis = row[2] if len(row) > 2 else 0.0
+            
+            if isinstance(v_loc, str) and "/" in v_loc and "(" in v_loc:
+                m_loc = re.match(r'(\d+)\s*/\s*(\d+)\s*\(\s*(\d+)', str(v_loc))
+                m_vis = re.match(r'(\d+)\s*/\s*(\d+)\s*\(\s*(\d+)', str(v_vis))
+                if m_loc:
+                    stats[metrica + " (Éxito)"] = {"local": float(m_loc.group(1)), "visitante": float(m_vis.group(1)) if m_vis else 0.0}
+                    stats[metrica + " (Total)"] = {"local": float(m_loc.group(2)), "visitante": float(m_vis.group(2)) if m_vis else 0.0}
+                    stats[metrica + " (%)"] = {"local": float(m_loc.group(3)), "visitante": float(m_vis.group(3)) if m_vis else 0.0}
                     continue
-                if _SENTINEL_DERIVADAS.search(r0):
-                    j += 1
-                    while j < len(df):
-                        r_check = str(df.iloc[j, 0]).strip() if pd.notna(df.iloc[j, 0]) else ""
-                        if r_check == "" or re.search(r"\s+vs\s+", r_check, re.IGNORECASE): break
-                        j += 1
-                    break
-                if r0.lower() in ("métrica", "metrica") or r0 == loc:
-                    j += 1
-                    continue
-                if pd.notna(df.iloc[j, 1]) and df.shape[1] > 2:
-                    stats[r0] = {
-                        "local":     num(df.iloc[j, 1]),
-                        "visitante": num(df.iloc[j, 2]) if pd.notna(df.iloc[j, 2]) else 0.0,
-                    }
-                j += 1
-            partidos.append({"local": loc, "visitante": vis, "metricas": stats})
-            i = j
-        else:
-            i += 1
+
+            if pd.notna(v_loc):
+                stats[metrica] = {"local": num(v_loc), "visitante": num(v_vis) if pd.notna(v_vis) else 0.0}
+                
+        partidos.append({"local": loc, "visitante": vis, "metricas": stats})
+        
     return partidos
 
 @st.cache_data(ttl=120, show_spinner=False)
 def cargar_excel(archivos_seleccionados: list):
     res = {}
     for ruta_archivo in archivos_seleccionados:
-        if not os.path.exists(ruta_archivo):
-            continue
-        
+        if not os.path.exists(ruta_archivo): continue
         nombre_torneo = os.path.basename(ruta_archivo).split('.')[0]
         categoria = "Histórico" if "historico" in ruta_archivo else "Actual"
         
@@ -244,19 +215,11 @@ def construir_df(datos: dict) -> pd.DataFrame:
     current_playoff_nf = MAX_FECHAS_REGULARES + 1
 
     for clave, partidos in datos.items():
-        if "||" in clave:
-            partes = clave.split("||")
-            if len(partes) == 3:
-                categoria, torneo, fecha = partes
-            else:
-                categoria, torneo, fecha = "Actual", partes[0], partes[1]
-        else:
-            categoria, torneo, fecha = "Actual", "General", clave
+        partes = clave.split("||")
+        categoria, torneo, fecha = partes if len(partes) == 3 else ("Actual", "General", clave)
             
         match_fecha = re.search(r"\d+", fecha)
-        es_playoff_txt = re.search(r"(octavo|cuarto|semi|final|playoff)", fecha, re.IGNORECASE)
-        
-        if match_fecha and not es_playoff_txt:
+        if match_fecha and not re.search(r"(octavo|cuarto|semi|final|playoff)", fecha, re.IGNORECASE):
             nf = int(match_fecha.group())
             fase = "Regular" if nf <= MAX_FECHAS_REGULARES else "Playoff"
         else:
@@ -265,31 +228,29 @@ def construir_df(datos: dict) -> pd.DataFrame:
             fase = "Playoff"
 
         for p in partidos:
-            tt = p["metricas"].get("Tiros totales",    {"local": 0, "visitante": 0})
-            oc = p["metricas"].get("Ocasiones claras", {"local": 0, "visitante": 0})
-            xg_loc = (oc["local"]     * 0.38) + (max(0, tt["local"]     - oc["local"])     * 0.05)
-            xg_vis = (oc["visitante"] * 0.38) + (max(0, tt["visitante"] - oc["visitante"]) * 0.05)
-            p["metricas"]["xG_Estimado"] = {"local": xg_loc, "visitante": xg_vis}
+            xg_loc = p["metricas"].get("Goles esperados (xG)", {}).get("local")
+            if xg_loc is None: 
+                tt = p["metricas"].get("Tiros totales", {"local": 0, "visitante": 0})
+                oc = p["metricas"].get("Ocasiones claras", {"local": 0, "visitante": 0})
+                xg_loc = (oc["local"] * 0.38) + (max(0, tt["local"] - oc["local"]) * 0.05)
+                xg_vis = (oc["visitante"] * 0.38) + (max(0, tt["visitante"] - oc["visitante"]) * 0.05)
+                p["metricas"]["xG_Model"] = {"local": xg_loc, "visitante": xg_vis}
+            else:
+                p["metricas"]["xG_Model"] = p["metricas"]["Goles esperados (xG)"]
+
             for met, vals in p["metricas"].items():
                 base = {"nFecha": nf, "Fase": fase, "Métrica": met, "Torneo": torneo, "Categoria": categoria}
-                filas.append({**base, "Equipo": p["local"],     "Rival": p["visitante"], "Condicion": "Local",     "Propio": vals["local"],     "Concedido": vals["visitante"]})
-                filas.append({**base, "Equipo": p["visitante"], "Rival": p["local"],     "Condicion": "Visitante", "Propio": vals["visitante"], "Concedido": vals["local"]})
+                filas.append({**base, "Equipo": p["local"], "Rival": p["visitante"], "Condicion": "Local", "Propio": vals["local"], "Concedido": vals["visitante"]})
+                filas.append({**base, "Equipo": p["visitante"], "Rival": p["local"], "Condicion": "Visitante", "Propio": vals["visitante"], "Concedido": vals["local"]})
     return pd.DataFrame(filas)
 
 @st.cache_data(ttl=120, show_spinner=False)
 def calcular_tabla(df: pd.DataFrame, condicion: str = "General") -> pd.DataFrame:
-    if df.empty:
-        return pd.DataFrame()
-        
+    if df.empty: return pd.DataFrame()
     dr = df[df["Métrica"] == "Resultado"].copy()
-    
-    if "Fase" in dr.columns:
-        dr = dr[dr["Fase"] == "Regular"]
-        
-    if condicion != "General":
-        dr = dr[dr["Condicion"] == condicion]
-    if dr.empty:
-        return pd.DataFrame()
+    if "Fase" in dr.columns: dr = dr[dr["Fase"] == "Regular"]
+    if condicion != "General": dr = dr[dr["Condicion"] == condicion]
+    if dr.empty: return pd.DataFrame()
         
     equipos = sorted(df["Equipo"].unique())
     rows = []
@@ -297,107 +258,95 @@ def calcular_tabla(df: pd.DataFrame, condicion: str = "General") -> pd.DataFrame
         d = dr[dr["Equipo"] == eq]
         pj = len(d)
         if pj == 0:
-            rows.append({"Equipo": eq, "PJ": 0, "V": 0, "E": 0, "D": 0,
-                         "GF": 0, "GC": 0, "PTS": 0, "PPJ": 0.0, "EFEC%": 0.0})
+            rows.append({"Equipo": eq, "PJ": 0, "V": 0, "E": 0, "D": 0, "GF": 0, "GC": 0, "PTS": 0, "PPJ": 0.0, "EFEC%": 0.0})
             continue
         v  = (d["Propio"] > d["Concedido"]).sum()
         e  = (d["Propio"] == d["Concedido"]).sum()
         d_ = (d["Propio"] < d["Concedido"]).sum()
         pts = int(v * 3 + e)
-        gf  = d["Propio"].sum()
-        gc  = d["Concedido"].sum()
-        ppj  = pts / pj
-        efec = (pts / (pj * 3)) * 100
         rows.append({"Equipo": eq, "PJ": pj, "V": int(v), "E": int(e), "D": int(d_),
-                     "GF": gf, "GC": gc, "PTS": pts, "PPJ": ppj, "EFEC%": efec})
+                     "GF": d["Propio"].sum(), "GC": d["Concedido"].sum(), "PTS": pts, "PPJ": pts / pj, "EFEC%": (pts / (pj * 3)) * 100})
+    
     tabla = pd.DataFrame(rows).sort_values(["EFEC%", "PTS", "GF"], ascending=[False, False, False]).reset_index(drop=True)
     tabla["Pos"] = tabla.index + 1
     
-    tabla["prior_atk"] = 1.0
-    tabla["prior_def"] = 1.0
+    tabla["prior_atk"], tabla["prior_def"] = 1.0, 1.0
     for eq in tabla.index:
-        nombre_eq = tabla.loc[eq, "Equipo"]
-        factor = JERARQUIA_EQUIPOS.get(nombre_eq, 1.0)
+        factor = JERARQUIA_EQUIPOS.get(tabla.loc[eq, "Equipo"], 1.0)
         tabla.loc[eq, "prior_atk"] = factor
         tabla.loc[eq, "prior_def"] = (1 / factor) if factor > 0 else 1.0
-
     return tabla.set_index("Equipo")
 
 def _get_prior(tabla: pd.DataFrame, eq: str):
-    if tabla is None or eq not in tabla.index:
-        return 1.0, 1.0
+    if tabla is None or eq not in tabla.index: return 1.0, 1.0
     return float(tabla.loc[eq, "prior_atk"]), float(tabla.loc[eq, "prior_def"])
 
 def _adjusted_rate(d_all, metrica, col, max_fecha_torneo, tabla, is_attack, target_cond):
     df_m = d_all[d_all["Métrica"] == metrica]
-    if df_m.empty:
-        return np.nan
+    if df_m.empty: return np.nan
         
-    fechas      = df_m["nFecha"].values
-    categoria   = df_m["Categoria"].values
-    valores     = df_m[col].values
-    rivales     = df_m["Rival"].values
-    condiciones = df_m["Condicion"].values
-    
-    valores_ajustados = []
-    pesos = []
+    fechas, categoria, valores, rivales, condiciones = df_m["nFecha"].values, df_m["Categoria"].values, df_m[col].values, df_m["Rival"].values, df_m["Condicion"].values
+    valores_ajustados, pesos = [], []
     
     for v, r, c_match, f, cat in zip(valores, rivales, condiciones, fechas, categoria):
         pa_r, pd_r = _get_prior(tabla, r)
-        
-        pd_r_safe = max(pd_r, 0.80) 
-        pa_r_safe = max(pa_r, 0.80)
-        
+        pd_r_safe, pa_r_safe = max(pd_r, 0.80), max(pa_r, 0.80)
         adj = v / pd_r_safe if (is_attack and pd_r_safe > 0) else v / pa_r_safe if (not is_attack and pa_r_safe > 0) else v
-        adj = min(adj, 3.5)
-        
-        valores_ajustados.append(adj)
+        valores_ajustados.append(min(adj, 3.5))
         
         w = PESO_HISTORICO if cat == "Histórico" else (PESO_RECIENTE if f >= (max_fecha_torneo - N_RECENCIA + 1) else PESO_NORMAL)
-        
-        if c_match == target_cond:
-            w *= 1.10
-            
+        if c_match == target_cond: w *= 1.25 # Ampliamos el peso de la localía para romper empates estadísticos
         pesos.append(w)
         
-    if not valores_ajustados or sum(pesos) == 0:
-        return np.nan
-        
-    return float(np.average(valores_ajustados, weights=pesos))
+    return float(np.average(valores_ajustados, weights=pesos)) if valores_ajustados and sum(pesos) > 0 else np.nan
 
 @st.cache_data(ttl=120, show_spinner=False)
 def _league_stats(df):
     dr = df[df["Métrica"] == "Resultado"]
-    dx = df[df["Métrica"] == "xG_Estimado"]
+    dx = df[df["Métrica"] == "xG_Model"]
     def get_avg(d, cond):
         v = d[d["Condicion"] == cond]["Propio"].mean() if not d.empty else np.nan
         return v if not np.isnan(v) else 1.0
     gh, gv = get_avg(dr, "Local"), get_avg(dr, "Visitante")
     xh, xv = get_avg(dx, "Local"), get_avg(dx, "Visitante")
-    if dx.empty:
-        rh, rv = gh, gv
-    else:
-        rh, rv = W_XG * xh + (1 - W_XG) * gh, W_XG * xv + (1 - W_XG) * gv
+    if dx.empty: rh, rv = gh, gv
+    else: rh, rv = W_XG * xh + (1 - W_XG) * gh, W_XG * xv + (1 - W_XG) * gv
     return {"ref_home": rh, "ref_away": rv, "ref_all": (rh + rv) / 2}
 
 def _strength(df_actual, eq, target_cond, league, max_fecha_torneo: int, tabla: pd.DataFrame):
-    # El DataFrame recibido (df_actual) ya viene aislado del histórico por calcular_lambdas
     d_eq = df_actual[df_actual["Equipo"] == eq]
     
-    g_atk = _adjusted_rate(d_eq, "Resultado",   "Propio",    max_fecha_torneo, tabla, is_attack=True,  target_cond=target_cond)
-    x_atk = _adjusted_rate(d_eq, "xG_Estimado", "Propio",    max_fecha_torneo, tabla, is_attack=True,  target_cond=target_cond)
-    g_def = _adjusted_rate(d_eq, "Resultado",   "Concedido", max_fecha_torneo, tabla, is_attack=False, target_cond=target_cond)
-    x_def = _adjusted_rate(d_eq, "xG_Estimado", "Concedido", max_fecha_torneo, tabla, is_attack=False, target_cond=target_cond)
+    # Fuerzas Básicas
+    g_atk = _adjusted_rate(d_eq, "Resultado", "Propio", max_fecha_torneo, tabla, is_attack=True, target_cond=target_cond)
+    x_atk = _adjusted_rate(d_eq, "xG_Model", "Propio", max_fecha_torneo, tabla, is_attack=True, target_cond=target_cond)
+    g_def = _adjusted_rate(d_eq, "Resultado", "Concedido", max_fecha_torneo, tabla, is_attack=False, target_cond=target_cond)
+    x_def = _adjusted_rate(d_eq, "xG_Model", "Concedido", max_fecha_torneo, tabla, is_attack=False, target_cond=target_cond)
+    
+    # Fuerzas Avanzadas (La gran mejora matemática)
+    # Si ataca mucho al arco, mejora su xG. Si recupera mucho o ataja bien, mejora su defensa.
+    tiros_arco = _adjusted_rate(d_eq, "Tiros al arco", "Propio", max_fecha_torneo, tabla, is_attack=True, target_cond=target_cond)
+    goles_evitados = _adjusted_rate(d_eq, "Goles evitados (arquero)", "Propio", max_fecha_torneo, tabla, is_attack=False, target_cond=target_cond)
+    intercepciones = _adjusted_rate(d_eq, "Intercepciones", "Propio", max_fecha_torneo, tabla, is_attack=False, target_cond=target_cond)
     
     n_s = len(d_eq[d_eq["Métrica"] == "Resultado"])
-
-    def combine(g, x):
+    
+    def combine_atk(g, x, tiros):
         if np.isnan(g) and np.isnan(x): return np.nan
-        if np.isnan(x): return g
-        if np.isnan(g): return x
-        return W_XG * x + (1 - W_XG) * g
+        val_base = W_XG * (x if not np.isnan(x) else g) + (1 - W_XG) * (g if not np.isnan(g) else x)
+        # Bonus por volumen de tiros al arco
+        bonus_tiros = 1.0 + (min(max((tiros - 4.5) / 10.0, -0.1), 0.15) if not np.isnan(tiros) else 0)
+        return val_base * bonus_tiros
 
-    atk_val, def_val = combine(g_atk, x_atk), combine(g_def, x_def)
+    def combine_def(g, x, evitados, intercep):
+        if np.isnan(g) and np.isnan(x): return np.nan
+        val_base = W_XG * (x if not np.isnan(x) else g) + (1 - W_XG) * (g if not np.isnan(g) else x)
+        # Reducción de goles concedidos esperados si el arquero es figura o la defensa corta mucho
+        bonus_arquero = max(evitados * 0.1, 0) if not np.isnan(evitados) and evitados > 0 else 0
+        bonus_defensa = max((intercep - 10) * 0.01, 0) if not np.isnan(intercep) else 0
+        return max(val_base - bonus_arquero - bonus_defensa, 0.1)
+
+    atk_val = combine_atk(g_atk, x_atk, tiros_arco)
+    def_val = combine_def(g_def, x_def, goles_evitados, intercepciones)
     
     rh, ra = league["ref_home"], league["ref_away"]
     ref_f, ref_a = (rh, ra) if target_cond == "Local" else (ra, rh)
@@ -406,86 +355,61 @@ def _strength(df_actual, eq, target_cond, league, max_fecha_torneo: int, tabla: 
     def_obs = (def_val / ref_a) if (not np.isnan(def_val) and ref_a > 0) else np.nan
     
     prior_atk, prior_def = _get_prior(tabla, eq)
-    
-    n = n_s if n_s > 0 else 0
-    n_effective = min(n, 15)
+    n_effective = min(n_s if n_s > 0 else 0, 15)
     
     atk_obs = atk_obs if not np.isnan(atk_obs) else prior_atk
     def_obs = def_obs if not np.isnan(def_obs) else prior_def
     
-    # Cálculo Bayesiano final
     atk_post = (n_effective * atk_obs  + K_PRIOR * prior_atk) / (n_effective + K_PRIOR)
     def_post = (n_effective * def_obs  + K_PRIOR * prior_def) / (n_effective + K_PRIOR)
-    
-    return atk_post, def_post, n
+    return atk_post, def_post, n_s
 
 def calcular_lambdas(df, eq_a, eq_b, es_loc, tabla):
-    # 1. AISLAMIENTO DE FIXTURE: Excluir histórico para cálculos estadísticos
     df_actual = df[df["Categoria"] == "Actual"]
-    
-    # Fallback de seguridad por si el torneo recién empieza y no hay datos actuales
-    if df_actual.empty:
-        df_actual = df
+    if df_actual.empty: df_actual = df
         
-    # Las medias de liga se calculan EXCLUSIVAMENTE con el torneo en curso
     l = _league_stats(df_actual)
     max_fecha_torneo = int(df_actual["nFecha"].max()) if not df_actual.empty else 1
-        
     ca, cb = ("Local", "Visitante") if es_loc else ("Visitante", "Local")
     
-    # Fuerzas calculadas con el df_actual purgado
-    aa, da, na = _strength(df_actual, eq_a, ca, l, max_fecha_torneo, tabla)
-    ab, db, nb = _strength(df_actual, eq_b, cb, l, max_fecha_torneo, tabla)
+    aa, da, _ = _strength(df_actual, eq_a, ca, l, max_fecha_torneo, tabla)
+    ab, db, _ = _strength(df_actual, eq_b, cb, l, max_fecha_torneo, tabla)
     
     la = (l["ref_home"] if ca == "Local" else l["ref_away"]) * aa * db
     lb = (l["ref_home"] if cb == "Local" else l["ref_away"]) * ab * da
 
-    # Ajuste por ADN Táctico
+    # Ajuste Dinámico por Localía Fuerte (Para romper el techo del 50%)
+    if es_loc:
+        la *= 1.15
+        lb *= 0.90
+
     adn_temp = calcular_adn_tactico(df_actual)
     if not adn_temp.empty and eq_a in adn_temp.index and eq_b in adn_temp.index:
         tags_a = set(t for t, _ in adn_temp.loc[eq_a, "Tags"]) if isinstance(adn_temp.loc[eq_a, "Tags"], list) else set()
         tags_b = set(t for t, _ in adn_temp.loc[eq_b, "Tags"]) if isinstance(adn_temp.loc[eq_b, "Tags"], list) else set()
-        
-        if "POSESIÓN DOMINANTE" in tags_a and "BLOQUE BAJO" in tags_b:
-            la += 0.04  
-            lb -= 0.02  
-        if "DÉFICIT DEFENSIVO" in tags_a:
-            lb += 0.04
-        if "DÉFICIT DEFENSIVO" in tags_b:
-            la += 0.04
+        if "POSESIÓN DOMINANTE" in tags_a and "BLOQUE HUNDIDO" in tags_b: la += 0.05; lb -= 0.03  
+        if "DÉFICIT DEFENSIVO" in tags_a: lb += 0.05
+        if "DÉFICIT DEFENSIVO" in tags_b: la += 0.05
 
-    # Identificación estricta de local y visitante para el overround
     eq_local = eq_a if ca == "Local" else eq_b
     eq_visit = eq_b if cb == "Visitante" else eq_a
-    
     lambda_local = la if ca == "Local" else lb
     lambda_visit = lb if cb == "Visitante" else la
 
-    # 2. APLICACIÓN MARKET OVERROUND (Exponente de jerarquía)
     jerarquia_local = JERARQUIA_EQUIPOS.get(eq_local, 1.0)
-    if jerarquia_local > 1.15:
-        # Esto inflará la cuota de goles del equipo Elite de forma no lineal
-        lambda_local = lambda_local ** 1.35
+    jerarquia_visit = JERARQUIA_EQUIPOS.get(eq_visit, 1.0)
+    
+    # Overround asimétrico para despegar a los favoritos
+    if jerarquia_local > jerarquia_visit * 1.05: lambda_local = lambda_local ** 1.15
+    if eq_local in ["River Plate", "Boca Juniors", "Racing Club", "Independiente", "San Lorenzo"]: lambda_visit *= 0.85
 
-    # 3. PENALIZACIÓN DE MERCADO (Efecto "Miedo Escénico")
-    grandes = ["River Plate", "Boca Juniors", "Racing Club", "Independiente", "San Lorenzo"]
-    if eq_local in grandes:
-        # Reducción del xG visitante frente a la disparidad presupuestaria
-        lambda_visit *= 0.90
-
-    # Reasignación de variables originales
-    if ca == "Local":
-        la, lb = lambda_local, lambda_visit
-    else:
-        lb, la = lambda_local, lambda_visit
-
-    return (round(float(np.clip(la, LAM_MIN, LAM_MAX)), 3),
-            round(float(np.clip(lb, LAM_MIN, LAM_MAX)), 3))
+    if ca == "Local": la, lb = lambda_local, lambda_visit
+    else: lb, la = lambda_local, lambda_visit
+    return (round(float(np.clip(la, LAM_MIN, LAM_MAX)), 3), round(float(np.clip(lb, LAM_MIN, LAM_MAX)), 3))
 
 def proyectar_metrica(df, eq_a, eq_b, metrica, es_loc, tabla):
     df_m = df[df["Métrica"] == metrica]
-    if df_m.empty:
-        return 0.0, 0.0
+    if df_m.empty: return 0.0, 0.0
     
     ca, cb = ("Local", "Visitante") if es_loc else ("Visitante", "Local")
     
@@ -493,36 +417,25 @@ def proyectar_metrica(df, eq_a, eq_b, metrica, es_loc, tabla):
         if d_eq.empty: return df_m[col].mean()
         conds = d_eq["Condicion"].values
         vals = d_eq[col].values
-        w = np.where(conds == target_cond, 1.15, 1.0)
+        w = np.where(conds == target_cond, 1.20, 1.0)
         return np.average(vals, weights=w)
         
-    d_a = df_m[df_m["Equipo"] == eq_a]
-    base_a = _mean_with_cond(d_a, ca, "Propio")
-    concede_a = _mean_with_cond(d_a, ca, "Concedido")
-    
-    d_b = df_m[df_m["Equipo"] == eq_b]
-    base_b = _mean_with_cond(d_b, cb, "Propio")
-    concede_b = _mean_with_cond(d_b, cb, "Concedido")
+    d_a, d_b = df_m[df_m["Equipo"] == eq_a], df_m[df_m["Equipo"] == eq_b]
+    base_a, concede_a = _mean_with_cond(d_a, ca, "Propio"), _mean_with_cond(d_a, ca, "Concedido")
+    base_b, concede_b = _mean_with_cond(d_b, cb, "Propio"), _mean_with_cond(d_b, cb, "Concedido")
     
     media_liga = df_m["Propio"].mean() if not df_m.empty else 1.0
     if media_liga == 0: media_liga = 1.0
 
-    factor_crudo_b = concede_b / media_liga
-    factor_def_b = 1.0 + (factor_crudo_b - 1.0) * 0.5 
-
-    factor_crudo_a = concede_a / media_liga
-    factor_def_a = 1.0 + (factor_crudo_a - 1.0) * 0.5 
-
-    val_a = base_a * factor_def_b
-    val_b = base_b * factor_def_a
+    factor_def_b = 1.0 + ((concede_b / media_liga) - 1.0) * 0.5 
+    factor_def_a = 1.0 + ((concede_a / media_liga) - 1.0) * 0.5 
     
-    return max(0.0, float(val_a)), max(0.0, float(val_b))
+    return max(0.0, float(base_a * factor_def_b)), max(0.0, float(base_b * factor_def_a))
 
 def montecarlo(la, lb):
     def _pmf(lam, kmax):
         k = np.arange(kmax + 1)
-        return np.exp(k * np.log(max(lam, 1e-9)) - lam -
-                      np.array([math.log(math.factorial(x)) for x in k]))
+        return np.exp(k * np.log(max(lam, 1e-9)) - lam - np.array([math.log(math.factorial(x)) for x in k]))
     pa, pb = _pmf(la, MAX_GOALS_MATRIX), _pmf(lb, MAX_GOALS_MATRIX)
     M = np.outer(pa, pb)
     rho = max(DC_RHO, -0.9 / max(la * lb, 0.01))
@@ -531,27 +444,13 @@ def montecarlo(la, lb):
     M[1, 0] = max(M[1, 0] * (1 + lb * rho),        0.0)
     M[1, 1] = max(M[1, 1] * (1 - rho),             0.0)
     M /= M.sum()
-    return {
-        "victoria": float(np.tril(M, -1).sum()),
-        "empate":   float(np.trace(M)),
-        "derrota":  float(np.triu(M, 1).sum()),
-        "matrix":   M,
-    }
+    return {"victoria": float(np.tril(M, -1).sum()), "empate": float(np.trace(M)), "derrota": float(np.triu(M, 1).sum()), "matrix": M}
 
 def top3_marcadores(M, ea, eb):
     flat = [(M[i, j], i, j) for i in range(M.shape[0]) for j in range(M.shape[1])]
     flat.sort(reverse=True)
-    top3 = flat[:3]
-    medallas = ["🥇 MÁS PROBABLE", "🥈 2°", "🥉 3°"]
-    clases   = ["first", "second", "third"]
-    cards = ""
-    for idx, (prob, i, j) in enumerate(top3):
-        cards += f"""
-        <div class="score-card {clases[idx]}">
-            <div class="score-rank">{medallas[idx]}</div>
-            <div class="score-result">{ea[:3].upper()} {i} – {j} {eb[:3].upper()}</div>
-            <div class="score-pct">{prob * 100:.1f}%</div>
-        </div>"""
+    medallas, clases = ["🥇 MÁS PROBABLE", "🥈 2°", "🥉 3°"], ["first", "second", "third"]
+    cards = "".join(f"""<div class="score-card {clases[idx]}"><div class="score-rank">{medallas[idx]}</div><div class="score-result">{ea[:3].upper()} {i} – {j} {eb[:3].upper()}</div><div class="score-pct">{prob * 100:.1f}%</div></div>""" for idx, (prob, i, j) in enumerate(flat[:3]))
     return f'<div class="top3-container">{cards}</div>'
 
 def _safe_mean(df, equipo, metrica, col="Propio", condicion=None):
@@ -565,43 +464,31 @@ def calcular_adn_tactico(df: pd.DataFrame) -> pd.DataFrame:
     rows = []
     for eq in equipos:
         pos_propia   = _safe_mean(df, eq, "Posesión de balón")
-        pos_cedida   = 100.0 - pos_propia if not np.isnan(pos_propia) else np.nan
         tiros_prop   = _safe_mean(df, eq, "Tiros totales")
         tiros_conc   = _safe_mean(df, eq, "Tiros totales", col="Concedido")
-        xg_prop      = _safe_mean(df, eq, "xG_Estimado")
-        xg_conc      = _safe_mean(df, eq, "xG_Estimado", col="Concedido")
-        oc_prop      = _safe_mean(df, eq, "Ocasiones claras")
-        oc_conc      = _safe_mean(df, eq, "Ocasiones claras", col="Concedido")
-        gf           = _safe_mean(df, eq, "Resultado")
-        gc           = _safe_mean(df, eq, "Resultado", col="Concedido")
+        xg_prop      = _safe_mean(df, eq, "xG_Model")
+        xg_conc      = _safe_mean(df, eq, "xG_Model", col="Concedido")
+        quites       = _safe_mean(df, eq, "Quites")
+        intercep     = _safe_mean(df, eq, "Intercepciones")
+        despejes     = _safe_mean(df, eq, "Despejes")
+        
         efic_ofens = (xg_prop / tiros_prop) if (not np.isnan(xg_prop) and not np.isnan(tiros_prop) and tiros_prop > 0) else np.nan
-        rows.append({
-            "Equipo": eq, "Posesion": pos_propia, "TirosProp": tiros_prop,
-            "TirosConc": tiros_conc, "xGProp": xg_prop, "xGConc": xg_conc,
-            "OcProp": oc_prop, "OcConc": oc_conc, "GF": gf, "GC": gc, "EficOfens": efic_ofens,
-        })
+        act_def = (quites + intercep + despejes) if not np.isnan(quites) else np.nan
+        
+        rows.append({"Equipo": eq, "Posesion": pos_propia, "TirosProp": tiros_prop, "TirosConc": tiros_conc, 
+                     "xGProp": xg_prop, "xGConc": xg_conc, "EficOfens": efic_ofens, "ActDefensiva": act_def, "Despejes": despejes})
+                     
     adn = pd.DataFrame(rows).set_index("Equipo")
-    def pct(col):
-        s = adn[col].dropna()
-        if s.empty: return {}
-        return {eq: float(np.mean(s <= v)) for eq, v in adn[col].dropna().items()}
+    def pct(col): return {eq: float(np.mean(adn[col].dropna() <= v)) for eq, v in adn[col].dropna().items()} if not adn[col].dropna().empty else {}
 
-    pct_pos   = pct("Posesion")
-    pct_tprop = pct("TirosProp")
-    pct_tconc = pct("TirosConc")
-    pct_xgc   = pct("xGConc")
-    pct_efic  = pct("EficOfens")
+    pct_pos, pct_tprop, pct_tconc, pct_xgc, pct_efic = pct("Posesion"), pct("TirosProp"), pct("TirosConc"), pct("xGConc"), pct("EficOfens")
+    pct_def, pct_desp = pct("ActDefensiva"), pct("Despejes")
 
-    tags_dict = {}
-    insights  = {}
-
+    tags_dict, insights = {}, {}
     for eq in adn.index:
         tags, frases = [], []
-        pos_p  = pct_pos.get(eq, 0.5)
-        tp_p   = pct_tprop.get(eq, 0.5)
-        tc_p   = pct_tconc.get(eq, 0.5)
-        xgc_p  = pct_xgc.get(eq, 0.5)
-        ef_p   = pct_efic.get(eq, 0.5)
+        pos_p, tp_p, tc_p, xgc_p, ef_p = pct_pos.get(eq, 0.5), pct_tprop.get(eq, 0.5), pct_tconc.get(eq, 0.5), pct_xgc.get(eq, 0.5), pct_efic.get(eq, 0.5)
+        def_p, desp_p = pct_def.get(eq, 0.5), pct_desp.get(eq, 0.5)
 
         if pos_p >= 0.70:
             tags.append(("POSESIÓN DOMINANTE", "tag-posesion"))
@@ -610,44 +497,63 @@ def calcular_adn_tactico(df: pd.DataFrame) -> pd.DataFrame:
             tags.append(("JUEGO DIRECTO", "tag-directo"))
             frases.append("Cede la pelota y busca aprovechar los espacios.")
 
-        if tc_p <= 0.30 and pos_p <= 0.55:
-            tags.append(("PRESSING ALTO", "tag-pressing"))
-            frases.append("Asfixia al rival sin necesitar posesión: concede pocos tiros.")
-        elif tc_p >= 0.70:
-            tags.append(("BLOQUE BAJO", "tag-bloque"))
-            frases.append("Defiende replegado, concede muchos intentos al rival.")
-
-        if pos_p <= 0.40 and tp_p >= 0.55:
-            tags.append(("CONTRA / TRANSICIÓN", "tag-contra"))
-            frases.append("Peligroso en transición: genera volumen ofensivo con poca pelota.")
+        if tc_p <= 0.30 and def_p >= 0.65:
+            tags.append(("PRESSING INTENSO", "tag-pressing"))
+            frases.append("Recupera rápido y asfixia al rival: alta actividad defensiva.")
+        elif desp_p >= 0.75:
+            tags.append(("BLOQUE HUNDIDO", "tag-bloque"))
+            frases.append("Defiende cerca de su área, acumula muchísimos despejes.")
 
         if ef_p >= 0.70:
             tags.append(("ALTA EFICIENCIA", "tag-posesion"))
-            frases.append("Alta relación xG/tiro: genera ocasiones de calidad.")
-        elif ef_p <= 0.30 and tp_p >= 0.60:
-            tags.append(("VOLUMEN SIN PRECISIÓN", "tag-directo"))
-            frases.append("Tira mucho pero con bajo xG por remate.")
-
+            frases.append("Letal arriba: genera ocasiones de alta calidad por tiro.")
+        
         if xgc_p >= 0.75:
             tags.append(("DÉFICIT DEFENSIVO", "tag-bloque"))
-            frases.append("Concede mucho xG: línea defensiva con espacios.")
+            frases.append("Línea muy frágil, le generan mucho volumen de xG.")
 
         if not tags:
             tags.append(("PERFIL EQUILIBRADO", "tag-neutral"))
             frases.append("Sin tendencias extremas: estilo balanceado.")
 
-        tags_dict[eq] = tags
-        insights[eq]  = " ".join(frases)
+        tags_dict[eq], insights[eq] = tags, " ".join(frases)
 
-    adn["Tags"]    = adn.index.map(tags_dict)
-    adn["Insight"] = adn.index.map(insights)
+    adn["Tags"], adn["Insight"] = adn.index.map(tags_dict), adn.index.map(insights)
     return adn
 
-def render_tags_html(tags: list) -> str:
-    html = ""
-    for texto, clase in tags:
-        html += f'<span class="tag-badge {clase}">{texto}</span>'
-    return html
+def render_tags_html(tags: list) -> str: return "".join(f'<span class="tag-badge {clase}">{texto}</span>' for texto, clase in tags)
+
+def contexto_tactica_clash(adn: pd.DataFrame, eq_a: str, eq_b: str) -> str:
+    if adn is None or eq_a not in adn.index or eq_b not in adn.index: return ""
+    tags_a, tags_b = adn.loc[eq_a, "Tags"], adn.loc[eq_b, "Tags"]
+    ins_a, ins_b = adn.loc[eq_a, "Insight"], adn.loc[eq_b, "Insight"]
+
+    tags_a_txt = set(t for t, _ in tags_a) if isinstance(tags_a, list) else set()
+    tags_b_txt = set(t for t, _ in tags_b) if isinstance(tags_b, list) else set()
+
+    clash_lines = []
+    if "PRESSING INTENSO" in tags_a_txt and "JUEGO DIRECTO" in tags_b_txt: clash_lines.append("⚡ <b>Pressing vs Juego Directo</b>: local agresivo sin pelota, visitante salta líneas.")
+    if "POSESIÓN DOMINANTE" in tags_a_txt and "PRESSING INTENSO" in tags_b_txt: clash_lines.append("🔄 <b>Batalla de control</b>: local posesivo vs visitante que muerde — mediocampo trabado.")
+    if "DÉFICIT DEFENSIVO" in tags_a_txt or "DÉFICIT DEFENSIVO" in tags_b_txt: clash_lines.append("⚽ <b>Partido abierto</b>: fragilidades defensivas latentes, el partido invita a goles.")
+
+    return textwrap.dedent(f"""
+    <div class="tactica-clash">
+        <div class="tactica-title">Contexto Táctico del Choque</div>
+        <div class="tactica-row">
+            <div class="tactica-team-col">
+                <div style="font-size:0.7rem;color:#555560;text-transform:uppercase;letter-spacing:2px;margin-bottom:6px;">{eq_a} (local)</div>
+                {render_tags_html(tags_a) if isinstance(tags_a, list) else ""}
+                <div style="font-size:0.8rem;color:#888890;margin-top:8px;">{ins_a}</div>
+            </div>
+            <div class="tactica-vs-col">VS</div>
+            <div class="tactica-team-col">
+                <div style="font-size:0.7rem;color:#555560;text-transform:uppercase;letter-spacing:2px;margin-bottom:6px;">{eq_b} (visitante)</div>
+                {render_tags_html(tags_b) if isinstance(tags_b, list) else ""}
+                <div style="font-size:0.8rem;color:#888890;margin-top:8px;">{ins_b}</div>
+            </div>
+        </div>
+        <div class="tactica-insight">{"<br>".join(clash_lines) if clash_lines else "📊 Perfiles similares, partido de resultado abierto."}</div>
+    </div>""")
 
 def contexto_tactica_clash(adn: pd.DataFrame, eq_a: str, eq_b: str) -> str:
     if adn is None or eq_a not in adn.index or eq_b not in adn.index: return ""
