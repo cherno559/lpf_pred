@@ -162,11 +162,21 @@ PLOT = dict(
 def num(v) -> float:
     if isinstance(v, str):
         v = v.strip()
+        # Formato "12/22 (55%)" (ej: Regates intentados) -> se queda con el % de éxito
+        m_frac = re.match(r'^\d+\s*/\s*\d+\s*\((-?\d+(?:\.\d+)?)\s*%?\)', v)
+        if m_frac: return float(m_frac.group(1))
         m = re.match(r'^(-?\d+(?:\.\d+)?)\s*\(', v)
         if m: return float(m.group(1))
         v = v.replace('%', '').replace(',', '.').strip()
     try: return float(v)
     except: return 0.0
+
+def num_ratio(v):
+    """Para 'X/Y (Z%)': devuelve (aciertos, intentos) como tupla, o None si no matchea."""
+    if isinstance(v, str):
+        m = re.match(r'^(\d+)\s*/\s*(\d+)\s*\(', v.strip())
+        if m: return int(m.group(1)), int(m.group(2))
+    return None
 
 _SENTINEL_DERIVADAS = re.compile(r'métricas derivadas|métrica calculada', re.IGNORECASE)
 
@@ -1126,6 +1136,12 @@ elif nav == "Simulador de Jornada":
                     arco_a, arco_b   = proyectar_metrica(df, ea, eb, "Tiros al arco", True, tabla)
                     ocas_a, ocas_b   = proyectar_metrica(df, ea, eb, "Ocasiones claras", True, tabla)
                     pos_a, pos_b     = proyectar_metrica(df, ea, eb, "Posesión de balón", True, tabla)
+                    corn_a, corn_b   = proyectar_metrica(df, ea, eb, "Córners", True, tabla)
+                    reg_a, reg_b     = proyectar_metrica(df, ea, eb, "Regates intentados", True, tabla)
+                    pp_a, pp_b       = proyectar_metrica(df, ea, eb, "Pases precisos", True, tabla)
+                    pt_a, pt_b       = proyectar_metrica(df, ea, eb, "Pases totales", True, tabla)
+                    gev_a, gev_b     = proyectar_metrica(df, ea, eb, "Goles evitados (arquero)", True, tabla)
+                    xgot_a, xgot_b   = proyectar_metrica(df, ea, eb, "xG al arco (xGOT)", True, tabla)
 
                     if rota_local:
                         pos_a *= 0.9  
@@ -1146,7 +1162,9 @@ elif nav == "Simulador de Jornada":
                         "Prob_Victoria": sim["victoria"],
                         "xG_Favor": la, "xG_Contra": lb, "Tiros_Favor": tiros_a, "Tiros_Contra": tiros_b,
                         "Arco_Favor": arco_a, "Arco_Contra": arco_b, "Ocasiones_Favor": ocas_a, "Ocasiones_Contra": ocas_b,
-                        "Posesion": pos_a
+                        "Posesion": pos_a, "Corners_Favor": corn_a, "Regates_pct": reg_a,
+                        "Precision_Pases": (pp_a / pt_a * 100) if pt_a > 0 else 0.0,
+                        "Goles_Evitados": gev_a, "xGOT_Contra": xgot_b,
                     })
                     
                     resultados_jornada.append({
@@ -1154,11 +1172,13 @@ elif nav == "Simulador de Jornada":
                         "Prob_Victoria": sim["derrota"],
                         "xG_Favor": lb, "xG_Contra": la, "Tiros_Favor": tiros_b, "Tiros_Contra": tiros_a,
                         "Arco_Favor": arco_b, "Arco_Contra": arco_a, "Ocasiones_Favor": ocas_b, "Ocasiones_Contra": ocas_a,
-                        "Posesion": pos_b
+                        "Posesion": pos_b, "Corners_Favor": corn_b, "Regates_pct": reg_b,
+                        "Precision_Pases": (pp_b / pt_b * 100) if pt_b > 0 else 0.0,
+                        "Goles_Evitados": gev_b, "xGOT_Contra": xgot_a,
                     })
             
             df_res = pd.DataFrame(resultados_jornada)
-            df_res["Indice_Arquero"] = df_res["Arco_Contra"] / (df_res["xG_Contra"] + 0.5)
+            df_res["Indice_Arquero"] = df_res["Goles_Evitados"] - (df_res["xGOT_Contra"] * 0.1)
             
             def format_ranking(df_temp, sort_col, ascending, cols_to_show, rename_dict=None):
                 temp = df_temp.sort_values(by=sort_col, ascending=ascending).reset_index(drop=True)
@@ -1184,9 +1204,9 @@ elif nav == "Simulador de Jornada":
             with col2:
                 st.markdown("### 🧤 Posible Mejor Arquero")
                 df_arq = format_ranking(df_res, "Indice_Arquero", False, 
-                                        ["Indice_Arquero", "Arco_Contra", "xG_Contra", "Rival"],
-                                        {"Indice_Arquero": "Índice", "Arco_Contra": "Tiros Arco en Contra", "xG_Contra": "xG Concedido"})
-                st.dataframe(df_arq.style.format({"Índice": "{:.2f}", "Tiros Arco en Contra": "{:.1f}", "xG Concedido": "{:.2f}"}), 
+                                        ["Indice_Arquero", "Goles_Evitados", "xGOT_Contra", "Rival"],
+                                        {"Indice_Arquero": "Índice", "Goles_Evitados": "Goles Evitados", "xGOT_Contra": "xGOT Enfrentado"})
+                st.dataframe(df_arq.style.format({"Índice": "{:.2f}", "Goles Evitados": "{:.2f}", "xGOT Enfrentado": "{:.2f}"}), 
                              hide_index=True, use_container_width=True, height=280)
 
             st.markdown("<br>", unsafe_allow_html=True)
@@ -1217,7 +1237,29 @@ elif nav == "Simulador de Jornada":
                 st.dataframe(df_del.style.format({"xG Generado": "{:.2f}", "Ocasiones Creadas": "{:.1f}", "Tiros al Arco a Favor": "{:.1f}"}), 
                              hide_index=True, use_container_width=True, height=280)
             with col6:
-                pass
+                st.markdown("### 🚩 Mejor Estratega de Pelota Parada")
+                df_corn = format_ranking(df_res, "Corners_Favor", False,
+                                        ["Corners_Favor", "Precision_Pases", "Rival"],
+                                        {"Corners_Favor": "Córners a Favor", "Precision_Pases": "Precisión de Pase %"})
+                st.dataframe(df_corn.style.format({"Córners a Favor": "{:.1f}", "Precisión de Pase %": "{:.1f}%"}),
+                             hide_index=True, use_container_width=True, height=280)
+
+            st.markdown("<br>", unsafe_allow_html=True)
+            col7, col8 = st.columns(2)
+            with col7:
+                st.markdown("### 🏃 Mayor % de Éxito en Regates")
+                df_reg = format_ranking(df_res, "Regates_pct", False,
+                                        ["Regates_pct", "Posesion", "Rival"],
+                                        {"Regates_pct": "% Regates Exitosos", "Posesion": "Posesión %"})
+                st.dataframe(df_reg.style.format({"% Regates Exitosos": "{:.1f}%", "Posesión %": "{:.1f}%"}),
+                             hide_index=True, use_container_width=True, height=280)
+            with col8:
+                st.markdown("### 🎯 Mayor Precisión de Pase")
+                df_pas = format_ranking(df_res, "Precision_Pases", False,
+                                        ["Precision_Pases", "Posesion", "Rival"],
+                                        {"Precision_Pases": "Precisión de Pase %", "Posesion": "Posesión %"})
+                st.dataframe(df_pas.style.format({"Precisión de Pase %": "{:.1f}%", "Posesión %": "{:.1f}%"}),
+                             hide_index=True, use_container_width=True, height=280)
 
 elif nav == "Métricas Globales":
     st.markdown('<div class="section-header">Rankings de Rendimiento</div>', unsafe_allow_html=True)
