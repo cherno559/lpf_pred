@@ -1155,15 +1155,19 @@ elif nav == "Simulador de Jornada":
                     "Despejes": "{:.1f}",
                 }), hide_index=True, use_container_width=True, height=320)
             with tab_med:
-                st.caption("Ordenado por control del juego y recuperación")
-                # Limpiamos córners y regates. Sumamos intercepciones y quites al medio.
+                st.caption("Ordenado por Posesión. Perfil Box-to-Box: control, distribución, recuperación y pegada.")
                 df_med = format_ranking(df_res, "Posesion", False,
-                                        ["Posesion", "Precision_Pases", "Quites", "Intercepciones", "Rival"],
-                                        {"Posesion": "Posesión %", "Precision_Pases": "Precisión de Pase %",
-                                         "Quites": "Quites Proy.", "Intercepciones": "Intercepciones Proy."})
+                                        ["Posesion", "Precision_Pases", "Quites", "Tiros_Fuera_Area", "Rival"],
+                                        {"Posesion": "Posesión %", 
+                                         "Precision_Pases": "Precisión %",
+                                         "Quites": "Quites (Recuperación)",
+                                         "Tiros_Fuera_Area": "Media Distancia"})
+                
                 st.dataframe(df_med.style.format({
-                    "Posesión %": "{:.1f}%", "Precisión de Pase %": "{:.1f}%",
-                    "Quites Proy.": "{:.1f}", "Intercepciones Proy.": "{:.1f}"
+                    "Posesión %": "{:.1f}%", 
+                    "Precisión %": "{:.1f}%",
+                    "Quites (Recuperación)": "{:.1f}",
+                    "Media Distancia": "{:.1f}"
                 }), hide_index=True, use_container_width=True, height=320)
 
             with tab_ata:
