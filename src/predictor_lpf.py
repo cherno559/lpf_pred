@@ -107,12 +107,15 @@ html, body, [class*="css"] { font-family: 'Manrope', sans-serif; background-colo
 # ──────────────────────────────────────────────────────────────────────
 # PARÁMETROS DEL MOTOR Y JERARQUÍAS (Equilibrado y Corregido)
 # ──────────────────────────────────────────────────────────────────────
-W_XG = 0.75  
-K_PRIOR  = 8.0 # Restauramos la memoria jerárquica para no hundir a los grandes por un mal partido
+# ──────────────────────────────────────────────────────────────────────
+# PARÁMETROS DEL MOTOR Y JERARQUÍAS (K.O. a la penalización por rachas)
+# ──────────────────────────────────────────────────────────────────────
+W_XG = 0.70  
+K_PRIOR = 15.0 
 DC_RHO = -0.15 
 MAX_GOALS_MATRIX = 7
-N_RECENCIA, PESO_RECIENTE, PESO_NORMAL = 5, 1.25, 1.0 
-PESO_HISTORICO = 0.70 
+N_RECENCIA, PESO_RECIENTE, PESO_NORMAL = 5, 1.0, 1.0 
+PESO_HISTORICO = 0.75 
 LAM_MIN, LAM_MAX = 0.20, 5.00
 
 JERARQUIA_EQUIPOS = {
