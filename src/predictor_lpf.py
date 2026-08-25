@@ -1120,17 +1120,19 @@ elif nav == "Simulador de Jornada":
                              hide_index=True, use_container_width=True, height=320)
 
             with tab_ark:
-                st.caption("Ordenado por Índice de Arquero (Goles Evitados ajustado por xGOT enfrentado)")
-                df_arq = format_ranking(df_res, "Indice_Arquero", False,
-                                        ["Indice_Arquero", "Goles_Evitados", "Atajadas", "xGOT_Contra", "Arco_Contra", "Rival"],
-                                        {"Indice_Arquero": "Índice", "Goles_Evitados": "Goles Evitados",
-                                         "Atajadas": "Atajadas Proy.", "xGOT_Contra": "xGOT Enfrentado",
-                                         "Arco_Contra": "Tiros al Arco Recibidos"})
+                st.caption("Ordenado por Atajadas Proyectadas (Carga de trabajo y exigencia del arquero)")
+                df_arq = format_ranking(df_res, "Atajadas", False,
+                                        ["Atajadas", "Arco_Contra", "xG_Contra", "xGOT_Contra", "Rival"],
+                                        {"Atajadas": "Atajadas Proyectadas", 
+                                         "Arco_Contra": "Tiros al Arco Recibidos",
+                                         "xG_Contra": "xG en Contra (Peligro)",
+                                         "xGOT_Contra": "xGOT en Contra (Ejecución)"})
                 st.dataframe(df_arq.style.format({
-                    "Índice": "{:.2f}", "Goles Evitados": "{:.2f}", "Atajadas Proy.": "{:.1f}",
-                    "xGOT Enfrentado": "{:.2f}", "Tiros al Arco Recibidos": "{:.1f}",
+                    "Atajadas Proyectadas": "{:.1f}", 
+                    "Tiros al Arco Recibidos": "{:.1f}",
+                    "xG en Contra (Peligro)": "{:.2f}",
+                    "xGOT en Contra (Ejecución)": "{:.2f}"
                 }), hide_index=True, use_container_width=True, height=320)
-
             with tab_def:
                 st.caption("Ordenado por xG concedido (menor = mejor defensa proyectada)")
                 df_def = format_ranking(df_res, "xG_Contra", True,
