@@ -57,8 +57,7 @@ html, body, [class*="css"] { font-family: 'Manrope', sans-serif; background-colo
 .score-pct { font-size: 0.85rem; color: #888890; margin-top: 4px; }
 .score-card.first .score-pct { color: #ffffff; font-weight: 600; }
 
-.stButton>button { font-family: 'Bebas Neue', sans-serif; font-size: 1.5rem; letter-spacing: 2px; background-color: #ED1A3B; color: #fff; border: none; border-radius: 4px; padding: 10px 20px; width: 100%; transition: background-color 0.3s; }
-.stButton>button:hover { background-color: #c41530; color: #fff; }
+.stButton>button { font-family: 'Bebas Neue', sans-serif; letter-spacing: 2px; transition: background-color 0.3s; }
 .stSelectbox>div>div, .stTextInput>div>div, .stRadio>div>div { background-color: #141417 !important; border: 1px solid #2a2a30 !important; color: #ffffff !important; border-radius: 4px !important; }
 [data-testid="stSidebar"] { background-color: #0f0f12 !important; border-right: 1px solid #1f1f24 !important; }
 .sidebar-logo { font-family: 'Bebas Neue', sans-serif; font-size: 2.5rem; color: #ED1A3B; letter-spacing: 2px; text-align: center; margin-bottom: 30px; border-bottom: 1px solid #1f1f24; padding-bottom: 20px; }
@@ -240,6 +239,7 @@ def construir_df(datos: dict) -> pd.DataFrame:
                 filas.append({**base, "Equipo": p["local"], "Rival": p["visitante"], "Condicion": "Local", "Propio": vals["local"], "Concedido": vals["visitante"]})
                 filas.append({**base, "Equipo": p["visitante"], "Rival": p["local"], "Condicion": "Visitante", "Propio": vals["visitante"], "Concedido": vals["local"]})
     return pd.DataFrame(filas)
+
 @st.cache_data(ttl=120, show_spinner=False)
 def calcular_tabla(df: pd.DataFrame, condicion: str = "General") -> pd.DataFrame:
     if df.empty: return pd.DataFrame()
@@ -598,7 +598,8 @@ def fig_radar_pro(df, eq_a, eq_b, cond_a, cond_b):
     layout_args = PLOT.copy()
     layout_args.update(height=400, polar=dict(bgcolor="rgba(0,0,0,0)", radialaxis=dict(visible=True, showticklabels=False, gridcolor="#2a2a30", range=[0, 1]), angularaxis=dict(gridcolor="#2a2a30", linecolor="#2a2a30")), margin=dict(l=40, r=40, t=36, b=40))
     return fig.update_layout(**layout_args)
-    # ──────────────────────────────────────────────────────────────────────
+
+# ──────────────────────────────────────────────────────────────────────
 # NAVEGACIÓN Y CARGA DE DATOS
 # ──────────────────────────────────────────────────────────────────────
 with st.sidebar:
@@ -648,7 +649,7 @@ if nav == "Predicción de Partidos":
     ea, eb = c1.selectbox("Equipo Local", equipos, index=idx_river), c2.selectbox("Equipo Visitante", equipos, index=min(1, len(equipos) - 1))
     loc = c3.selectbox("Ajuste Localía", ["Aplicar Ventaja", "Terreno Neutral"]) == "Aplicar Ventaja"
     
-    if st.button("CALCULAR PROBABILIDADES"):
+    if st.button("CALCULAR PROBABILIDADES", type="primary", use_container_width=True):
         la, lb = calcular_lambdas(df, ea, eb, loc, tabla)
         sim = montecarlo(la, lb)
         m_loc = 1.11 if sim['victoria'] >= 0.45 else 1.13
@@ -720,8 +721,7 @@ elif nav == "Simulador de Jornada":
 
     fechas_disponibles = sorted(df_fixture_temp["nFecha"].unique())
     
-    c1, c2 = st.columns([1, 3])
-    jornada_elegida = c1.selectbox("Seleccionar Fecha del Fixture a Invertir:", fechas_disponibles)
+    jornada_elegida = st.selectbox("Seleccionar Fecha del Fixture a Invertir:", fechas_disponibles)
     
     df_fecha_apertura = df_fixture_temp[
         (df_fixture_temp["nFecha"] == jornada_elegida) & 
@@ -737,67 +737,13 @@ elif nav == "Simulador de Jornada":
         "Rotación V": False                              
     })
     
-    c2.write(f"**Partidos de la Fecha {jornada_elegida} (Localías Invertidas para el Clausura)**")
+    st.markdown(f"**Partidos de la Fecha {jornada_elegida} (Localías Invertidas para el Clausura)**")
     
-    cruces_editados = c2.data_editor(
+    cruces_editados = st.data_editor(
         cruces_validos,
         column_config={
-            "Rotación L": st.column_config.CheckboxColumn("Rotación 🔄", default=False),
-            "Rotación V": st.column_config.CheckboxColumn("Rotación 🔄", default=False),
-        },
-        hide_index=True,
-        use_container_width=True
-    )
-    
-    PENALIDAD_XG = 0.35 
-
-elif nav == "Simulador de Jornada":
-    st.markdown('<div class="section-header">Simulador de Jornada Avanzado</div>', unsafe_allow_html=True)
-    
-    # CARGA AISLADA DEL HISTÓRICO EXCLUSIVAMENTE PARA EL FIXTURE
-    ruta_apertura_fija = "data/historico/apertura26.xlsx"
-    df_fixture_temp = None
-    
-    if os.path.exists(ruta_apertura_fija):
-        xl_apertura = pd.ExcelFile(ruta_apertura_fija, engine="openpyxl")
-        datos_fixture = {}
-        for hoja in xl_apertura.sheet_names:
-            if re.search(r"fecha\s*\d+", hoja, re.IGNORECASE):
-                df_h = pd.read_excel(xl_apertura, sheet_name=hoja, header=None)
-                datos_fixture[f"Histórico||Apertura||{hoja}"] = _procesar_dataframe(df_h)
-        if datos_fixture:
-            df_fixture_temp = construir_df(datos_fixture)
-
-    if df_fixture_temp is None or df_fixture_temp.empty:
-        st.warning("⚠️ No se pudo cargar automáticamente el archivo histórico en `data/historico/apertura26.xlsx` para invertir el fixture. Usando datos actuales.")
-        df_fixture_temp = df
-
-    fechas_disponibles = sorted(df_fixture_temp["nFecha"].unique())
-    
-    c1, c2 = st.columns([1, 3])
-    jornada_elegida = c1.selectbox("Seleccionar Fecha del Fixture a Invertir:", fechas_disponibles)
-    
-    df_fecha_apertura = df_fixture_temp[
-        (df_fixture_temp["nFecha"] == jornada_elegida) & 
-        (df_fixture_temp["Condicion"] == "Local") &
-        (df_fixture_temp["Métrica"] == "Resultado")
-    ].drop_duplicates(subset=["Equipo", "Rival"])
-    
-    # Se invierten Local y Visitante
-    cruces_validos = pd.DataFrame({
-        "Rotación L": False,                             
-        "Local": df_fecha_apertura["Rival"].values,      
-        "Visitante": df_fecha_apertura["Equipo"].values, 
-        "Rotación V": False                              
-    })
-    
-    c2.write(f"**Partidos de la Fecha {jornada_elegida} (Localías Invertidas para el Clausura)**")
-    
-    cruces_editados = c2.data_editor(
-        cruces_validos,
-        column_config={
-            "Rotación L": st.column_config.CheckboxColumn("Rotación 🔄", default=False),
-            "Rotación V": st.column_config.CheckboxColumn("Rotación 🔄", default=False),
+            "Rotación L": st.column_config.CheckboxColumn("Rotación L", default=False),
+            "Rotación V": st.column_config.CheckboxColumn("Rotación V", default=False),
         },
         hide_index=True,
         use_container_width=True
@@ -807,7 +753,9 @@ elif nav == "Simulador de Jornada":
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    if st.button("SIMULAR JORNADA COMPLETA"):
+    btn_simular = st.button("▶️ SIMULAR JORNADA COMPLETA", type="primary", use_container_width=True)
+
+    if btn_simular:
         if len(cruces_editados) == 0:
             st.warning("⚠️ No hay partidos para simular.")
         else:
@@ -822,7 +770,6 @@ elif nav == "Simulador de Jornada":
                     
                     la, lb = calcular_lambdas(df, ea, eb, True, tabla)
                     
-                    # Penalidad por rotación (suplentes)
                     if rota_local: la = max(0.1, la - PENALIDAD_XG)
                     if rota_visitante: lb = max(0.1, lb - PENALIDAD_XG)
                     
@@ -833,7 +780,6 @@ elif nav == "Simulador de Jornada":
                     if rota_visitante: pos_b *= 0.9
                     pos_a, pos_b = ((pos_a / (pos_a + pos_b)) * 100, (pos_b / (pos_a + pos_b)) * 100) if (pos_a + pos_b) > 0 else (50.0, 50.0)
 
-                    # Ofensivas
                     arco_a, arco_b = proyectar_metrica(df, ea, eb, "Tiros al arco", True, tabla)
                     xgot_a, xgot_b = proyectar_metrica(df, ea, eb, "xG al arco (xGOT)", True, tabla)
                     oc_a, oc_b = proyectar_metrica(df, ea, eb, "Ocasiones claras", True, tabla)
@@ -843,13 +789,10 @@ elif nav == "Simulador de Jornada":
                     if rota_visitante: 
                         arco_b *= 0.8; xgot_b *= 0.8; oc_b *= 0.8
                     
-                    # Defensivas y Arquero
                     desp_a, desp_b = proyectar_metrica(df, ea, eb, "Despejes", True, tabla)
                     inter_a, inter_b = proyectar_metrica(df, ea, eb, "Intercepciones", True, tabla)
                     govit_a, govit_b = proyectar_metrica(df, ea, eb, "Goles evitados (arquero)", True, tabla)
                     quites_a, quites_b = proyectar_metrica(df, ea, eb, "Quites", True, tabla)
-                    
-                    # Creación y Medio
                     pases_a, pases_b = proyectar_metrica(df, ea, eb, "Pases precisos", True, tabla)
                         
                     resultados.append({
@@ -871,7 +814,6 @@ elif nav == "Simulador de Jornada":
             
             st.markdown('<div class="section-header">📊 Rankings de la Jornada (UI Data Science)</div>', unsafe_allow_html=True)
             
-            # FILA 1: Probabilidades y Delanteros
             col1, col2 = st.columns(2)
             with col1:
                 st.markdown("### 📈 Probabilidad de Victoria")
@@ -893,7 +835,6 @@ elif nav == "Simulador de Jornada":
 
             st.markdown("<br>", unsafe_allow_html=True)
             
-            # FILA 2: Medios y Defensas
             col3, col4 = st.columns(2)
             with col3:
                 st.markdown("### 🧭 Dominio del Medio (Posesión y Pases)")
@@ -915,7 +856,6 @@ elif nav == "Simulador de Jornada":
 
             st.markdown("<br>", unsafe_allow_html=True)
 
-            # FILA 3: Arqueros
             col5, col6 = st.columns([1, 1])
             with col5:
                 st.markdown("### 🧤 Ranking de Arqueros (Goles Evitados)")
@@ -924,6 +864,7 @@ elif nav == "Simulador de Jornada":
                     "Goles_Evitados": st.column_config.NumberColumn("Goles Evitados", format="%.2f"), 
                     "xGOT_C": st.column_config.NumberColumn("xGOT que recibe", format="%.2f")
                 }, hide_index=True, use_container_width=True, height=280)
+
 elif nav == "Métricas Globales":
     st.markdown('<div class="section-header">Rankings de Rendimiento</div>', unsafe_allow_html=True)
     c1, c2, c3 = st.columns(3)
@@ -1017,7 +958,7 @@ elif nav == "Rachas y Momentum":
 st.markdown("<hr style='border-color:#1f1f24; margin-top:50px;'>", unsafe_allow_html=True)
 st.markdown(
     "<div style='text-align:center; color:#555560; font-size:0.75rem; padding:10px 0 30px;'>"
-    "LPF Analytics v1.3 &nbsp;·&nbsp; Modelo estadístico holístico ponderado (Poisson + Dixon-Coles) &nbsp;·&nbsp; "
+    "LPF Analytics v1.4 &nbsp;·&nbsp; Modelo estadístico holístico ponderado (Poisson + Dixon-Coles) &nbsp;·&nbsp; "
     "Uso analítico/educativo — no constituye asesoramiento de apuestas"
     "</div>",
     unsafe_allow_html=True,
