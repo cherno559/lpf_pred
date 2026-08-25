@@ -102,7 +102,7 @@ html, body, [class*="css"] { font-family: 'Manrope', sans-serif; background-colo
 # PARÁMETROS DEL MOTOR Y JERARQUÍAS
 # ──────────────────────────────────────────────────────────────────────
 W_XG = 0.65  
-K_PRIOR  = 12.0 
+K_PRIOR  = 5.0 
 DC_RHO = -0.15 
 MAX_GOALS_MATRIX = 7
 N_RECENCIA, PESO_RECIENTE, PESO_NORMAL = 5, 1.20, 1.0
