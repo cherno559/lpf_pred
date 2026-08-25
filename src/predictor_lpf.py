@@ -805,7 +805,9 @@ elif nav == "Simulador de Jornada":
     
     PENALIDAD_XG = 0.35 
 
-    if st.button("SIMULAR JORNADA COMPLETA (Métricas Extendidas)"):
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    if st.button("SIMULAR JORNADA COMPLETA"):
         if len(cruces_editados) == 0:
             st.warning("⚠️ No hay partidos para simular.")
         else:
