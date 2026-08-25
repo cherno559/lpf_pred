@@ -104,13 +104,16 @@ html, body, [class*="css"] { font-family: 'Manrope', sans-serif; background-colo
 # ──────────────────────────────────────────────────────────────────────
 # PARÁMETROS DEL MOTOR Y JERARQUÍAS (Ajustados para romper el capeo)
 # ──────────────────────────────────────────────────────────────────────
-W_XG = 0.80  # Ahora le creemos un 80% al xG/xGOT y solo 20% a los goles reales (suerte)
-K_PRIOR  = 3.0 # Redujimos drásticamente la "terquedad" del modelo. Ahora reacciona rápido a la actualidad.
-DC_RHO = -0.10 
+# ──────────────────────────────────────────────────────────────────────
+# PARÁMETROS DEL MOTOR Y JERARQUÍAS (Equilibrado y Corregido)
+# ──────────────────────────────────────────────────────────────────────
+W_XG = 0.75  
+K_PRIOR  = 8.0 # Restauramos la memoria jerárquica para no hundir a los grandes por un mal partido
+DC_RHO = -0.15 
 MAX_GOALS_MATRIX = 7
-N_RECENCIA, PESO_RECIENTE, PESO_NORMAL = 5, 1.35, 1.0 # Aumentamos el peso de los últimos 5 partidos
-PESO_HISTORICO = 0.60 
-LAM_MIN, LAM_MAX = 0.10, 6.00
+N_RECENCIA, PESO_RECIENTE, PESO_NORMAL = 5, 1.25, 1.0 
+PESO_HISTORICO = 0.70 
+LAM_MIN, LAM_MAX = 0.20, 5.00
 
 JERARQUIA_EQUIPOS = {
     "River Plate": 1.250, "Boca Juniors": 1.150, "Racing Club": 1.080, "Rosario Central": 1.065,             
@@ -295,7 +298,7 @@ def _adjusted_rate(d_all, metrica, col, max_fecha_torneo, tabla, is_attack, targ
         valores_ajustados.append(min(adj, 3.5))
         
         w = PESO_HISTORICO if cat == "Histórico" else (PESO_RECIENTE if f >= (max_fecha_torneo - N_RECENCIA + 1) else PESO_NORMAL)
-        if c_match == target_cond: w *= 1.25 # Ampliamos el peso de la localía para romper empates estadísticos
+        if c_match == target_cond: w *= 1.15 # Suavizado para no inflar tanto la localía extrema
         pesos.append(w)
         
     return float(np.average(valores_ajustados, weights=pesos)) if valores_ajustados and sum(pesos) > 0 else np.nan
@@ -316,14 +319,11 @@ def _league_stats(df):
 def _strength(df_actual, eq, target_cond, league, max_fecha_torneo: int, tabla: pd.DataFrame):
     d_eq = df_actual[df_actual["Equipo"] == eq]
     
-    # Fuerzas Básicas
     g_atk = _adjusted_rate(d_eq, "Resultado", "Propio", max_fecha_torneo, tabla, is_attack=True, target_cond=target_cond)
     x_atk = _adjusted_rate(d_eq, "xG_Model", "Propio", max_fecha_torneo, tabla, is_attack=True, target_cond=target_cond)
     g_def = _adjusted_rate(d_eq, "Resultado", "Concedido", max_fecha_torneo, tabla, is_attack=False, target_cond=target_cond)
     x_def = _adjusted_rate(d_eq, "xG_Model", "Concedido", max_fecha_torneo, tabla, is_attack=False, target_cond=target_cond)
     
-    # Fuerzas Avanzadas (La gran mejora matemática)
-    # Si ataca mucho al arco, mejora su xG. Si recupera mucho o ataja bien, mejora su defensa.
     tiros_arco = _adjusted_rate(d_eq, "Tiros al arco", "Propio", max_fecha_torneo, tabla, is_attack=True, target_cond=target_cond)
     goles_evitados = _adjusted_rate(d_eq, "Goles evitados (arquero)", "Propio", max_fecha_torneo, tabla, is_attack=False, target_cond=target_cond)
     intercepciones = _adjusted_rate(d_eq, "Intercepciones", "Propio", max_fecha_torneo, tabla, is_attack=False, target_cond=target_cond)
@@ -333,16 +333,16 @@ def _strength(df_actual, eq, target_cond, league, max_fecha_torneo: int, tabla: 
     def combine_atk(g, x, tiros):
         if np.isnan(g) and np.isnan(x): return np.nan
         val_base = W_XG * (x if not np.isnan(x) else g) + (1 - W_XG) * (g if not np.isnan(g) else x)
-        # Bonus por volumen de tiros al arco
-        bonus_tiros = 1.0 + (min(max((tiros - 4.5) / 10.0, -0.1), 0.15) if not np.isnan(tiros) else 0)
+        # Bonus contenido: máximo +/- 5% según volumen de tiros, para no desvirtuar a los que tiran poco pero eficiente.
+        bonus_tiros = 1.0 + (min(max((tiros - 4.5) / 100.0, -0.05), 0.05) if not np.isnan(tiros) else 0)
         return val_base * bonus_tiros
 
     def combine_def(g, x, evitados, intercep):
         if np.isnan(g) and np.isnan(x): return np.nan
         val_base = W_XG * (x if not np.isnan(x) else g) + (1 - W_XG) * (g if not np.isnan(g) else x)
-        # Reducción de goles concedidos esperados si el arquero es figura o la defensa corta mucho
-        bonus_arquero = max(evitados * 0.1, 0) if not np.isnan(evitados) and evitados > 0 else 0
-        bonus_defensa = max((intercep - 10) * 0.01, 0) if not np.isnan(intercep) else 0
+        # Bonus contenido: no castiga a los equipos grandes de posesión que no necesitan interceptar.
+        bonus_arquero = min(max(evitados * 0.05, -0.05), 0.05) if not np.isnan(evitados) else 0
+        bonus_defensa = min(max((intercep - 12) * 0.005, -0.05), 0.05) if not np.isnan(intercep) else 0
         return max(val_base - bonus_arquero - bonus_defensa, 0.1)
 
     atk_val = combine_atk(g_atk, x_atk, tiros_arco)
@@ -378,10 +378,9 @@ def calcular_lambdas(df, eq_a, eq_b, es_loc, tabla):
     la = (l["ref_home"] if ca == "Local" else l["ref_away"]) * aa * db
     lb = (l["ref_home"] if cb == "Local" else l["ref_away"]) * ab * da
 
-    # Ajuste Dinámico por Localía Fuerte (Para romper el techo del 50%)
     if es_loc:
-        la *= 1.15
-        lb *= 0.90
+        la *= 1.10 # Localía justa, sin exagerar
+        lb *= 0.95
 
     adn_temp = calcular_adn_tactico(df_actual)
     if not adn_temp.empty and eq_a in adn_temp.index and eq_b in adn_temp.index:
@@ -399,7 +398,6 @@ def calcular_lambdas(df, eq_a, eq_b, es_loc, tabla):
     jerarquia_local = JERARQUIA_EQUIPOS.get(eq_local, 1.0)
     jerarquia_visit = JERARQUIA_EQUIPOS.get(eq_visit, 1.0)
     
-    # Overround asimétrico para despegar a los favoritos
     if jerarquia_local > jerarquia_visit * 1.05: lambda_local = lambda_local ** 1.15
     if eq_local in ["River Plate", "Boca Juniors", "Racing Club", "Independiente", "San Lorenzo"]: lambda_visit *= 0.85
 
