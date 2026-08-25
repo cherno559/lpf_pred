@@ -410,6 +410,7 @@ def proyectar_metrica(df, eq_a, eq_b, metrica, es_loc, tabla):
         if d_eq.empty: return df_m[col].mean()
         conds = d_eq["Condicion"].values
         vals = d_eq[col].values
+        # Ponderamos más fuerte los rendimientos en la condición actual (Local/Vis)
         w = np.where(conds == target_cond, 1.20, 1.0)
         return np.average(vals, weights=w)
         
@@ -423,8 +424,15 @@ def proyectar_metrica(df, eq_a, eq_b, metrica, es_loc, tabla):
     factor_def_b = 1.0 + ((concede_b / media_liga) - 1.0) * 0.5 
     factor_def_a = 1.0 + ((concede_a / media_liga) - 1.0) * 0.5 
     
-    return max(0.0, float(base_a * factor_def_b)), max(0.0, float(base_b * factor_def_a))
-
+    val_a = base_a * factor_def_b
+    val_b = base_b * factor_def_a
+    
+    # 🚨 EXCEPCIÓN ARQUEROS: Los Goles Evitados PUEDEN ser negativos si atajan mal.
+    if metrica == "Goles evitados (arquero)":
+        return float(val_a), float(val_b)
+    
+    # Para el resto (tiros, posesión, córners), el piso sigue siendo 0 (nadie patea -2 veces).
+    return max(0.0, float(val_a)), max(0.0, float(val_b))
 def montecarlo(la, lb):
     def _pmf(lam, kmax):
         k = np.arange(kmax + 1)
