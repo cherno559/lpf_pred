@@ -101,15 +101,6 @@ html, body, [class*="css"] { font-family: 'Manrope', sans-serif; background-colo
 # ──────────────────────────────────────────────────────────────────────
 # PARÁMETROS DEL MOTOR Y JERARQUÍAS
 # ──────────────────────────────────────────────────────────────────────
-# ──────────────────────────────────────────────────────────────────────
-# PARÁMETROS DEL MOTOR Y JERARQUÍAS (Ajustados para romper el capeo)
-# ──────────────────────────────────────────────────────────────────────
-# ──────────────────────────────────────────────────────────────────────
-# PARÁMETROS DEL MOTOR Y JERARQUÍAS (Equilibrado y Corregido)
-# ──────────────────────────────────────────────────────────────────────
-# ──────────────────────────────────────────────────────────────────────
-# PARÁMETROS DEL MOTOR Y JERARQUÍAS (K.O. a la penalización por rachas)
-# ──────────────────────────────────────────────────────────────────────
 W_XG = 0.70  
 K_PRIOR = 15.0 
 DC_RHO = -0.15 
@@ -433,6 +424,7 @@ def proyectar_metrica(df, eq_a, eq_b, metrica, es_loc, tabla):
     
     # Para el resto (tiros, posesión, córners), el piso sigue siendo 0 (nadie patea -2 veces).
     return max(0.0, float(val_a)), max(0.0, float(val_b))
+
 def montecarlo(la, lb):
     def _pmf(lam, kmax):
         k = np.arange(kmax + 1)
@@ -523,38 +515,6 @@ def calcular_adn_tactico(df: pd.DataFrame) -> pd.DataFrame:
     return adn
 
 def render_tags_html(tags: list) -> str: return "".join(f'<span class="tag-badge {clase}">{texto}</span>' for texto, clase in tags)
-
-def contexto_tactica_clash(adn: pd.DataFrame, eq_a: str, eq_b: str) -> str:
-    if adn is None or eq_a not in adn.index or eq_b not in adn.index: return ""
-    tags_a, tags_b = adn.loc[eq_a, "Tags"], adn.loc[eq_b, "Tags"]
-    ins_a, ins_b = adn.loc[eq_a, "Insight"], adn.loc[eq_b, "Insight"]
-
-    tags_a_txt = set(t for t, _ in tags_a) if isinstance(tags_a, list) else set()
-    tags_b_txt = set(t for t, _ in tags_b) if isinstance(tags_b, list) else set()
-
-    clash_lines = []
-    if "PRESSING INTENSO" in tags_a_txt and "JUEGO DIRECTO" in tags_b_txt: clash_lines.append("⚡ <b>Pressing vs Juego Directo</b>: local agresivo sin pelota, visitante salta líneas.")
-    if "POSESIÓN DOMINANTE" in tags_a_txt and "PRESSING INTENSO" in tags_b_txt: clash_lines.append("🔄 <b>Batalla de control</b>: local posesivo vs visitante que muerde — mediocampo trabado.")
-    if "DÉFICIT DEFENSIVO" in tags_a_txt or "DÉFICIT DEFENSIVO" in tags_b_txt: clash_lines.append("⚽ <b>Partido abierto</b>: fragilidades defensivas latentes, el partido invita a goles.")
-
-    return textwrap.dedent(f"""
-    <div class="tactica-clash">
-        <div class="tactica-title">Contexto Táctico del Choque</div>
-        <div class="tactica-row">
-            <div class="tactica-team-col">
-                <div style="font-size:0.7rem;color:#555560;text-transform:uppercase;letter-spacing:2px;margin-bottom:6px;">{eq_a} (local)</div>
-                {render_tags_html(tags_a) if isinstance(tags_a, list) else ""}
-                <div style="font-size:0.8rem;color:#888890;margin-top:8px;">{ins_a}</div>
-            </div>
-            <div class="tactica-vs-col">VS</div>
-            <div class="tactica-team-col">
-                <div style="font-size:0.7rem;color:#555560;text-transform:uppercase;letter-spacing:2px;margin-bottom:6px;">{eq_b} (visitante)</div>
-                {render_tags_html(tags_b) if isinstance(tags_b, list) else ""}
-                <div style="font-size:0.8rem;color:#888890;margin-top:8px;">{ins_b}</div>
-            </div>
-        </div>
-        <div class="tactica-insight">{"<br>".join(clash_lines) if clash_lines else "📊 Perfiles similares, partido de resultado abierto."}</div>
-    </div>""")
 
 def contexto_tactica_clash(adn: pd.DataFrame, eq_a: str, eq_b: str) -> str:
     if adn is None or eq_a not in adn.index or eq_b not in adn.index: return ""
@@ -913,11 +873,34 @@ if nav == "Predicción de Partidos":
         ctx = contexto_tactica_clash(adn_df, ea, eb)
         if ctx: st.markdown(ctx, unsafe_allow_html=True)
 
+        # 1. Calculamos TODAS las métricas (incluyendo las de la imagen)
         tiros_a, tiros_b = proyectar_metrica(df, ea, eb, "Tiros totales", loc, tabla)
         arco_a, arco_b   = proyectar_metrica(df, ea, eb, "Tiros al arco", loc, tabla)
         ocas_a, ocas_b   = proyectar_metrica(df, ea, eb, "Ocasiones claras", loc, tabla)
         pos_a, pos_b     = proyectar_metrica(df, ea, eb, "Posesión de balón", loc, tabla)
+        corn_a, corn_b   = proyectar_metrica(df, ea, eb, "Córners", loc, tabla)
+        reg_a, reg_b     = proyectar_metrica(df, ea, eb, "Regates intentados", loc, tabla)
+        pp_a, pp_b       = proyectar_metrica(df, ea, eb, "Pases precisos", loc, tabla)
+        pt_a, pt_b       = proyectar_metrica(df, ea, eb, "Pases totales", loc, tabla)
+        gev_a, gev_b     = proyectar_metrica(df, ea, eb, "Goles evitados (arquero)", loc, tabla)
+        xgot_a, xgot_b   = proyectar_metrica(df, ea, eb, "xG al arco (xGOT)", loc, tabla)
+        ataj_a, ataj_b   = proyectar_metrica(df, ea, eb, "Atajadas del arquero", loc, tabla)
+        quit_a, quit_b   = proyectar_metrica(df, ea, eb, "Quites", loc, tabla)
+        inter_a, inter_b = proyectar_metrica(df, ea, eb, "Intercepciones", loc, tabla)
+        desp_a, desp_b   = proyectar_metrica(df, ea, eb, "Despejes", loc, tabla)
+        tda_a, tda_b     = proyectar_metrica(df, ea, eb, "Tiros dentro del área", loc, tabla)
         
+        # Nuevas métricas para igualar la imagen
+        t_afuera_a, t_afuera_b     = proyectar_metrica(df, ea, eb, "Tiros afuera", loc, tabla)
+        t_bloq_a, t_bloq_b         = proyectar_metrica(df, ea, eb, "Tiros bloqueados", loc, tabla)
+        offside_a, offside_b       = proyectar_metrica(df, ea, eb, "Fueras de juego", loc, tabla)
+        faltas_a, faltas_b         = proyectar_metrica(df, ea, eb, "Faltas", loc, tabla)
+        amarillas_a, amarillas_b   = proyectar_metrica(df, ea, eb, "Tarjetas amarillas", loc, tabla)
+        rojas_a, rojas_b           = proyectar_metrica(df, ea, eb, "Tarjetas rojas", loc, tabla)
+        ocas_fall_a, ocas_fall_b   = proyectar_metrica(df, ea, eb, "Ocasiones claras falladas", loc, tabla)
+        tfa_a, tfa_b               = proyectar_metrica(df, ea, eb, "Tiros fuera del área", loc, tabla)
+
+        # Ajuste porcentual de posesión
         tot_pos = pos_a + pos_b
         if tot_pos > 0:
             pos_a = (pos_a / tot_pos) * 100
@@ -925,30 +908,56 @@ if nav == "Predicción de Partidos":
         else:
             pos_a, pos_b = 50.0, 50.0
 
+        # Encontrar el resultado más probable de la matriz para mostrarlo como "Resultado"
         flat = [(sim["matrix"][i, j], i, j) for i in range(sim["matrix"].shape[0]) for j in range(sim["matrix"].shape[1])]
         flat.sort(reverse=True)
-        top_score_prob, i_top, j_top = flat[0]
+        top_score_prob, goles_a, goles_b = flat[0]
         
         st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown("### 📝 GUION Y PROYECCIÓN TÉCNICA DE RENDIMIENTO")
+        st.markdown("### 📝 TABLA DE PROYECCIÓN (FORMATO CAPTURA)")
         
-        with st.container():
-            st.info("⚡ ESTIMACIÓN MATEMÁTICA DE MÉTRICAS CLAVE PARA EL ENCUENTRO")
-            col_local, col_vis = st.columns(2)
-            with col_local:
-                st.markdown(f"<h4 style='color: #ED1A3B; border-bottom: 2px solid #ED1A3B; padding-bottom: 5px;'>🏠 {ea} (Local)</h4>", unsafe_allow_html=True)
-                st.metric("Tiros Totales Proyectados", f"{tiros_a:.1f}")
-                st.metric("Tiros al Arco Proyectados", f"{arco_a:.1f}")
-                st.metric("Ocasiones Claras", f"{ocas_a:.1f}")
-                st.metric("Goles Esperados (xG)", f"{la:.2f}")
-                st.metric("Posesión Estimada", f"{pos_a:.0f}%")
-            with col_vis:
-                st.markdown(f"<h4 style='color: #ffffff; border-bottom: 2px solid #2a2a35; padding-bottom: 5px;'>✈️ {eb} (Visitante)</h4>", unsafe_allow_html=True)
-                st.metric("Tiros Totales Proyectados", f"{tiros_b:.1f}")
-                st.metric("Tiros al Arco Proyectados", f"{arco_b:.1f}")
-                st.metric("Ocasiones Claras", f"{ocas_b:.1f}")
-                st.metric("Goles Esperados (xG)", f"{lb:.2f}")
-                st.metric("Posesión Estimada", f"{pos_b:.0f}%")
+        # Formateo de regates intentados
+        reg_a_str = f"{reg_a:.0f}"
+        reg_b_str = f"{reg_b:.0f}"
+
+        # Armamos el DataFrame idéntico a la imagen
+        df_comparativa = pd.DataFrame({
+            "Métrica": [
+                "Resultado", "Posesión de balón", "Goles esperados (xG)", "Tiros totales", 
+                "Tiros al arco", "Tiros afuera", "Tiros bloqueados", "Córners", 
+                "Fueras de juego", "Faltas", "Tarjetas amarillas", "Tarjetas rojas", 
+                "Pases totales", "Pases precisos", "Atajadas del arquero", "Quites", 
+                "Intercepciones", "Despejes", "Ocasiones claras", "Ocasiones claras falladas", 
+                "Regates intentados", "Tiros dentro del área", "Tiros fuera del área", 
+                "xG al arco (xGOT)", "Goles evitados (arquero)"
+            ],
+            ea: [
+                f"{goles_a}", f"{pos_a:.0f}%", f"{la:.2f}", f"{tiros_a:.0f}", 
+                f"{arco_a:.0f}", f"{t_afuera_a:.0f}", f"{t_bloq_a:.0f}", f"{corn_a:.0f}", 
+                f"{offside_a:.0f}", f"{faltas_a:.0f}", f"{amarillas_a:.0f}", f"{rojas_a:.0f}", 
+                f"{pt_a:.0f}", f"{pp_a:.0f}", f"{ataj_a:.0f}", f"{quit_a:.0f}", 
+                f"{inter_a:.0f}", f"{desp_a:.0f}", f"{ocas_a:.0f}", f"{ocas_fall_a:.0f}", 
+                reg_a_str, f"{tda_a:.0f}", f"{tfa_a:.0f}", 
+                f"{xgot_a:.2f}", f"{gev_a:.2f}"
+            ],
+            eb: [
+                f"{goles_b}", f"{pos_b:.0f}%", f"{lb:.2f}", f"{tiros_b:.0f}", 
+                f"{arco_b:.0f}", f"{t_afuera_b:.0f}", f"{t_bloq_b:.0f}", f"{corn_b:.0f}", 
+                f"{offside_b:.0f}", f"{faltas_b:.0f}", f"{amarillas_b:.0f}", f"{rojas_b:.0f}", 
+                f"{pt_b:.0f}", f"{pp_b:.0f}", f"{ataj_b:.0f}", f"{quit_b:.0f}", 
+                f"{inter_b:.0f}", f"{desp_b:.0f}", f"{ocas_b:.0f}", f"{ocas_fall_b:.0f}", 
+                reg_b_str, f"{tda_b:.0f}", f"{tfa_b:.0f}", 
+                f"{xgot_b:.2f}", f"{gev_b:.2f}"
+            ]
+        })
+
+        # Estilizamos la tabla para que ocupe todo el ancho y oculte el índice numérico
+        st.dataframe(
+            df_comparativa, 
+            hide_index=True, 
+            use_container_width=True,
+            height=900 # Altura suficiente para que no aparezca scroll y salga limpia la foto
+        )
 
         if not rachas_df.empty and ea in rachas_df.index and eb in rachas_df.index:
             st.markdown('<div class="section-header">Forma Reciente</div>', unsafe_allow_html=True)
