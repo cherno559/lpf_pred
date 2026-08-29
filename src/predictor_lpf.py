@@ -440,7 +440,7 @@ def montecarlo(la, lb):
     return {"victoria": float(np.tril(M, -1).sum()), "empate": float(np.trace(M)), "derrota": float(np.triu(M, 1).sum()), "matrix": M}
 
 def top3_marcadores(M, ea, eb):
-    flat = [(M[i, j], i, j) for i in range(M.shape[0]) for j in range(M.shape[1])]
+    flat = [(M[i, j], i, j) for i in range(M.shape[0]) for j in range(M.shape[1]) if not (i == 1 and j == 1)]
     flat.sort(reverse=True)
     medallas, clases = ["🥇 MÁS PROBABLE", "🥈 2°", "🥉 3°"], ["first", "second", "third"]
     cards = "".join(f"""<div class="score-card {clases[idx]}"><div class="score-rank">{medallas[idx]}</div><div class="score-result">{ea[:3].upper()} {i} – {j} {eb[:3].upper()}</div><div class="score-pct">{prob * 100:.1f}%</div></div>""" for idx, (prob, i, j) in enumerate(flat[:3]))
@@ -879,7 +879,7 @@ if nav == "Predicción de Partidos":
         ocas_a, ocas_b   = proyectar_metrica(df, ea, eb, "Ocasiones claras", loc, tabla)
         pos_a, pos_b     = proyectar_metrica(df, ea, eb, "Posesión de balón", loc, tabla)
         corn_a, corn_b   = proyectar_metrica(df, ea, eb, "Córners", loc, tabla)
-        reg_a, reg_b     = proyectar_metrica(df, ea, eb, "Regates intentados", loc, tabla)
+        reg_a, reg_b     = proyectar_metrica(df, ea, eb, "Regates intentados (Total)", loc, tabla)
         pp_a, pp_b       = proyectar_metrica(df, ea, eb, "Pases precisos", loc, tabla)
         pt_a, pt_b       = proyectar_metrica(df, ea, eb, "Pases totales", loc, tabla)
         gev_a, gev_b     = proyectar_metrica(df, ea, eb, "Goles evitados (arquero)", loc, tabla)
@@ -907,23 +907,14 @@ if nav == "Predicción de Partidos":
             pos_b = (pos_b / tot_pos) * 100
         else:
             pos_a, pos_b = 50.0, 50.0
-
-        # Encontrar el resultado más probable de la matriz para mostrarlo como "Resultado"
-        flat = [(sim["matrix"][i, j], i, j) for i in range(sim["matrix"].shape[0]) for j in range(sim["matrix"].shape[1])]
-        flat.sort(reverse=True)
-        top_score_prob, goles_a, goles_b = flat[0]
         
         st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown("### 📝 TABLA DE PROYECCIÓN (FORMATO CAPTURA)")
+        st.markdown("### 📝 PROYECCIÓN DE MÉTRICAS")
         
-        # Formateo de regates intentados
-        reg_a_str = f"{reg_a:.0f}"
-        reg_b_str = f"{reg_b:.0f}"
-
-        # Armamos el DataFrame idéntico a la imagen
+        # Armamos el DataFrame idéntico a la imagen (sin la fila de Resultado)
         df_comparativa = pd.DataFrame({
             "Métrica": [
-                "Resultado", "Posesión de balón", "Goles esperados (xG)", "Tiros totales", 
+                "Posesión de balón", "Goles esperados (xG)", "Tiros totales", 
                 "Tiros al arco", "Tiros afuera", "Tiros bloqueados", "Córners", 
                 "Fueras de juego", "Faltas", "Tarjetas amarillas", "Tarjetas rojas", 
                 "Pases totales", "Pases precisos", "Atajadas del arquero", "Quites", 
@@ -932,21 +923,21 @@ if nav == "Predicción de Partidos":
                 "xG al arco (xGOT)", "Goles evitados (arquero)"
             ],
             ea: [
-                f"{goles_a}", f"{pos_a:.0f}%", f"{la:.2f}", f"{tiros_a:.0f}", 
+                f"{pos_a:.0f}%", f"{la:.2f}", f"{tiros_a:.0f}", 
                 f"{arco_a:.0f}", f"{t_afuera_a:.0f}", f"{t_bloq_a:.0f}", f"{corn_a:.0f}", 
                 f"{offside_a:.0f}", f"{faltas_a:.0f}", f"{amarillas_a:.0f}", f"{rojas_a:.0f}", 
                 f"{pt_a:.0f}", f"{pp_a:.0f}", f"{ataj_a:.0f}", f"{quit_a:.0f}", 
                 f"{inter_a:.0f}", f"{desp_a:.0f}", f"{ocas_a:.0f}", f"{ocas_fall_a:.0f}", 
-                reg_a_str, f"{tda_a:.0f}", f"{tfa_a:.0f}", 
+                f"{reg_a:.0f}", f"{tda_a:.0f}", f"{tfa_a:.0f}", 
                 f"{xgot_a:.2f}", f"{gev_a:.2f}"
             ],
             eb: [
-                f"{goles_b}", f"{pos_b:.0f}%", f"{lb:.2f}", f"{tiros_b:.0f}", 
+                f"{pos_b:.0f}%", f"{lb:.2f}", f"{tiros_b:.0f}", 
                 f"{arco_b:.0f}", f"{t_afuera_b:.0f}", f"{t_bloq_b:.0f}", f"{corn_b:.0f}", 
                 f"{offside_b:.0f}", f"{faltas_b:.0f}", f"{amarillas_b:.0f}", f"{rojas_b:.0f}", 
                 f"{pt_b:.0f}", f"{pp_b:.0f}", f"{ataj_b:.0f}", f"{quit_b:.0f}", 
                 f"{inter_b:.0f}", f"{desp_b:.0f}", f"{ocas_b:.0f}", f"{ocas_fall_b:.0f}", 
-                reg_b_str, f"{tda_b:.0f}", f"{tfa_b:.0f}", 
+                f"{reg_b:.0f}", f"{tda_b:.0f}", f"{tfa_b:.0f}", 
                 f"{xgot_b:.2f}", f"{gev_b:.2f}"
             ]
         })
