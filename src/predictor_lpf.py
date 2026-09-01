@@ -1069,6 +1069,7 @@ elif nav == "Simulador de Jornada":
             st.warning("⚠️ No hay partidos para simular.")
         else:
             resultados_jornada = []
+            resultados_partidos = []
             
             with st.spinner(f"Procesando simulaciones matemáticas para la Fecha {jornada_elegida}..."):
                 for idx, row in cruces_editados.iterrows():
@@ -1085,6 +1086,11 @@ elif nav == "Simulador de Jornada":
                     if rota_visitante: lb = max(0.1, lb - PENALIDAD_XG)
 
                     sim = montecarlo(la, lb, rho_dinamico) 
+
+                    resultados_partidos.append({
+                        "Local": ea, "Visitante": eb,
+                        "Prob_Local": sim["victoria"], "Empate": sim["empate"], "Prob_Visitante": sim["derrota"],
+                    })
                     
                     tiros_a, tiros_b = proyectar_metrica(df, ea, eb, "Tiros totales", True, tabla)
                     arco_a, arco_b   = proyectar_metrica(df, ea, eb, "Tiros al arco", True, tabla)
@@ -1158,11 +1164,19 @@ elif nav == "Simulador de Jornada":
             tab_gen, tab_ark, tab_def, tab_med, tab_ata = st.tabs(["🏆 General", "🧤 Portería", "🛡️ Defensa", "🧭 Mediocampo", "⚔️ Ataque"])
 
             with tab_gen:
-                df_vic = format_ranking(df_res, "Prob_Victoria", False,
-                                        ["Prob_Victoria", "xG_Favor", "xG_Contra", "Condición", "Rival"],
-                                        {"Prob_Victoria": "Prob. de Ganar"})
-                st.dataframe(df_vic.style.format({"Prob. de Ganar": "{:.1%}", "xG_Favor": "{:.2f}", "xG_Contra": "{:.2f}"}),
-                             hide_index=True, use_container_width=True, height=320)
+                df_partidos = pd.DataFrame(resultados_partidos).rename(columns={
+                    "Prob_Local": "Prob. Victoria Local",
+                    "Empate": "Prob. Empate",
+                    "Prob_Visitante": "Prob. Victoria Visitante",
+                })[["Local", "Visitante", "Prob. Victoria Local", "Prob. Empate", "Prob. Victoria Visitante"]]
+                st.dataframe(
+                    df_partidos.style.format({
+                        "Prob. Victoria Local": "{:.1%}",
+                        "Prob. Empate": "{:.1%}",
+                        "Prob. Victoria Visitante": "{:.1%}",
+                    }),
+                    hide_index=True, use_container_width=True, height=560,
+                )
 
             with tab_ark:
                 df_arq = format_ranking(df_res, "Atajadas", False,
