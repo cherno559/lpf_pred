@@ -254,9 +254,11 @@ def calcular_elo_dinamico(df: pd.DataFrame) -> dict:
     }
     
     BASE_ELO = 1500.0
-    # Inicialización del Elo Bivariado (separado L y V)
-    elos_l = {eq: BASE_ELO * JERARQUIA_EQUIPOS.get(eq, 1.0) for eq in dx["Equipo"].unique()}
-    elos_v = {eq: BASE_ELO * JERARQUIA_EQUIPOS.get(eq, 1.0) for eq in dx["Equipo"].unique()}
+    HGA_SHIFT = 65.0  # Puntos de ventaja estructural para el local
+    
+    # Inicialización del Elo Bivariado con desfasaje de localía
+    elos_l = {eq: (BASE_ELO + HGA_SHIFT) * JERARQUIA_EQUIPOS.get(eq, 1.0) for eq in dx["Equipo"].unique()}
+    elos_v = {eq: (BASE_ELO - HGA_SHIFT) * JERARQUIA_EQUIPOS.get(eq, 1.0) for eq in dx["Equipo"].unique()}
     
     K = 25.0
     
@@ -288,7 +290,6 @@ def calcular_elo_dinamico(df: pd.DataFrame) -> dict:
         elos_v[vis] = elo_v + K * (s_vis - e_vis)
         
     return {"local": elos_l, "visitante": elos_v}
-
 @st.cache_data(ttl=120, show_spinner=False)
 def estimar_rho_mle(df: pd.DataFrame) -> float:
     dr = df[(df["Métrica"] == "Resultado") & (df["Condicion"] == "Local")]
@@ -447,6 +448,14 @@ def calcular_lambdas(df, eq_a, eq_b, es_loc, tabla):
     
     la = (l["ref_home"] if ca == "Local" else l["ref_away"]) * aa * db
     lb = (l["ref_home"] if cb == "Local" else l["ref_away"]) * ab * da
+
+    # Amplificador empírico basado en efectividad de puntos
+    if ca == "Local":
+        la *= 1.08  # Boost al xG local
+        lb *= 0.92  # Penalización al xG visitante
+    else:
+        lb *= 1.08
+        la *= 0.92
 
     if not es_loc:
         la, lb = lb, la
