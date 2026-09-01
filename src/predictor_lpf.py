@@ -234,15 +234,14 @@ def construir_df(datos: dict) -> pd.DataFrame:
 # ──────────────────────────────────────────────────────────────────────
 @st.cache_data(ttl=120, show_spinner=False)
 def calcular_elo_dinamico(df: pd.DataFrame) -> dict:
-    dr = df[df["Métrica"] == "Resultado"].copy()
-    if dr.empty: return {}
+    # 1. Filtramos por la métrica de Goles Esperados
+    dx = df[df["Métrica"] == "xG_Model"].copy()
+    if dx.empty: return {}
     
-    # Ordenamos cronológicamente para simular el paso del tiempo
-    dr['Torneo_Order'] = dr['Torneo'].apply(lambda x: 1 if 'apertura' in str(x).lower() else (2 if 'clausura' in str(x).lower() else 3))
-    dr = dr.sort_values(["Torneo_Order", "nFecha"])
-    partidos = dr[dr["Condicion"] == "Local"]
+    dx['Torneo_Order'] = dx['Torneo'].apply(lambda x: 1 if 'apertura' in str(x).lower() else (2 if 'clausura' in str(x).lower() else 3))
+    dx = dx.sort_values(["Torneo_Order", "nFecha"])
+    partidos = dx[dx["Condicion"] == "Local"]
     
-    # 1. ANCLA ESTRUCTURAL: Inicialización con jerarquía de mercado
     JERARQUIA_EQUIPOS = {
         "River Plate": 1.250, "Boca Juniors": 1.150, "Racing Club": 1.080, "Rosario Central": 1.065,             
         "Estudiantes de La Plata": 1.050, "San Lorenzo": 1.045, "CA Talleres": 1.040, "Independiente Rivadavia": 1.035,     
@@ -256,32 +255,36 @@ def calcular_elo_dinamico(df: pd.DataFrame) -> dict:
     }
     
     BASE_ELO = 1500.0
-    elos = {}
-    for eq in dr["Equipo"].unique():
-        factor = JERARQUIA_EQUIPOS.get(eq, 1.0)
-        # Sembramos el puntaje escalonado
-        elos[eq] = BASE_ELO * factor  
-        
+    elos = {eq: BASE_ELO * JERARQUIA_EQUIPOS.get(eq, 1.0) for eq in dx["Equipo"].unique()}
+    
     K = 25.0
     HGA_ELO = 45.0
     
-    # 2. ACTUALIZACIÓN DINÁMICA: Partido a partido
+    # Función rápida de Poisson para convertir xG en probabilidad de victoria (0 a 1)
+    def prob_victoria_xg(xg_a, xg_b):
+        if np.isnan(xg_a) or np.isnan(xg_b): return 0.5
+        pa = [math.exp(-xg_a) * (xg_a**k) / math.factorial(k) for k in range(8)]
+        pb = [math.exp(-xg_b) * (xg_b**k) / math.factorial(k) for k in range(8)]
+        
+        win_a = sum(pa[i] * sum(pb[:i]) for i in range(1, 8))
+        draw = sum(pa[i] * pb[i] for i in range(8))
+        
+        tot = win_a + draw + sum(pb[i] * sum(pa[:i]) for i in range(1, 8))
+        return (win_a + (draw / 2)) / tot if tot > 0 else 0.5
+
     for _, row in partidos.iterrows():
         loc, vis = row["Equipo"], row["Rival"]
-        gl, gv = row["Propio"], row["Concedido"]
+        # Tomamos los valores de xG en lugar de los goles reales
+        xg_l, xg_v = row["Propio"], row["Concedido"]
         
         elo_l, elo_v = elos.get(loc, BASE_ELO), elos.get(vis, BASE_ELO)
-        
-        # Probabilidad de victoria esperada
         e_loc = 1 / (1 + 10 ** ((elo_v - (elo_l + HGA_ELO)) / 400))
         e_vis = 1 - e_loc
         
-        # Resultado real
-        if gl > gv: s_loc, s_vis = 1.0, 0.0
-        elif gl == gv: s_loc, s_vis = 0.5, 0.5
-        else: s_loc, s_vis = 0.0, 1.0
+        # El puntaje del partido ahora es fraccional según quién dominó el xG
+        s_loc = prob_victoria_xg(xg_l, xg_v)
+        s_vis = 1.0 - s_loc
             
-        # Sistema de suma cero: el que gana absorbe puntos del perdedor
         elos[loc] = elo_l + K * (s_loc - e_loc)
         elos[vis] = elo_v + K * (s_vis - e_vis)
         
