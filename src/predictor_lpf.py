@@ -102,11 +102,11 @@ html, body, [class*="css"] { font-family: 'Manrope', sans-serif; background-colo
 # PARÁMETROS DEL MOTOR Y JERARQUÍAS
 # ──────────────────────────────────────────────────────────────────────
 W_XG = 0.70  
-K_PRIOR = 15.0 
+K_PRIOR_BASE, K_PRIOR_MIN = 15.0, 4.0   # K_PRIOR ahora es dinámico: pesa fuerte al arrancar el torneo y se diluye fecha a fecha (ver _strength)
 DC_RHO = -0.15 
 MAX_GOALS_MATRIX = 7
-N_RECENCIA, PESO_RECIENTE, PESO_NORMAL = 5, 1.0, 1.0 
-PESO_HISTORICO = 0.75 
+N_RECENCIA, PESO_RECIENTE, PESO_NORMAL = 5, 2.0, 1.0   # Antes PESO_RECIENTE == PESO_NORMAL (no hacía nada). Ahora los últimos N_RECENCIA partidos pesan el doble.
+PESO_HISTORICO = 0.50   # Bajado de 0.75: entre torneos cambian planteles/DT, así que el histórico debe pesar bastante menos que la temporada actual.
 LAM_MIN, LAM_MAX = 0.20, 5.00
 
 JERARQUIA_EQUIPOS = {
@@ -315,9 +315,9 @@ def _strength(df_actual, eq, target_cond, league, max_fecha_torneo: int, tabla: 
     
     # El motor vuelve a su esencia predictiva fuerte: Goles reales y xG.
     g_atk = _adjusted_rate(d_eq, "Resultado", "Propio", max_fecha_torneo, tabla, is_attack=True, target_cond=target_cond)
-    x_atk = _adjusted_rate(d_eq, "xG_Estimado", "Propio", max_fecha_torneo, tabla, is_attack=True, target_cond=target_cond)
+    x_atk = _adjusted_rate(d_eq, "xG_Model", "Propio", max_fecha_torneo, tabla, is_attack=True, target_cond=target_cond)
     g_def = _adjusted_rate(d_eq, "Resultado", "Concedido", max_fecha_torneo, tabla, is_attack=False, target_cond=target_cond)
-    x_def = _adjusted_rate(d_eq, "xG_Estimado", "Concedido", max_fecha_torneo, tabla, is_attack=False, target_cond=target_cond)
+    x_def = _adjusted_rate(d_eq, "xG_Model", "Concedido", max_fecha_torneo, tabla, is_attack=False, target_cond=target_cond)
     
     n_s = len(d_eq[d_eq["Métrica"] == "Resultado"])
 
@@ -343,10 +343,12 @@ def _strength(df_actual, eq, target_cond, league, max_fecha_torneo: int, tabla: 
     atk_obs = atk_obs if not np.isnan(atk_obs) else prior_atk
     def_obs = def_obs if not np.isnan(def_obs) else prior_def
     
-    # Restauramos un K_PRIOR de 10.0 en la cabecera del archivo si no lo hiciste, 
-    # para que la jerarquía de plantilla imponga respeto.
-    atk_post = (n_effective * atk_obs  + K_PRIOR * prior_atk) / (n_effective + K_PRIOR)
-    def_post = (n_effective * def_obs  + K_PRIOR * prior_def) / (n_effective + K_PRIOR)
+    # K_PRIOR dinámico: al arrancar el torneo (fecha 1-2) el prior manual pesa fuerte porque no hay
+    # datos propios todavía; a medida que avanzan las fechas, se diluye y manda lo que el equipo
+    # viene mostrando en la cancha. Antes era una constante fija (15.0) que nunca bajaba.
+    k_prior = max(K_PRIOR_MIN, K_PRIOR_BASE - max_fecha_torneo)
+    atk_post = (n_effective * atk_obs  + k_prior * prior_atk) / (n_effective + k_prior)
+    def_post = (n_effective * def_obs  + k_prior * prior_def) / (n_effective + k_prior)
     
     return atk_post, def_post, n
 
@@ -559,7 +561,7 @@ def contexto_tactica_clash(adn: pd.DataFrame, eq_a: str, eq_b: str) -> str:
 
 def calcular_rachas(df: pd.DataFrame) -> pd.DataFrame:
     dr = df[df["Métrica"] == "Resultado"].copy()
-    dx = df[df["Métrica"] == "xG_Estimado"].copy()
+    dx = df[df["Métrica"] == "xG_Model"].copy()
     
     dr["Orden_Cat"] = np.where(dr["Categoria"] == "Histórico", 0, 1)
     dx["Orden_Cat"] = np.where(dx["Categoria"] == "Histórico", 0, 1)
@@ -618,7 +620,7 @@ def render_racha_dots(ultimas6: list) -> str:
 
 def fig_momentum_timeline(df: pd.DataFrame, equipo: str) -> go.Figure:
     dr = df[(df["Equipo"] == equipo) & (df["Métrica"] == "Resultado")].copy()
-    dx = df[(df["Equipo"] == equipo) & (df["Métrica"] == "xG_Estimado")].copy()
+    dx = df[(df["Equipo"] == equipo) & (df["Métrica"] == "xG_Model")].copy()
     
     if dr.empty: return go.Figure()
 
@@ -705,10 +707,13 @@ with st.sidebar:
                     opciones_archivos[nombre_amigable] = os.path.join(ruta_carpeta, archivo)
     
     opciones_disponibles = list(opciones_archivos.keys())
-    defaults = [opt for opt in opciones_disponibles if "clausura" in opt.lower()]
+    # Antes solo entraba por defecto lo que tuviera "clausura" en el nombre, dejando afuera
+    # el histórico (apertura26) salvo que el usuario lo seleccionara a mano. Ahora entran los dos:
+    # el Clausura pesa 1.0 y el histórico pesa PESO_HISTORICO (0.50) automáticamente.
+    defaults = [opt for opt in opciones_disponibles if ("clausura" in opt.lower() or "histórico" in opt.lower())]
     
     torneos_seleccionados_nombres = st.multiselect(
-        "Bases de Datos a Utilizar (Dejar solo Actual/Clausura):",
+        "Bases de Datos a Utilizar (Actual + Histórico por defecto):",
         options=opciones_disponibles,
         default=defaults if defaults else (opciones_disponibles[:1] if opciones_disponibles else [])
     )
