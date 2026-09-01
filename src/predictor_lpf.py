@@ -100,13 +100,13 @@ html, body, [class*="css"] { font-family: 'Manrope', sans-serif; background-colo
 """, unsafe_allow_html=True)
 
 # ──────────────────────────────────────────────────────────────────────
-# PARÁMETROS DEL MOTOR MATEMÁTICO
+# PARÁMETROS DEL MOTOR MATEMÁTICO (HIPERPARÁMETROS CALIBRADOS)
 # ──────────────────────────────────────────────────────────────────────
 W_XG = 0.70  
-K_PRIOR_BASE, K_PRIOR_MIN = 15.0, 9.0
+K_PRIOR_BASE, K_PRIOR_MIN = 15.0, 8.0     # Piso más alto para que la jerarquía perdure
 MAX_GOALS_MATRIX = 7
-N_RECENCIA, PESO_RECIENTE, PESO_NORMAL = 5, 1.2, 1.0   
-PESO_HISTORICO = 0.70   
+N_RECENCIA, PESO_RECIENTE, PESO_NORMAL = 5, 1.30, 1.0  # Suavizamos el castigo por mala racha reciente 
+PESO_HISTORICO = 0.75                     # Le damos más vida a la temporada anterior
 LAM_MIN, LAM_MAX = 0.20, 5.00
 
 RED, WHITE, GRAY = "#ED1A3B", "#ffffff", "#4a4a52"
@@ -230,13 +230,12 @@ def construir_df(datos: dict) -> pd.DataFrame:
     return pd.DataFrame(filas)
 
 # ──────────────────────────────────────────────────────────────────────
-# MOTOR MATEMÁTICO: ELO DINÁMICO Y MLE PARA DIXON-COLES
+# MOTOR MATEMÁTICO: XG-ELO BIVARIADO (LOCAL/VISITANTE) Y MLE
 # ──────────────────────────────────────────────────────────────────────
 @st.cache_data(ttl=120, show_spinner=False)
 def calcular_elo_dinamico(df: pd.DataFrame) -> dict:
-    # 1. Filtramos por la métrica de Goles Esperados
     dx = df[df["Métrica"] == "xG_Model"].copy()
-    if dx.empty: return {}
+    if dx.empty: return {"local": {}, "visitante": {}}
     
     dx['Torneo_Order'] = dx['Torneo'].apply(lambda x: 1 if 'apertura' in str(x).lower() else (2 if 'clausura' in str(x).lower() else 3))
     dx = dx.sort_values(["Torneo_Order", "nFecha"])
@@ -255,40 +254,42 @@ def calcular_elo_dinamico(df: pd.DataFrame) -> dict:
     }
     
     BASE_ELO = 1500.0
-    elos = {eq: BASE_ELO * JERARQUIA_EQUIPOS.get(eq, 1.0) for eq in dx["Equipo"].unique()}
+    # Inicialización del Elo Bivariado (separado L y V)
+    elos_l = {eq: BASE_ELO * JERARQUIA_EQUIPOS.get(eq, 1.0) for eq in dx["Equipo"].unique()}
+    elos_v = {eq: BASE_ELO * JERARQUIA_EQUIPOS.get(eq, 1.0) for eq in dx["Equipo"].unique()}
     
     K = 25.0
-    HGA_ELO = 45.0
     
-    # Función rápida de Poisson para convertir xG en probabilidad de victoria (0 a 1)
     def prob_victoria_xg(xg_a, xg_b):
         if np.isnan(xg_a) or np.isnan(xg_b): return 0.5
         pa = [math.exp(-xg_a) * (xg_a**k) / math.factorial(k) for k in range(8)]
         pb = [math.exp(-xg_b) * (xg_b**k) / math.factorial(k) for k in range(8)]
-        
         win_a = sum(pa[i] * sum(pb[:i]) for i in range(1, 8))
         draw = sum(pa[i] * pb[i] for i in range(8))
-        
         tot = win_a + draw + sum(pb[i] * sum(pa[:i]) for i in range(1, 8))
         return (win_a + (draw / 2)) / tot if tot > 0 else 0.5
 
     for _, row in partidos.iterrows():
         loc, vis = row["Equipo"], row["Rival"]
-        # Tomamos los valores de xG en lugar de los goles reales
         xg_l, xg_v = row["Propio"], row["Concedido"]
         
-        elo_l, elo_v = elos.get(loc, BASE_ELO), elos.get(vis, BASE_ELO)
-        e_loc = 1 / (1 + 10 ** ((elo_v - (elo_l + HGA_ELO)) / 400))
+        # Leemos el Elo Local del local y el Elo Visitante del visitante
+        elo_l, elo_v = elos_l.get(loc, BASE_ELO), elos_v.get(vis, BASE_ELO)
+        
+        # El HGA ya está naturalmente embebido en la diferencia de ambos trackers
+        e_loc = 1 / (1 + 10 ** ((elo_v - elo_l) / 400))
         e_vis = 1 - e_loc
         
-        # El puntaje del partido ahora es fraccional según quién dominó el xG
+        # Actualización fraccional (Expected Wins) en lugar de resultado real
         s_loc = prob_victoria_xg(xg_l, xg_v)
         s_vis = 1.0 - s_loc
             
-        elos[loc] = elo_l + K * (s_loc - e_loc)
-        elos[vis] = elo_v + K * (s_vis - e_vis)
+        elos_l[loc] = elo_l + K * (s_loc - e_loc)
+        elos_v[vis] = elo_v + K * (s_vis - e_vis)
         
-    return elos
+    return {"local": elos_l, "visitante": elos_v}
+
+@st.cache_data(ttl=120, show_spinner=False)
 def estimar_rho_mle(df: pd.DataFrame) -> float:
     dr = df[(df["Métrica"] == "Resultado") & (df["Condicion"] == "Local")]
     if dr.empty: return -0.15
@@ -340,16 +341,26 @@ def calcular_tabla(df: pd.DataFrame, condicion: str = "General") -> pd.DataFrame
     tabla["Pos"] = tabla.index + 1
     
     elos = calcular_elo_dinamico(df)
-    tabla["prior_atk"], tabla["prior_def"] = 1.0, 1.0
+    tabla["prior_atk_local"], tabla["prior_def_local"] = 1.0, 1.0
+    tabla["prior_atk_visitante"], tabla["prior_def_visitante"] = 1.0, 1.0
+    
     for eq in tabla.index:
-        factor = elos.get(tabla.loc[eq, "Equipo"], 1500.0) / 1500.0
-        tabla.loc[eq, "prior_atk"] = factor
-        tabla.loc[eq, "prior_def"] = (1 / factor) if factor > 0 else 1.0
+        factor_l = elos["local"].get(tabla.loc[eq, "Equipo"], 1500.0) / 1500.0
+        factor_v = elos["visitante"].get(tabla.loc[eq, "Equipo"], 1500.0) / 1500.0
+        
+        tabla.loc[eq, "prior_atk_local"] = factor_l
+        tabla.loc[eq, "prior_def_local"] = (1 / factor_l) if factor_l > 0 else 1.0
+        tabla.loc[eq, "prior_atk_visitante"] = factor_v
+        tabla.loc[eq, "prior_def_visitante"] = (1 / factor_v) if factor_v > 0 else 1.0
+        
     return tabla.set_index("Equipo")
 
-def _get_prior(tabla: pd.DataFrame, eq: str):
+def _get_prior(tabla: pd.DataFrame, eq: str, condicion: str):
     if tabla is None or eq not in tabla.index: return 1.0, 1.0
-    return float(tabla.loc[eq, "prior_atk"]), float(tabla.loc[eq, "prior_def"])
+    if condicion == "Local":
+        return float(tabla.loc[eq, "prior_atk_local"]), float(tabla.loc[eq, "prior_def_local"])
+    else:
+        return float(tabla.loc[eq, "prior_atk_visitante"]), float(tabla.loc[eq, "prior_def_visitante"])
 
 def _adjusted_rate(d_all, metrica, col, max_fecha_torneo, tabla, is_attack, target_cond):
     df_m = d_all[d_all["Métrica"] == metrica]
@@ -359,7 +370,9 @@ def _adjusted_rate(d_all, metrica, col, max_fecha_torneo, tabla, is_attack, targ
     valores_ajustados, pesos = [], []
     
     for v, r, c_match, f, cat in zip(valores, rivales, condiciones, fechas, categoria):
-        pa_r, pd_r = _get_prior(tabla, r)
+        cond_rival = "Visitante" if c_match == "Local" else "Local"
+        pa_r, pd_r = _get_prior(tabla, r, cond_rival)
+        
         pd_r_safe, pa_r_safe = max(pd_r, 0.80), max(pa_r, 0.80)
         adj = v / pd_r_safe if (is_attack and pd_r_safe > 0) else v / pa_r_safe if (not is_attack and pa_r_safe > 0) else v
         valores_ajustados.append(min(adj, 3.5))
@@ -407,7 +420,7 @@ def _strength(df_actual, eq, target_cond, league, max_fecha_torneo: int, tabla: 
     atk_obs = (atk_val / ref_f) if (not np.isnan(atk_val) and ref_f > 0) else np.nan
     def_obs = (def_val / ref_a) if (not np.isnan(def_val) and ref_a > 0) else np.nan
     
-    prior_atk, prior_def = _get_prior(tabla, eq)
+    prior_atk, prior_def = _get_prior(tabla, eq, target_cond)
     
     n = n_s if n_s > 0 else 0
     n_effective = min(n, 15)
@@ -432,13 +445,8 @@ def calcular_lambdas(df, eq_a, eq_b, es_loc, tabla):
     aa, da, _ = _strength(df_actual, eq_a, ca, l, max_fecha_torneo, tabla)
     ab, db, _ = _strength(df_actual, eq_b, cb, l, max_fecha_torneo, tabla)
     
-    # La ventaja de localía (HGA) ya viene embebida dinámicamente en l["ref_home"] y l["ref_away"]
     la = (l["ref_home"] if ca == "Local" else l["ref_away"]) * aa * db
     lb = (l["ref_home"] if cb == "Local" else l["ref_away"]) * ab * da
-
-    # Se eliminaron los modificadores heurísticos de HGA (**1.10 y *=0.95), 
-    # de táctica (+0.05) y de penalización a grandes equipos (*0.85).
-    # Ahora todo depende puramente del xG y del Elo Tracker.
 
     if not es_loc:
         la, lb = lb, la
@@ -841,7 +849,7 @@ with st.expander("ℹ️ Metodología del modelo"):
 **Motor de predicción:** distribución de Poisson bivariada con ajuste
 Dixon-Coles (`ρ`) optimizado mediante Maximum Likelihood Estimation (MLE) sobre datos históricos.
 **Fuerza de ataque/defensa (`λ`):** se calcula combinando el rendimiento observado (xG/Goles reales)
-con un *prior* bayesiano impulsado por un sistema ELO que rankea a los equipos de forma dinámica.
+con un *prior* bayesiano impulsado por un sistema ELO Bivariado (Local/Visitante) que rankea a los equipos de forma dinámica en base a xG.
 """)
 
 if nav == "Predicción de Partidos":
@@ -1177,5 +1185,121 @@ elif nav == "Simulador de Jornada":
                 st.dataframe(df_del.style.format({"xG Generado": "{:.2f}", "Ocasiones Claras": "{:.1f}", "Tiros en Área": "{:.1f}", "Tiros al Arco": "{:.1f}", "Córners Proyectados": "{:.1f}"}), 
                              hide_index=True, use_container_width=True, height=320)
 
-elif nav in ["Métricas Globales", "Comparativa H2H", "Análisis de Rival", "Análisis de Estilos", "Posiciones", "ADN Táctico", "Rachas y Momentum"]:
-    st.info("Visualizaciones secundarias conservadas en su formato original. Navega por el menú para verlas.")
+elif nav == "Métricas Globales":
+    st.markdown('<div class="section-header">Rankings de Rendimiento</div>', unsafe_allow_html=True)
+    c1, c2, c3 = st.columns(3)
+    m_sel    = c1.selectbox("Métrica Analizada", metricas)
+    cond_sel = c2.selectbox("Filtro Condición", ["General", "Local", "Visitante"])
+    tipo_sel = c3.selectbox("Enfoque", ["Producción (A Favor)", "Concesión (En Contra)"])
+    col_data = "Propio" if "A Favor" in tipo_sel else "Concedido"
+    mask_cond = (df["Condicion"] == cond_sel) if cond_sel != "General" else df.index.notna()
+    res = (df[mask_cond & (df["Métrica"] == m_sel)].groupby("Equipo")[col_data].mean().sort_values(ascending=False).reset_index())
+    st.plotly_chart(go.Figure(go.Bar(x=res[col_data], y=res["Equipo"], orientation="h", marker_color=RED if col_data == "Propio" else GRAY)).update_layout(**PLOT, height=700), use_container_width=True)
+
+elif nav == "Comparativa H2H":
+    st.markdown('<div class="section-header">Head-to-Head (H2H)</div>', unsafe_allow_html=True)
+    c1, c2 = st.columns(2)
+    ea     = c1.selectbox("Escuadra A", equipos)
+    cond_a = c1.selectbox(f"Condición de {ea}", ["General", "Local", "Visitante"])
+    eb     = c2.selectbox("Escuadra B", equipos, index=min(1, len(equipos) - 1))
+    cond_b = c2.selectbox(f"Condición de {eb}", ["General", "Local", "Visitante"])
+    t1, t2 = st.tabs(["Comparativa Visual (Radar)", "Métricas Crudas"])
+    with t1: st.plotly_chart(fig_radar_pro(df, ea, eb, cond_a, cond_b), use_container_width=True)
+    with t2:
+        df_a, df_b = df[df["Equipo"] == ea], df[df["Equipo"] == eb]
+        if cond_a != "General": df_a = df_a[df_a["Condicion"] == cond_a]
+        if cond_b != "General": df_b = df_b[df_b["Condicion"] == cond_b]
+        s1, s2 = df_a.groupby("Métrica")[["Propio", "Concedido"]].mean().round(2), df_b.groupby("Métrica")[["Propio", "Concedido"]].mean().round(2)
+        h2h_df = pd.DataFrame({f"{ea} ({cond_a[:3]}) Favor": s1["Propio"], f"{ea} ({cond_a[:3]}) Contra": s1["Concedido"], f"{eb} ({cond_b[:3]}) Favor": s2["Propio"], f"{eb} ({cond_b[:3]}) Contra": s2["Concedido"]}).dropna()
+        st.dataframe(h2h_df, use_container_width=True)
+
+elif nav == "Análisis de Rival":
+    st.markdown('<div class="section-header">Evolución de Rendimiento</div>', unsafe_allow_html=True)
+    eq_p, met_p = st.selectbox("Seleccionar Equipo", equipos), st.selectbox("Métrica a Evaluar", metricas)
+    d_eq  = df[(df["Equipo"] == eq_p) & (df["Métrica"] == met_p)].sort_values("nFecha")
+    if not d_eq.empty:
+        st.plotly_chart(go.Figure([go.Bar(x=d_eq["Rival"], y=d_eq["Propio"], name="Generado", marker_color=RED), go.Bar(x=d_eq["Rival"], y=d_eq["Concedido"], name="Concedido", marker_color=GRAY)]).update_layout(**PLOT, barmode="group"), use_container_width=True)
+
+elif nav == "Análisis de Estilos":
+    st.markdown('<div class="section-header">Matriz de Estilos de Juego</div>', unsafe_allow_html=True)
+    mo = "Goles esperados (xG)" if "Goles esperados (xG)" in df["Métrica"].values else "Tiros totales"
+    if "Posesión de balón" in df["Métrica"].values:
+        df_e = pd.DataFrame({"P": df[df["Métrica"] == "Posesión de balón"].groupby("Equipo")["Propio"].mean(), "O": df[df["Métrica"] == mo].groupby("Equipo")["Propio"].mean()}).dropna()
+        mp, mo_m = df_e["P"].mean(), df_e["O"].mean()
+        fig = go.Figure(go.Scatter(x=df_e["P"], y=df_e["O"], mode="markers+text", text=df_e.index, textposition="top center", marker=dict(size=14, color=RED, line=dict(width=2, color="#141417")), textfont=dict(family="Manrope", size=11, color="#ffffff")))
+        fig.add_vline(x=mp, line=dict(color=GRAY, dash="dash", width=1))
+        fig.add_hline(y=mo_m, line=dict(color=GRAY, dash="dash", width=1))
+        st.plotly_chart(fig.update_layout(**PLOT, height=600, xaxis_title="Posesión Promedio (%)", yaxis_title=f"Volumen Ofensivo ({mo})"), use_container_width=True)
+    else: st.warning("No hay datos de 'Posesión de balón' para procesar la matriz.")
+
+elif nav == "Posiciones":
+    st.markdown('<div class="section-header">Clasificación por Efectividad</div>', unsafe_allow_html=True)
+    vista_tabla = st.selectbox("Escenario de Tabla", ["General", "Local", "Visitante"])
+    t_dinamica  = calcular_tabla(df, vista_tabla)
+    if not t_dinamica.empty:
+        t_show = t_dinamica.reset_index()[["Pos", "Equipo", "PJ", "V", "E", "D", "GF", "GC", "PTS", "EFEC%"]].copy()
+        t_show.columns = ["#", "Equipo", "PJ", "V", "E", "D", "GF", "GC", "PTS", "Efectividad %"]
+        t_show["GF"], t_show["GC"], t_show["Efectividad %"] = t_show["GF"].astype(int), t_show["GC"].astype(int), t_show["Efectividad %"].round(1)
+        st.dataframe(t_show.style.format({"Efectividad %": "{:.1f}%"}), use_container_width=True, hide_index=True)
+
+elif nav == "ADN Táctico":
+    st.markdown('<div class="section-header">ADN Táctico — Patrones por Equipo</div>', unsafe_allow_html=True)
+    tab_todos, tab_equipo = st.tabs(["Vista de Liga", "Detalle por Equipo"])
+    with tab_todos:
+        if not adn_df.empty:
+            adn_sorted = adn_df.sort_values("Posesion", ascending=False, na_position="last")
+            cards_html = ""
+            for eq, row in adn_sorted.iterrows():
+                tags_html = render_tags_html(row["Tags"]) if isinstance(row["Tags"], list) else ""
+                pos_str, tp_str = f"{row['Posesion']:.0f}%" if not np.isnan(row["Posesion"]) else "—", f"{row['TirosProp']:.1f}" if not np.isnan(row["TirosProp"]) else "—"
+                xg_str, xgc_str = f"{row['xGProp']:.2f}" if not np.isnan(row["xGProp"]) else "—", f"{row['xGConc']:.2f}" if not np.isnan(row["xGConc"]) else "—"
+                cards_html += f"""<div class="adn-card"><div class="adn-team-name">{eq}</div><div>{tags_html}</div><div style="margin-top:12px;display:flex;gap:28px;flex-wrap:wrap;"><div><div class="adn-perfil">Posesión media</div><div style="font-size:1.1rem;font-weight:800;color:#e0e0e0;">{pos_str}</div></div><div><div class="adn-perfil">Tiros / partido</div><div style="font-size:1.1rem;font-weight:800;color:#e0e0e0;">{tp_str}</div></div><div><div class="adn-perfil">xG generado</div><div style="font-size:1.1rem;font-weight:800;color:#ED1A3B;">{xg_str}</div></div><div><div class="adn-perfil">xG concedido</div><div style="font-size:1.1rem;font-weight:800;color:#888890;">{xgc_str}</div></div></div><div style="margin-top:10px;font-size:0.78rem;color:#555560;border-top:1px solid #1e1e24;padding-top:8px;">{row["Insight"]}</div></div>"""
+            st.markdown(cards_html, unsafe_allow_html=True)
+    with tab_equipo:
+        eq_sel = st.selectbox("Seleccionar Equipo", equipos, key="adn_eq")
+        if eq_sel in adn_df.index:
+            row = adn_df.loc[eq_sel]
+            tags_html = render_tags_html(row["Tags"]) if isinstance(row["Tags"], list) else ""
+            st.markdown(f"""<div class="adn-card" style="margin-bottom:20px;"><div class="adn-team-name">{eq_sel}</div><div>{tags_html}</div><div class="tactica-insight" style="margin-top:14px;">{row["Insight"]}</div></div>""", unsafe_allow_html=True)
+            mets_adn, labels_adn = ["Posesion", "TirosProp", "xGProp", "xGConc", "EficOfens"], ["Posesión", "Tiros Prop.", "xG Generado", "xG Concedido", "Efic. Ofens."]
+            liga_means, liga_stds = adn_df[mets_adn].mean(), adn_df[mets_adn].std().replace(0, 1)
+            eq_vals = [(row[m] - liga_means[m]) / liga_stds[m] if not np.isnan(row[m]) else 0.0 for m in mets_adn]
+            eq_norm, lig_norm = [(v + 3) / 6 for v in eq_vals], [0.5] * len(mets_adn)
+            fig_adn = go.Figure()
+            fig_adn.add_trace(go.Scatterpolar(r=lig_norm + [lig_norm[0]], theta=labels_adn + [labels_adn[0]], fill="toself", name="Media Liga", line=dict(color=GRAY, dash="dot"), opacity=0.5))
+            fig_adn.add_trace(go.Scatterpolar(r=eq_norm + [eq_norm[0]], theta=labels_adn + [labels_adn[0]], fill="toself", name=eq_sel, line=dict(color=RED, width=2)))
+            layout_r = PLOT.copy()
+            layout_r.update(height=400, polar=dict(bgcolor="rgba(0,0,0,0)", radialaxis=dict(visible=True, showticklabels=False, gridcolor="#2a2a30", range=[0, 1]), angularaxis=dict(gridcolor="#2a2a30", linecolor="#2a2a30")), margin=dict(l=50, r=50, t=36, b=50), legend=dict(orientation="h", x=0.3, y=-0.1))
+            st.plotly_chart(fig_adn.update_layout(**layout_r), use_container_width=True)
+
+elif nav == "Rachas y Momentum":
+    st.markdown('<div class="section-header">Rachas y Momentum</div>', unsafe_allow_html=True)
+    if not rachas_df.empty:
+        tab_liga, tab_equipo_m = st.tabs(["Ranking de Momentum", "Detalle por Equipo"])
+        with tab_liga:
+            st.plotly_chart(fig_momentum_ranking(rachas_df), use_container_width=True)
+            rachas_sorted = rachas_df.sort_values("MomentumScore", ascending=False)
+            cards_html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;margin-top:10px;">'
+            for eq, row in rachas_sorted.iterrows():
+                dots, delta_str = render_racha_dots(row["Ultimas6"]), f"+{row['DeltaXG']:.2f}" if row["DeltaXG"] >= 0 else f"{row['DeltaXG']:.2f}"
+                delta_color = "#5ecf6b" if row["DeltaXG"] > 0.05 else ("#ED1A3B" if row["DeltaXG"] < -0.05 else "#888890")
+                cards_html += f"""<div class="momentum-card"><div class="momentum-team">{eq}</div><div style="margin-bottom:8px;">{dots}</div><div style="display:flex;gap:18px;flex-wrap:wrap;"><div><div class="momentum-label">Forma</div><div class="{row['EstadoCls']}">{row["Estado"]}</div></div><div><div class="momentum-label">Pts últ 3</div><div style="font-size:1rem;font-weight:800;color:#e0e0e0;">{row["Pts3"]}</div></div><div><div class="momentum-label">Δ xG</div><div style="font-size:1.1rem;font-weight:800;color:{delta_color};">{delta_str}</div></div></div></div>"""
+            st.markdown(cards_html + "</div>", unsafe_allow_html=True)
+        with tab_equipo_m:
+            eq_m = st.selectbox("Seleccionar Equipo", equipos, key="racha_eq")
+            if eq_m in rachas_df.index:
+                row_m = rachas_df.loc[eq_m]
+                dots, delta_str = render_racha_dots(row_m["Ultimas6"]), f"+{row_m['DeltaXG']:.2f}" if row_m["DeltaXG"] >= 0 else f"{row_m['DeltaXG']:.2f}"
+                delta_color = "#5ecf6b" if row_m["DeltaXG"] > 0.05 else ("#ED1A3B" if row_m["DeltaXG"] < -0.05 else "#888890")
+                st.markdown(f"""<div class="momentum-card" style="margin-bottom:20px;"><div class="momentum-team">{eq_m}</div><div class="momentum-label">Racha completa</div><div style="margin:8px 0 14px;">{"".join(f'<span class="racha-dot {"racha-v" if r=="V" else ("racha-e" if r=="E" else "racha-d")}">{r}</span>' for r in row_m["Resultados"])}</div><div style="display:flex;gap:30px;flex-wrap:wrap;"><div><div class="momentum-label">Estado</div><div class="{row_m["EstadoCls"]}">{row_m["Estado"]}</div></div><div><div class="momentum-label">xG reciente</div><div style="font-size:1.1rem;font-weight:800;color:#ED1A3B;">{row_m["xGRec"]:.2f}</div></div><div><div class="momentum-label">Tendencia xG</div><div style="font-size:1.1rem;font-weight:800;color:{delta_color};">{delta_str}</div></div></div></div>""", unsafe_allow_html=True)
+                st.markdown('<div class="section-header">Evolución Temporal</div>', unsafe_allow_html=True)
+                st.plotly_chart(fig_momentum_timeline(df, eq_m), use_container_width=True)
+
+st.markdown("<hr style='border-color:#1f1f24; margin-top:50px;'>", unsafe_allow_html=True)
+st.markdown(
+    "<div style='text-align:center; color:#555560; font-size:0.75rem; padding:10px 0 30px;'>"
+    "LPF Analytics v2.0 &nbsp;·&nbsp; Modelo estadístico holístico ponderado (Poisson + Dixon-Coles MLE) &nbsp;·&nbsp; "
+    "Uso analítico/educativo — no constituye asesoramiento de apuestas"
+    "</div>",
+    unsafe_allow_html=True,
+)
