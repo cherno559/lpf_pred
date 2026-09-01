@@ -1168,7 +1168,7 @@ elif nav == "Simulador de Jornada":
                     "Prob_Local": "Prob. Victoria Local",
                     "Empate": "Prob. Empate",
                     "Prob_Visitante": "Prob. Victoria Visitante",
-                })[["Local", "Visitante", "Prob. Victoria Local", "Prob. Empate", "Prob. Victoria Visitante"]]
+                })[["Local", "Prob. Victoria Local", "Prob. Empate", "Prob. Victoria Visitante", "Visitante"]]
                 st.dataframe(
                     df_partidos.style.format({
                         "Prob. Victoria Local": "{:.1%}",
