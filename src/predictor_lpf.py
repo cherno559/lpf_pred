@@ -236,32 +236,56 @@ def construir_df(datos: dict) -> pd.DataFrame:
 def calcular_elo_dinamico(df: pd.DataFrame) -> dict:
     dr = df[df["Métrica"] == "Resultado"].copy()
     if dr.empty: return {}
+    
+    # Ordenamos cronológicamente para simular el paso del tiempo
     dr['Torneo_Order'] = dr['Torneo'].apply(lambda x: 1 if 'apertura' in str(x).lower() else (2 if 'clausura' in str(x).lower() else 3))
     dr = dr.sort_values(["Torneo_Order", "nFecha"])
     partidos = dr[dr["Condicion"] == "Local"]
     
-    elos = {eq: 1500.0 for eq in dr["Equipo"].unique()}
+    # 1. ANCLA ESTRUCTURAL: Inicialización con jerarquía de mercado
+    JERARQUIA_EQUIPOS = {
+        "River Plate": 1.250, "Boca Juniors": 1.150, "Racing Club": 1.080, "Rosario Central": 1.065,             
+        "Estudiantes de La Plata": 1.050, "San Lorenzo": 1.045, "CA Talleres": 1.040, "Independiente Rivadavia": 1.035,     
+        "CA Independiente": 1.030, "Argentinos Juniors": 1.025, "CA Lanús": 1.025, "Tigre": 1.020,                       
+        "Club Atlético Platense": 1.000, "Newell's Old Boys": 0.995, "Gimnasia y Esgrima": 0.990, 
+        "Club Atlético Belgrano": 0.990, "Defensa y Justicia": 0.985, "Vélez Sarsfield": 0.970,             
+        "Huracán": 0.965, "Club Atlético Unión de Santa Fe": 0.960, "Barracas Central": 0.955,            
+        "Instituto De Córdoba": 0.950, "Gimnasia y Esgrima Mendoza": 0.945, "Sarmiento": 0.940,                   
+        "Banfield": 0.935, "Atlético Tucumán": 0.930, "Aldosivi": 0.925, "Deportivo Riestra": 0.925,           
+        "Central Córdoba": 0.920, "Estudiantes de Río Cuarto": 0.915    
+    }
+    
+    BASE_ELO = 1500.0
+    elos = {}
+    for eq in dr["Equipo"].unique():
+        factor = JERARQUIA_EQUIPOS.get(eq, 1.0)
+        # Sembramos el puntaje escalonado
+        elos[eq] = BASE_ELO * factor  
+        
     K = 25.0
     HGA_ELO = 45.0
     
+    # 2. ACTUALIZACIÓN DINÁMICA: Partido a partido
     for _, row in partidos.iterrows():
         loc, vis = row["Equipo"], row["Rival"]
         gl, gv = row["Propio"], row["Concedido"]
         
-        elo_l, elo_v = elos.get(loc, 1500.0), elos.get(vis, 1500.0)
+        elo_l, elo_v = elos.get(loc, BASE_ELO), elos.get(vis, BASE_ELO)
+        
+        # Probabilidad de victoria esperada
         e_loc = 1 / (1 + 10 ** ((elo_v - (elo_l + HGA_ELO)) / 400))
         e_vis = 1 - e_loc
         
+        # Resultado real
         if gl > gv: s_loc, s_vis = 1.0, 0.0
         elif gl == gv: s_loc, s_vis = 0.5, 0.5
         else: s_loc, s_vis = 0.0, 1.0
             
+        # Sistema de suma cero: el que gana absorbe puntos del perdedor
         elos[loc] = elo_l + K * (s_loc - e_loc)
         elos[vis] = elo_v + K * (s_vis - e_vis)
         
     return elos
-
-@st.cache_data(ttl=120, show_spinner=False)
 def estimar_rho_mle(df: pd.DataFrame) -> float:
     dr = df[(df["Métrica"] == "Resultado") & (df["Condicion"] == "Local")]
     if dr.empty: return -0.15
