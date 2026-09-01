@@ -103,10 +103,10 @@ html, body, [class*="css"] { font-family: 'Manrope', sans-serif; background-colo
 # PARÁMETROS DEL MOTOR MATEMÁTICO
 # ──────────────────────────────────────────────────────────────────────
 W_XG = 0.70  
-K_PRIOR_BASE, K_PRIOR_MIN = 15.0, 4.0
+K_PRIOR_BASE, K_PRIOR_MIN = 15.0, 9.0
 MAX_GOALS_MATRIX = 7
-N_RECENCIA, PESO_RECIENTE, PESO_NORMAL = 5, 2.0, 1.0   
-PESO_HISTORICO = 0.50   
+N_RECENCIA, PESO_RECIENTE, PESO_NORMAL = 5, 1.2, 1.0   
+PESO_HISTORICO = 0.70   
 LAM_MIN, LAM_MAX = 0.20, 5.00
 
 RED, WHITE, GRAY = "#ED1A3B", "#ffffff", "#4a4a52"
