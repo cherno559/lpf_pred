@@ -1210,39 +1210,44 @@ elif nav == "Simulador de Jornada":
 
 elif nav == "Métricas Globales":
     st.markdown('<div class="section-header">Rankings de Rendimiento</div>', unsafe_allow_html=True)
-    c1, c2, c3 = st.columns(3)
+    
+    # Agregamos una cuarta columna para el formato
+    c1, c2, c3, c4 = st.columns(4)
     m_sel    = c1.selectbox("Métrica Analizada", metricas)
     cond_sel = c2.selectbox("Filtro Condición", ["General", "Local", "Visitante"])
     tipo_sel = c3.selectbox("Enfoque", ["Producción (A Favor)", "Concesión (En Contra)"])
+    formato_sel = c4.selectbox("Formato", ["Total acumulado", "Promedio por partido"])
+    
     col_data = "Propio" if "A Favor" in tipo_sel else "Concedido"
     
-    # 1. Filtro de condición (Local, Visitante o General)
     mask_cond = (df["Condicion"] == cond_sel) if cond_sel != "General" else df.index.notna()
     
-    # --- CORRECCIÓN DE CÁLCULO DE PROMEDIOS ---
-    # 2. Obtenemos el total REAL de partidos jugados por equipo usando la métrica "Resultado" 
-    # (que siempre está presente en todos los partidos)
+    # 1. Obtenemos partidos jugados
     df_pj = df[mask_cond & (df["Métrica"] == "Resultado")]
     pj_equipo = df_pj.groupby("Equipo").size()
     
-    # 3. Sumamos el total de la métrica seleccionada (goles, faltas, rojas, etc.)
+    # 2. Sumamos la métrica
     df_met = df[mask_cond & (df["Métrica"] == m_sel)]
     suma_met = df_met.groupby("Equipo")[col_data].sum()
-    
-    # 4. Cruzamos los datos: si un equipo no tiene registros de esta métrica, se le asigna 0 en la suma
     suma_met = suma_met.reindex(pj_equipo.index, fill_value=0)
     
-    # 5. Calculamos el promedio real (Suma total / Partidos totales)
-    res = (suma_met / pj_equipo).sort_values(ascending=False).reset_index()
+    # 3. Aplicamos la lógica según el formato elegido
+    if formato_sel == "Total acumulado":
+        res = suma_met.sort_values(ascending=False).reset_index()
+    else:
+        res = (suma_met / pj_equipo).sort_values(ascending=False).reset_index()
+        
     res.columns = ["Equipo", col_data]
-    # ------------------------------------------
 
+    # 4. Renderizamos el gráfico
     st.plotly_chart(go.Figure(go.Bar(
         x=res[col_data], 
         y=res["Equipo"], 
         orientation="h", 
-        marker_color=RED if col_data == "Propio" else GRAY
-    )).update_layout(**PLOT, height=700), use_container_width=True)
+        marker_color=RED if col_data == "Propio" else GRAY,
+        text=res[col_data].round(2) if formato_sel == "Promedio por partido" else res[col_data].astype(int),
+        textposition="outside"
+    )).update_layout(**PLOT, height=700, xaxis=dict(showgrid=False)), use_container_width=True)
 
 elif nav == "Comparativa H2H":
     st.markdown('<div class="section-header">Head-to-Head (H2H)</div>', unsafe_allow_html=True)
