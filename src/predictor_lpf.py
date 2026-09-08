@@ -464,17 +464,20 @@ def proyectar_metrica(df, eq_a, eq_b, metrica, es_loc, tabla):
     
     def _obtener_fuerza(eq, is_attack, cond_objetivo):
         col = "Propio" if is_attack else "Concedido"
-        d_eq = df_m[df_m["Equipo"] == eq]
+        d_eq = df_m[df_m["Equipo"] == eq].sort_values("nFecha")
         if d_eq.empty: return df_m[col].mean()
         
         media_global = float(d_eq[col].mean())
         d_cond = d_eq[d_eq["Condicion"] == cond_objetivo]
         
-        # Shrinkage bayesiano
+        # Ajuste de calibración: mayor peso al rendimiento reciente
         if len(d_cond) >= 3:
-            return (float(d_cond[col].mean()) * 0.80) + (media_global * 0.20)
+            # Vector de pesos lineales incrementales para los últimos partidos
+            pesos = np.linspace(1.0, 2.5, len(d_cond))
+            media_ponderada = np.average(d_cond[col], weights=pesos)
+            return (media_ponderada * 0.90) + (media_global * 0.10) # Menor contracción a la media
         elif len(d_cond) > 0:
-            return (float(d_cond[col].mean()) * 0.50) + (media_global * 0.50)
+            return (float(d_cond[col].mean()) * 0.70) + (media_global * 0.30)
         else:
             liga_global = df_m[col].mean()
             liga_cond = df_m[df_m["Condicion"] == cond_objetivo][col].mean()
@@ -487,7 +490,8 @@ def proyectar_metrica(df, eq_a, eq_b, metrica, es_loc, tabla):
     liga_gen_ca = liga_gen_ca if liga_gen_ca > 0 else 1.0
     liga_gen_cb = liga_gen_cb if liga_gen_cb > 0 else 1.0
 
-    # Esperanza Matemática: (Fuerza Atk * Fuerza Def Rival) / Media Liga
+    # Esperanza Matemática:
+    # E = (Fuerza_Atk * Fuerza_Def) / Media_Liga
     fuerza_atk_a = _obtener_fuerza(eq_a, True, ca)
     fuerza_def_b = _obtener_fuerza(eq_b, False, cb)
     val_a = (fuerza_atk_a * fuerza_def_b) / liga_gen_ca
@@ -499,7 +503,13 @@ def proyectar_metrica(df, eq_a, eq_b, metrica, es_loc, tabla):
     if metrica == "Posesión de balón":
         tot = val_a + val_b
         if tot > 0:
-            return float((val_a / tot) * 100), float((val_b / tot) * 100)
+            # Amplificador de varianza para evitar porcentajes chatos (50/50)
+            diff = (val_a - val_b) * 1.35 
+            val_a_adj = np.clip((tot / 2) + (diff / 2), 20.0, 80.0)
+            val_b_adj = np.clip((tot / 2) - (diff / 2), 20.0, 80.0)
+            
+            tot_adj = val_a_adj + val_b_adj
+            return float((val_a_adj / tot_adj) * 100), float((val_b_adj / tot_adj) * 100)
         return 50.0, 50.0
         
     if metrica == "Goles evitados (arquero)":
