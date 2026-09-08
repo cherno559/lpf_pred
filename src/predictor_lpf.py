@@ -233,6 +233,7 @@ def construir_df(datos: dict) -> pd.DataFrame:
 # MOTOR MATEMÁTICO: XG-ELO BIVARIADO (LOCAL/VISITANTE) Y MLE
 # ──────────────────────────────────────────────────────────────────────
 @st.cache_data(ttl=120, show_spinner=False)
+@st.cache_data(ttl=120, show_spinner=False)
 def calcular_elo_dinamico(df: pd.DataFrame) -> dict:
     dx = df[df["Métrica"] == "xG_Model"].copy()
     if dx.empty: return {"local": {}, "visitante": {}}
@@ -256,11 +257,13 @@ def calcular_elo_dinamico(df: pd.DataFrame) -> dict:
     BASE_ELO = 1500.0
     HGA_SHIFT = 65.0  
     
-    # Escalado Aditivo para evitar esperanzas matemáticas irreales (>90%)
-    elos_l = {eq: BASE_ELO + HGA_SHIFT + ((JERARQUIA_EQUIPOS.get(eq, 1.0) - 1.0) * 800) for eq in dx["Equipo"].unique()}
-    elos_v = {eq: BASE_ELO - HGA_SHIFT + ((JERARQUIA_EQUIPOS.get(eq, 1.0) - 1.0) * 800) for eq in dx["Equipo"].unique()}
+    # 1. Redujimos el multiplicador de 800 a 500. 
+    # Esto evita que la media artificial inicial se dispare y permite que los datos hablen más rápido.
+    elos_l = {eq: BASE_ELO + HGA_SHIFT + ((JERARQUIA_EQUIPOS.get(eq, 1.0) - 1.0) * 500) for eq in dx["Equipo"].unique()}
+    elos_v = {eq: BASE_ELO - HGA_SHIFT + ((JERARQUIA_EQUIPOS.get(eq, 1.0) - 1.0) * 500) for eq in dx["Equipo"].unique()}
     
-    K = 25.0
+    # 2. Aumentamos la volatilidad del K para darle más peso a los rendimientos (xG) recientes.
+    K = 40.0
     
     def prob_victoria_xg(xg_a, xg_b):
         if np.isnan(xg_a) or np.isnan(xg_b): return 0.5
