@@ -254,11 +254,11 @@ def calcular_elo_dinamico(df: pd.DataFrame) -> dict:
     }
     
     BASE_ELO = 1500.0
-    HGA_SHIFT = 65.0  # Puntos de ventaja estructural para el local
+    HGA_SHIFT = 65.0  
     
-    # Inicialización del Elo Bivariado con desfasaje de localía
-    elos_l = {eq: (BASE_ELO + HGA_SHIFT) * JERARQUIA_EQUIPOS.get(eq, 1.0) for eq in dx["Equipo"].unique()}
-    elos_v = {eq: (BASE_ELO - HGA_SHIFT) * JERARQUIA_EQUIPOS.get(eq, 1.0) for eq in dx["Equipo"].unique()}
+    # Escalado Aditivo para evitar esperanzas matemáticas irreales (>90%)
+    elos_l = {eq: BASE_ELO + HGA_SHIFT + ((JERARQUIA_EQUIPOS.get(eq, 1.0) - 1.0) * 800) for eq in dx["Equipo"].unique()}
+    elos_v = {eq: BASE_ELO - HGA_SHIFT + ((JERARQUIA_EQUIPOS.get(eq, 1.0) - 1.0) * 800) for eq in dx["Equipo"].unique()}
     
     K = 25.0
     
@@ -275,14 +275,11 @@ def calcular_elo_dinamico(df: pd.DataFrame) -> dict:
         loc, vis = row["Equipo"], row["Rival"]
         xg_l, xg_v = row["Propio"], row["Concedido"]
         
-        # Leemos el Elo Local del local y el Elo Visitante del visitante
         elo_l, elo_v = elos_l.get(loc, BASE_ELO), elos_v.get(vis, BASE_ELO)
         
-        # El HGA ya está naturalmente embebido en la diferencia de ambos trackers
         e_loc = 1 / (1 + 10 ** ((elo_v - elo_l) / 400))
         e_vis = 1 - e_loc
         
-        # Actualización fraccional (Expected Wins) en lugar de resultado real
         s_loc = prob_victoria_xg(xg_l, xg_v)
         s_vis = 1.0 - s_loc
             
@@ -301,20 +298,24 @@ def estimar_rho_mle(df: pd.DataFrame) -> float:
     
     def neg_log_likelihood(rho_val):
         r = rho_val[0]
-        ll = 0.0
-        for x, y in zip(hg, ag):
-            if x == 0 and y == 0: corr = 1 - mean_hg * mean_ag * r
-            elif x == 0 and y == 1: corr = 1 + mean_hg * r
-            elif x == 1 and y == 0: corr = 1 + mean_ag * r
-            elif x == 1 and y == 1: corr = 1 - r
-            else: corr = 1.0
-            corr = max(1e-5, corr)
-            ll += np.log(corr)
-        return -ll
+        # Vectorización matricial directa en lugar del iterador for
+        corr = np.ones_like(hg, dtype=float)
+        
+        mask_00 = (hg == 0) & (ag == 0)
+        mask_01 = (hg == 0) & (ag == 1)
+        mask_10 = (hg == 1) & (ag == 0)
+        mask_11 = (hg == 1) & (ag == 1)
+        
+        corr[mask_00] = 1 - (mean_hg * mean_ag * r)
+        corr[mask_01] = 1 + (mean_hg * r)
+        corr[mask_10] = 1 + (mean_ag * r)
+        corr[mask_11] = 1 - r
+        
+        corr = np.clip(corr, 1e-5, None)
+        return -np.sum(np.log(corr))
         
     res = minimize(neg_log_likelihood, [0.0], bounds=[(-0.3, 0.3)])
     return float(res.x[0]) if res.success else -0.15
-
 @st.cache_data(ttl=120, show_spinner=False)
 def calcular_tabla(df: pd.DataFrame, condicion: str = "General") -> pd.DataFrame:
     if df.empty: return pd.DataFrame()
@@ -449,14 +450,7 @@ def calcular_lambdas(df, eq_a, eq_b, es_loc, tabla):
     la = (l["ref_home"] if ca == "Local" else l["ref_away"]) * aa * db
     lb = (l["ref_home"] if cb == "Local" else l["ref_away"]) * ab * da
 
-    # Amplificador empírico basado en efectividad de puntos
-    if ca == "Local":
-        la *= 1.08  # Boost al xG local
-        lb *= 0.92  # Penalización al xG visitante
-    else:
-        lb *= 1.08
-        la *= 0.92
-
+    # Se eliminaron los multiplicadores manuales empíricos para no "pisar" el bayesiano
     if not es_loc:
         la, lb = lb, la
         
@@ -469,44 +463,39 @@ def proyectar_metrica(df, eq_a, eq_b, metrica, es_loc, tabla):
     ca, cb = ("Local", "Visitante") if es_loc else ("Visitante", "Local")
     
     def _obtener_fuerza(eq, is_attack, cond_objetivo):
-        # is_attack=True -> Generado (Propio), False -> Concedido
         col = "Propio" if is_attack else "Concedido"
-        
         d_eq = df_m[df_m["Equipo"] == eq]
         if d_eq.empty: return df_m[col].mean()
         
         media_global = float(d_eq[col].mean())
         d_cond = d_eq[d_eq["Condicion"] == cond_objetivo]
         
+        # Shrinkage bayesiano
         if len(d_cond) >= 3:
-            # Tenemos muestra: 80% fuerza real en esa condición, 20% estabilizador global
             return (float(d_cond[col].mean()) * 0.80) + (media_global * 0.20)
         elif len(d_cond) > 0:
             return (float(d_cond[col].mean()) * 0.50) + (media_global * 0.50)
         else:
-            # Sin datos en esta condición: escalamos la media global por el efecto de la liga
             liga_global = df_m[col].mean()
             liga_cond = df_m[df_m["Condicion"] == cond_objetivo][col].mean()
             hga_ratio = (liga_cond / liga_global) if liga_global > 0 else 1.0
             return media_global * hga_ratio
 
-    # Baselines de la liga para normalizar la multiplicación
+    # Normalizadores de la liga
     liga_gen_ca = df_m[df_m["Condicion"] == ca]["Propio"].mean()
     liga_gen_cb = df_m[df_m["Condicion"] == cb]["Propio"].mean()
     liga_gen_ca = liga_gen_ca if liga_gen_ca > 0 else 1.0
     liga_gen_cb = liga_gen_cb if liga_gen_cb > 0 else 1.0
 
-    # 1. Fuerza Local vs Defensa Visitante
+    # Esperanza Matemática: (Fuerza Atk * Fuerza Def Rival) / Media Liga
     fuerza_atk_a = _obtener_fuerza(eq_a, True, ca)
     fuerza_def_b = _obtener_fuerza(eq_b, False, cb)
     val_a = (fuerza_atk_a * fuerza_def_b) / liga_gen_ca
 
-    # 2. Fuerza Visitante vs Defensa Local
     fuerza_atk_b = _obtener_fuerza(eq_b, True, cb)
     fuerza_def_a = _obtener_fuerza(eq_a, False, ca)
     val_b = (fuerza_atk_b * fuerza_def_a) / liga_gen_cb
     
-    # Tratamiento especial para métricas de suma cero
     if metrica == "Posesión de balón":
         tot = val_a + val_b
         if tot > 0:
