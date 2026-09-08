@@ -468,31 +468,55 @@ def proyectar_metrica(df, eq_a, eq_b, metrica, es_loc, tabla):
     
     ca, cb = ("Local", "Visitante") if es_loc else ("Visitante", "Local")
     
-    def _mean_with_cond(d_eq, target_cond, col):
-        if d_eq.empty: return df_m[col].mean()
-        conds = d_eq["Condicion"].values
-        vals = d_eq[col].values
-        w = np.where(conds == target_cond, 1.20, 1.0)
-        return np.average(vals, weights=w)
+    def _obtener_fuerza(eq, is_attack, cond_objetivo):
+        # is_attack=True -> Generado (Propio), False -> Concedido
+        col = "Propio" if is_attack else "Concedido"
         
-    d_a, d_b = df_m[df_m["Equipo"] == eq_a], df_m[df_m["Equipo"] == eq_b]
-    base_a, concede_a = _mean_with_cond(d_a, ca, "Propio"), _mean_with_cond(d_a, ca, "Concedido")
-    base_b, concede_b = _mean_with_cond(d_b, cb, "Propio"), _mean_with_cond(d_b, cb, "Concedido")
-    
-    media_liga = df_m["Propio"].mean() if not df_m.empty else 1.0
-    if media_liga == 0: media_liga = 1.0
+        d_eq = df_m[df_m["Equipo"] == eq]
+        if d_eq.empty: return df_m[col].mean()
+        
+        media_global = float(d_eq[col].mean())
+        d_cond = d_eq[d_eq["Condicion"] == cond_objetivo]
+        
+        if len(d_cond) >= 3:
+            # Tenemos muestra: 80% fuerza real en esa condición, 20% estabilizador global
+            return (float(d_cond[col].mean()) * 0.80) + (media_global * 0.20)
+        elif len(d_cond) > 0:
+            return (float(d_cond[col].mean()) * 0.50) + (media_global * 0.50)
+        else:
+            # Sin datos en esta condición: escalamos la media global por el efecto de la liga
+            liga_global = df_m[col].mean()
+            liga_cond = df_m[df_m["Condicion"] == cond_objetivo][col].mean()
+            hga_ratio = (liga_cond / liga_global) if liga_global > 0 else 1.0
+            return media_global * hga_ratio
 
-    factor_def_b = 1.0 + ((concede_b / media_liga) - 1.0) * 0.5 
-    factor_def_a = 1.0 + ((concede_a / media_liga) - 1.0) * 0.5 
+    # Baselines de la liga para normalizar la multiplicación
+    liga_gen_ca = df_m[df_m["Condicion"] == ca]["Propio"].mean()
+    liga_gen_cb = df_m[df_m["Condicion"] == cb]["Propio"].mean()
+    liga_gen_ca = liga_gen_ca if liga_gen_ca > 0 else 1.0
+    liga_gen_cb = liga_gen_cb if liga_gen_cb > 0 else 1.0
+
+    # 1. Fuerza Local vs Defensa Visitante
+    fuerza_atk_a = _obtener_fuerza(eq_a, True, ca)
+    fuerza_def_b = _obtener_fuerza(eq_b, False, cb)
+    val_a = (fuerza_atk_a * fuerza_def_b) / liga_gen_ca
+
+    # 2. Fuerza Visitante vs Defensa Local
+    fuerza_atk_b = _obtener_fuerza(eq_b, True, cb)
+    fuerza_def_a = _obtener_fuerza(eq_a, False, ca)
+    val_b = (fuerza_atk_b * fuerza_def_a) / liga_gen_cb
     
-    val_a = base_a * factor_def_b
-    val_b = base_b * factor_def_a
-    
+    # Tratamiento especial para métricas de suma cero
+    if metrica == "Posesión de balón":
+        tot = val_a + val_b
+        if tot > 0:
+            return float((val_a / tot) * 100), float((val_b / tot) * 100)
+        return 50.0, 50.0
+        
     if metrica == "Goles evitados (arquero)":
         return float(val_a), float(val_b)
     
     return max(0.0, float(val_a)), max(0.0, float(val_b))
-
 def montecarlo(la, lb, rho_dinamico):
     def _pmf(lam, kmax):
         k = np.arange(kmax + 1)
