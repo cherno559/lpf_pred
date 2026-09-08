@@ -256,7 +256,19 @@ def calcular_elo_dinamico(df: pd.DataFrame) -> dict:
     
     BASE_ELO = 1500.0
     HGA_SHIFT = 65.0  
-    
+    # Cálculo dinámico de HGA por equipo basado en el desvío histórico de xG local vs visitante
+    hga_dinamico = {}
+    for eq in dx["Equipo"].unique():
+        xg_l_eq = dx[(dx["Equipo"] == eq) & (dx["Condicion"] == "Local")]["Propio"].mean()
+        xg_v_eq = dx[(dx["Equipo"] == eq) & (dx["Condicion"] == "Visitante")]["Propio"].mean()
+        if not np.isnan(xg_l_eq) and not np.isnan(xg_v_eq):
+            # Desvío ajustado acotado entre 30 y 90 puntos Elo de localía
+            hga_dinamico[eq] = float(np.clip((xg_l_eq - xg_v_eq) * 120, 30.0, 90.0))
+        else:
+            hga_dinamico[eq] = 65.0
+
+    elos_l = {eq: BASE_ELO + hga_dinamico.get(eq, 65.0) + ((JERARQUIA_EQUIPOS.get(eq, 1.0) - 1.0) * 500) for eq in dx["Equipo"].unique()}
+    elos_v = {eq: BASE_ELO - hga_dinamico.get(eq, 65.0) + ((JERARQUIA_EQUIPOS.get(eq, 1.0) - 1.0) * 500) for eq in dx["Equipo"].unique()}
     # 1. Redujimos el multiplicador de 800 a 500. 
     # Esto evita que la media artificial inicial se dispare y permite que los datos hablen más rápido.
     elos_l = {eq: BASE_ELO + HGA_SHIFT + ((JERARQUIA_EQUIPOS.get(eq, 1.0) - 1.0) * 500) for eq in dx["Equipo"].unique()}
@@ -374,6 +386,9 @@ def _adjusted_rate(d_all, metrica, col, max_fecha_torneo, tabla, is_attack, targ
     fechas, categoria, valores, rivales, condiciones = df_m["nFecha"].values, df_m["Categoria"].values, df_m[col].values, df_m["Rival"].values, df_m["Condicion"].values
     valores_ajustados, pesos = [], []
     
+    # Parámetro de vida media (half-life) para el decaimiento exponencial
+    half_life = 4.0 
+    
     for v, r, c_match, f, cat in zip(valores, rivales, condiciones, fechas, categoria):
         cond_rival = "Visitante" if c_match == "Local" else "Local"
         pa_r, pd_r = _get_prior(tabla, r, cond_rival)
@@ -382,9 +397,11 @@ def _adjusted_rate(d_all, metrica, col, max_fecha_torneo, tabla, is_attack, targ
         adj = v / pd_r_safe if (is_attack and pd_r_safe > 0) else v / pa_r_safe if (not is_attack and pa_r_safe > 0) else v
         valores_ajustados.append(min(adj, 3.5))
         
-        w = PESO_HISTORICO if cat == "Histórico" else (PESO_RECIENTE if f >= (max_fecha_torneo - N_RECENCIA + 1) else PESO_NORMAL)
+        # Ponderación exponencial basada en la distancia temporal a la fecha actual
+        delta_f = max_fecha_torneo - f
+        w = PESO_HISTORICO if cat == "Histórico" else float(np.exp(-math.log(2) * (delta_f / half_life)))
         if c_match == target_cond: w *= 1.15
-        pesos.append(w)
+        pesos.append(max(w, 0.1))
         
     return float(np.average(valores_ajustados, weights=pesos)) if valores_ajustados and sum(pesos) > 0 else np.nan
 
@@ -523,13 +540,28 @@ def montecarlo(la, lb, rho_dinamico):
     def _pmf(lam, kmax):
         k = np.arange(kmax + 1)
         return np.exp(k * np.log(max(lam, 1e-9)) - lam - np.array([math.log(math.factorial(x)) for x in k]))
+    
     pa, pb = _pmf(la, MAX_GOALS_MATRIX), _pmf(lb, MAX_GOALS_MATRIX)
     M = np.outer(pa, pb)
     rho = max(rho_dinamico, -0.9 / max(la * lb, 0.01))
-    M[0, 0] = max(M[0, 0] * (1 - la * lb * rho), 0.0)
-    M[0, 1] = max(M[0, 1] * (1 + la * rho),       0.0)
-    M[1, 0] = max(M[1, 0] * (1 + lb * rho),        0.0)
-    M[1, 1] = max(M[1, 1] * (1 - rho),             0.0)
+    
+    # Función tau de Dixon-Coles generalizada para la matriz
+    def tau(x, y, lam, mu, r):
+        if x == 0 and y == 0:
+            return 1.0 - (lam * mu * r)
+        elif x == 0 and y == 1:
+            return 1.0 + (lam * r)
+        elif x == 1 and y == 0:
+            return 1.0 + (mu * r)
+        elif x == 1 and y == 1:
+            return 1.0 - r
+        return 1.0
+
+    for i in range(min(2, M.shape[0])):
+        for j in range(min(2, M.shape[1])):
+            M[i, j] *= tau(i, j, la, lb, rho)
+            
+    M = np.clip(M, 0, None)
     M /= M.sum()
     return {"victoria": float(np.tril(M, -1).sum()), "empate": float(np.trace(M)), "derrota": float(np.triu(M, 1).sum()), "matrix": M}
 
