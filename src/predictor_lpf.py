@@ -1267,46 +1267,112 @@ elif nav == "Simulador de Jornada":
                              hide_index=True, use_container_width=True, height=320)
 
 elif nav == "Métricas Globales":
-    st.markdown('<div class="section-header">Rankings de Rendimiento</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-header">Métricas Globales Avanzadas (Cruce de Datos)</div>', unsafe_allow_html=True)
     
-    # Agregamos una cuarta columna para el formato
-    c1, c2, c3, c4 = st.columns(4)
-    m_sel    = c1.selectbox("Métrica Analizada", metricas)
-    cond_sel = c2.selectbox("Filtro Condición", ["General", "Local", "Visitante"])
-    tipo_sel = c3.selectbox("Enfoque", ["Producción (A Favor)", "Concesión (En Contra)"])
-    formato_sel = c4.selectbox("Formato", ["Total acumulado", "Promedio por partido"])
+    # Filtros Superiores: Selección múltiple y filtro temporal
+    c1, c2 = st.columns([2, 1])
+    m_sel = c1.multiselect(
+        "Métricas Analizadas (Seleccioná 1 o más)", 
+        metricas, 
+        default=[m for m in ["Goles esperados (xG)", "Tiros totales"] if m in metricas][:2]
+    )
+    fechas_disponibles = sorted(df["nFecha"].dropna().unique())
+    f_sel = c2.multiselect("Filtrar por Fechas (Vacío = Todas)", fechas_disponibles, default=[])
     
-    col_data = "Propio" if "A Favor" in tipo_sel else "Concedido"
+    # Filtros Inferiores
+    c3, c4, c5 = st.columns(3)
+    cond_sel = c3.selectbox("Filtro Condición", ["General", "Local", "Visitante"])
+    tipo_sel = c4.selectbox("Enfoque", ["Producción (A Favor)", "Concesión (En Contra)"])
+    formato_sel = c5.selectbox("Formato", ["Total acumulado", "Promedio por partido"])
     
-    mask_cond = (df["Condicion"] == cond_sel) if cond_sel != "General" else df.index.notna()
-    
-    # 1. Obtenemos partidos jugados
-    df_pj = df[mask_cond & (df["Métrica"] == "Resultado")]
-    pj_equipo = df_pj.groupby("Equipo").size()
-    
-    # 2. Sumamos la métrica
-    df_met = df[mask_cond & (df["Métrica"] == m_sel)]
-    suma_met = df_met.groupby("Equipo")[col_data].sum()
-    suma_met = suma_met.reindex(pj_equipo.index, fill_value=0)
-    
-    # 3. Aplicamos la lógica según el formato elegido
-    if formato_sel == "Total acumulado":
-        res = suma_met.sort_values(ascending=False).reset_index()
+    if not m_sel:
+        st.warning("⚠️ Seleccioná al menos una métrica para visualizar.")
     else:
-        res = (suma_met / pj_equipo).sort_values(ascending=False).reset_index()
+        col_data = "Propio" if "A Favor" in tipo_sel else "Concedido"
         
-    res.columns = ["Equipo", col_data]
-
-    # 4. Renderizamos el gráfico
-    st.plotly_chart(go.Figure(go.Bar(
-        x=res[col_data], 
-        y=res["Equipo"], 
-        orientation="h", 
-        marker_color=RED if col_data == "Propio" else GRAY,
-        text=res[col_data].round(2) if formato_sel == "Promedio por partido" else res[col_data].astype(int),
-        textposition="outside"
-    )).update_layout(**PLOT, height=700, xaxis=dict(showgrid=False)), use_container_width=True)
-
+        # Construcción dinámica de la máscara de filtrado
+        mask = df.index.notna()
+        if cond_sel != "General":
+            mask &= (df["Condicion"] == cond_sel)
+        if f_sel:
+            mask &= (df["nFecha"].isin(f_sel))
+            
+        df_filt = df[mask]
+        
+        # Cálculo base de Partidos Jugados (para el promedio)
+        df_pj = df_filt[df_filt["Métrica"] == "Resultado"]
+        pj_equipo = df_pj.groupby("Equipo").size()
+        
+        # Agrupación iterativa por cada métrica seleccionada
+        resultados = []
+        for m in m_sel:
+            df_m = df_filt[df_filt["Métrica"] == m]
+            suma_met = df_m.groupby("Equipo")[col_data].sum()
+            # Alinear con los equipos que efectivamente jugaron
+            suma_met = suma_met.reindex(pj_equipo.index, fill_value=0)
+            
+            if formato_sel == "Promedio por partido":
+                val = (suma_met / pj_equipo.replace(0, 1)) # Evitar división por 0
+            else:
+                val = suma_met
+                
+            val.name = m
+            resultados.append(val)
+            
+        # Consolidación del DataFrame
+        res_df = pd.concat(resultados, axis=1).reset_index()
+        # Ordenar por la primera métrica seleccionada para dar jerarquía lógica
+        res_df = res_df.sort_values(by=m_sel[0], ascending=False)
+        
+        # ── VISUALIZACIONES EN PESTAÑAS ──
+        tab_barras, tab_scatter, tab_datos = st.tabs(["📊 Comparativa de Barras", "🎯 Cruce de Datos (Scatter)", "📋 Tabla de Datos"])
+        
+        with tab_barras:
+            fig_bar = go.Figure()
+            colores = [RED, "#ffffff", "#5ecf6b", "#6b8cff", "#cfb45e", "#cf5ead"]
+            for i, m in enumerate(m_sel):
+                fig_bar.add_trace(go.Bar(
+                    name=m,
+                    x=res_df["Equipo"],
+                    y=res_df[m],
+                    marker_color=colores[i % len(colores)]
+                ))
+            fig_bar.update_layout(
+                barmode='group',
+                **PLOT,
+                height=550,
+                xaxis_tickangle=-45,
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+            )
+            st.plotly_chart(fig_bar, use_container_width=True)
+            
+        with tab_scatter:
+            if len(m_sel) == 2:
+                m1, m2 = m_sel[0], m_sel[1]
+                fig_scat = px.scatter(
+                    res_df, x=m1, y=m2, text="Equipo", 
+                    color_discrete_sequence=[RED]
+                )
+                fig_scat.update_traces(
+                    textposition='top center', 
+                    marker=dict(size=12, line=dict(width=1, color="#141417"))
+                )
+                fig_scat.update_layout(
+                    **PLOT, height=600,
+                    xaxis_title=m1, yaxis_title=m2
+                )
+                # Líneas de la media del torneo para sectorizar en cuadrantes
+                fig_scat.add_vline(x=res_df[m1].mean(), line_width=1, line_dash="dash", line_color=GRAY)
+                fig_scat.add_hline(y=res_df[m2].mean(), line_width=1, line_dash="dash", line_color=GRAY)
+                
+                st.plotly_chart(fig_scat, use_container_width=True)
+                st.caption("💡 **Tip:** El cuadrante superior derecho marca a los equipos sobre la media en ambas métricas.")
+            else:
+                st.info("📌 Seleccioná exactamente **2 métricas** en los filtros superiores para activar el mapa de dispersión.")
+                
+        with tab_datos:
+            formato_cols = {m: "{:.2f}" for m in m_sel}
+            st.dataframe(res_df.style.format(formato_cols), hide_index=True, use_container_width=True)
 elif nav == "Comparativa H2H":
     st.markdown('<div class="section-header">Head-to-Head (H2H)</div>', unsafe_allow_html=True)
     c1, c2 = st.columns(2)
