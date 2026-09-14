@@ -1269,62 +1269,68 @@ elif nav == "Simulador de Jornada":
 elif nav == "Métricas Globales":
     st.markdown('<div class="section-header">Métricas Globales Avanzadas (Cruce de Datos)</div>', unsafe_allow_html=True)
     
-    # 1. Preparar lista de métricas combinada con el enfoque
+    # 1. Preparar lista de métricas combinada con enfoque y condición
     opciones_metricas = []
     for m in metricas:
-        opciones_metricas.append(f"{m} (A Favor)")
-        opciones_metricas.append(f"{m} (En Contra)")
+        for enfoque in ["(A Favor)", "(En Contra)"]:
+            for cond in ["General", "Local", "Visitante"]:
+                opciones_metricas.append(f"{m} {enfoque} - {cond}")
     opciones_metricas.sort() # Ordenar alfabéticamente para facilitar la búsqueda
 
     # Filtros Superiores: Selección múltiple y filtro temporal
     c1, c2 = st.columns([2, 1])
-    default_selections = [m for m in ["Goles esperados (xG) (A Favor)", "Goles esperados (xG) (En Contra)"] if m in opciones_metricas][:2]
+    default_selections = [m for m in ["Goles esperados (xG) (A Favor) - General", "Goles esperados (xG) (En Contra) - General"] if m in opciones_metricas][:2]
     
     m_sel = c1.multiselect(
-        "Métricas Analizadas (Seleccioná 1 o más)", 
+        "Métricas Analizadas (Buscá la métrica, a favor/en contra y condición)", 
         opciones_metricas, 
         default=default_selections
     )
     fechas_disponibles = sorted(df["nFecha"].dropna().unique())
     f_sel = c2.multiselect("Filtrar por Fechas (Vacío = Todas)", fechas_disponibles, default=[])
     
-    # Filtros Inferiores (Quitamos el "Enfoque" global porque ahora es individual)
-    c3, c4 = st.columns(2)
-    cond_sel = c3.selectbox("Filtro Condición", ["General", "Local", "Visitante"])
-    formato_sel = c4.selectbox("Formato", ["Total acumulado", "Promedio por partido"])
+    # Filtro Inferior (El formato es lo único que queda global)
+    formato_sel = st.selectbox("Formato", ["Total acumulado", "Promedio por partido"])
     
     if not m_sel:
         st.warning("⚠️ Seleccioná al menos una métrica para visualizar.")
     else:
-        # Construcción dinámica de la máscara de filtrado general
-        mask = df.index.notna()
-        if cond_sel != "General":
-            mask &= (df["Condicion"] == cond_sel)
+        # Filtro temporal global
+        mask_fecha = df.index.notna()
         if f_sel:
-            mask &= (df["nFecha"].isin(f_sel))
+            mask_fecha &= (df["nFecha"].isin(f_sel))
             
-        df_filt = df[mask]
-        
-        # Cálculo base de Partidos Jugados (para el promedio)
-        df_pj = df_filt[df_filt["Métrica"] == "Resultado"]
-        pj_equipo = df_pj.groupby("Equipo").size()
+        df_filt = df[mask_fecha]
+        equipos_activos = sorted(df_filt["Equipo"].unique())
         
         # Agrupación iterativa por cada métrica seleccionada
         resultados = []
         for item in m_sel:
-            # Extraer la métrica real y la columna de datos (Propio o Concedido)
             is_favor = "(A Favor)" in item
-            m_real = item.replace(" (A Favor)", "").replace(" (En Contra)", "")
             col_data = "Propio" if is_favor else "Concedido"
             
-            df_m = df_filt[df_filt["Métrica"] == m_real]
+            cond_m = "General"
+            if " - Local" in item: cond_m = "Local"
+            elif " - Visitante" in item: cond_m = "Visitante"
+            
+            # Limpiamos el string para obtener el nombre original de la métrica
+            m_real = item.replace(" (A Favor)", "").replace(" (En Contra)", "").replace(" - General", "").replace(" - Local", "").replace(" - Visitante", "")
+            
+            # Filtramos por la condición específica de ESTA métrica
+            mask_cond = df_filt.index.notna()
+            if cond_m != "General":
+                mask_cond &= (df_filt["Condicion"] == cond_m)
+                
+            df_m = df_filt[mask_cond & (df_filt["Métrica"] == m_real)]
             suma_met = df_m.groupby("Equipo")[col_data].sum()
             
-            # Alinear con los equipos que efectivamente jugaron
-            suma_met = suma_met.reindex(pj_equipo.index, fill_value=0)
+            # Alinear con los equipos activos (rellenando con 0 si no jugaron en esa condición)
+            suma_met = suma_met.reindex(equipos_activos, fill_value=0)
             
             if formato_sel == "Promedio por partido":
-                val = (suma_met / pj_equipo.replace(0, 1)) # Evitar división por 0
+                df_pj_m = df_filt[mask_cond & (df_filt["Métrica"] == "Resultado")]
+                pj_equipo_m = df_pj_m.groupby("Equipo").size().reindex(equipos_activos, fill_value=0)
+                val = (suma_met / pj_equipo_m.replace(0, 1)) # Evitar división por 0
             else:
                 val = suma_met
                 
@@ -1332,7 +1338,10 @@ elif nav == "Métricas Globales":
             resultados.append(val)
             
         # Consolidación del DataFrame
-        res_df = pd.concat(resultados, axis=1).reset_index()
+        res_df = pd.concat(resultados, axis=1)
+        res_df.index.name = "Equipo"
+        res_df = res_df.reset_index()
+        
         # Ordenar por la primera métrica seleccionada para dar jerarquía lógica
         res_df = res_df.sort_values(by=m_sel[0], ascending=False)
         
