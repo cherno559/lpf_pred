@@ -308,8 +308,12 @@ def get_stats_partido(session, event_id: int) -> tuple[list | None, dict]:
             val_away = stats_temporales[clave_ingles]['away']
             estadisticas_partido.append([nombre_espanol, val_home, val_away])
 
-    return (estadisticas_partido if estadisticas_partido else None), stats_temporales
+    # ── INYECCIÓN MANUAL: PENALES A FAVOR ─────────────────────────────────
+    # Se agrega al final de las estadísticas extraídas para rellenar a mano
+    if estadisticas_partido:
+        estadisticas_partido.append(["Penales a favor", 0, 0])
 
+    return (estadisticas_partido if estadisticas_partido else None), stats_temporales
 # ──────────────────────────────────────────────────────────────────
 # ESTILOS EXCEL
 # ──────────────────────────────────────────────────────────────────

@@ -238,22 +238,36 @@ def construir_df(datos: dict) -> pd.DataFrame:
             fase = "Playoff"
 
         for p in partidos:
-            xg_loc = p["metricas"].get("Goles esperados (xG)", {}).get("local")
-            if xg_loc is None: 
+            xg_loc_raw = p["metricas"].get("Goles esperados (xG)", {}).get("local")
+            xg_vis_raw = p["metricas"].get("Goles esperados (xG)", {}).get("visitante")
+            
+            # 1. Rescatamos los penales de la extracción (por defecto 0 si la celda está vacía o no existe en Apertura)
+            penales_loc = p["metricas"].get("Penales a favor", {}).get("local", 0.0)
+            penales_vis = p["metricas"].get("Penales a favor", {}).get("visitante", 0.0)
+
+            # 2. Valor estadístico estándar de xG por penal
+            VALOR_PENAL_XG = 0.79
+
+            if xg_loc_raw is None: 
                 tt = p["metricas"].get("Tiros totales", {"local": 0, "visitante": 0})
                 oc = p["metricas"].get("Ocasiones claras", {"local": 0, "visitante": 0})
                 xg_loc = (oc["local"] * 0.38) + (max(0, tt["local"] - oc["local"]) * 0.05)
                 xg_vis = (oc["visitante"] * 0.38) + (max(0, tt["visitante"] - oc["visitante"]) * 0.05)
                 p["metricas"]["xG_Model"] = {"local": xg_loc, "visitante": xg_vis}
             else:
-                p["metricas"]["xG_Model"] = p["metricas"]["Goles esperados (xG)"]
+                # 3. Cálculo de npxG puro con límite inferior en 0.0
+                xg_loc_neto = max(0.0, xg_loc_raw - (penales_loc * VALOR_PENAL_XG))
+                xg_vis_neto = max(0.0, xg_vis_raw - (penales_vis * VALOR_PENAL_XG))
+                
+                p["metricas"]["xG_Model"] = {"local": xg_loc_neto, "visitante": xg_vis_neto}
 
+            # 4. Inyección en DataFrame: El ajuste previo afecta tanto a Propio como a Concedido
             for met, vals in p["metricas"].items():
                 base = {"nFecha": nf, "Fase": fase, "Métrica": met, "Torneo": torneo, "Categoria": categoria}
                 filas.append({**base, "Equipo": p["local"], "Rival": p["visitante"], "Condicion": "Local", "Propio": vals["local"], "Concedido": vals["visitante"]})
                 filas.append({**base, "Equipo": p["visitante"], "Rival": p["local"], "Condicion": "Visitante", "Propio": vals["visitante"], "Concedido": vals["local"]})
+                
     return pd.DataFrame(filas)
-
 # ──────────────────────────────────────────────────────────────────────
 # MOTOR MATEMÁTICO: XG-ELO BIVARIADO (LOCAL/VISITANTE) Y MLE
 # ──────────────────────────────────────────────────────────────────────
