@@ -520,34 +520,40 @@ def calcular_lambdas(df, eq_a, eq_b, es_loc, tabla):
     la = (l["ref_home"] if ca == "Local" else l["ref_away"]) * aa * db
     lb = (l["ref_home"] if cb == "Local" else l["ref_away"]) * ab * da
 
-    # --- INICIO DEL BOOST DE EFICACIA POR CONDICIÓN ---
+    # --- INICIO DEL AJUSTE ESTILO "CASA DE APUESTAS" ---
     def get_eficacia(equipo, condicion_buscada):
-        # Filtramos los partidos del equipo en su condición específica (Local o Visitante)
         dr = df_actual[(df_actual["Equipo"] == equipo) & (df_actual["Condicion"] == condicion_buscada) & (df_actual["Métrica"] == "Resultado")]
-        if len(dr) == 0: return 0.45 # Valor medio por defecto
-        
-        # Calculamos puntos obtenidos vs posibles
+        if len(dr) == 0: return 0.45 
         pts = sum([3 if r["Propio"] > r["Concedido"] else (1 if r["Propio"] == r["Concedido"] else 0) for _, r in dr.iterrows()])
         return pts / (len(dr) * 3.0)
 
-    # 1. Calculamos la eficacia específica
-    efec_a_cond = get_eficacia(eq_a, ca)
-    efec_b_cond = get_eficacia(eq_b, cb)
+    efec_a = get_eficacia(eq_a, ca)
+    efec_b = get_eficacia(eq_b, cb)
     
-    # 2. Base de tu fórmula: (1 + eficacia) / 2
-    modificador_a = (1.0 + efec_a_cond) / 2.0
-    modificador_b = (1.0 + efec_b_cond) / 2.0
+    # Medias históricas estimadas del fútbol argentino
+    media_efec_loc = 0.48
+    media_efec_vis = 0.35
     
-    # 3. Sumamos el +0.15 exclusivo para el equipo local (amortiguador de malas rachas)
+    # 1. Multiplicador Z-Score (Diferencia contra la media de su condición)
+    # Multiplicamos por 0.35 para suavizar el impacto
     if ca == "Local":
-        modificador_a += 0.15
-    if cb == "Local":
-        modificador_b += 0.15
+        mod_a = 1.0 + ((efec_a - media_efec_loc) * 0.35)
+        mod_b = 1.0 + ((efec_b - media_efec_vis) * 0.35)
+    else:
+        mod_a = 1.0 + ((efec_a - media_efec_vis) * 0.35)
+        mod_b = 1.0 + ((efec_b - media_efec_loc) * 0.35)
         
-    # 4. Multiplicamos el xG base
-    la *= modificador_a
-    lb *= modificador_b
-    # --- FIN DEL BOOST DE EFICACIA POR CONDICIÓN ---
+    # LÍMITES ESTRICTOS: Ningún equipo es penalizado o premiado por más del 15%
+    mod_a = float(np.clip(mod_a, 0.85, 1.15))
+    mod_b = float(np.clip(mod_b, 0.85, 1.15))
+    
+    la *= mod_a
+    lb *= mod_b
+    
+    # 2. Bono Fijo Estructural de Localía (+0.18 goles esperados fijos)
+    if es_loc:
+        la += 0.18
+    # --- FIN DEL AJUSTE ---
 
     if not es_loc:
         la, lb = lb, la
