@@ -292,26 +292,31 @@ def calcular_elo_dinamico(df: pd.DataFrame) -> dict:
         "Central Córdoba": 0.920, "Estudiantes de Río Cuarto": 0.915    
     }
     # MEJORA #3: se amplifica la desviación respecto a 1.0 para que el spread entre el
-    # mejor y el peor equipo pase de ~0.335 a ~0.70. Sigue siendo una tabla fija (lo ideal
-    # a futuro es calcularla con datos históricos reales), pero al menos ya no le pone un
-    # techo tan bajo a cuánto puede diferenciarse un equipo grande de uno chico.
+    # mejor y el peor equipo pase de ~0.335 a ~0.70. 
     AMPLIF_JERARQUIA = 2.1
     JERARQUIA_EQUIPOS = {eq: 1.0 + (val - 1.0) * AMPLIF_JERARQUIA for eq, val in _JERARQUIA_BASE.items()}
     
     BASE_ELO = 1500.0
     HGA_SHIFT = 65.0  
     
-    # Cálculo dinámico de HGA por equipo
+    # Cálculo dinámico de HGA por equipo (Híbrido)
     hga_dinamico = {}
+    HGA_BASE = 65.0 
+    
     for eq in dx["Equipo"].unique():
         xg_l_eq = dx[(dx["Equipo"] == eq) & (dx["Condicion"] == "Local")]["Propio"].mean()
         xg_v_eq = dx[(dx["Equipo"] == eq) & (dx["Condicion"] == "Visitante")]["Propio"].mean()
+        
         if not np.isnan(xg_l_eq) and not np.isnan(xg_v_eq):
-            hga_dinamico[eq] = float(np.clip((xg_l_eq - xg_v_eq) * 120, 30.0, 90.0))
+            # Calculamos el HGA puramente estadístico pero con un piso realista (45.0)
+            hga_puro = float(np.clip((xg_l_eq - xg_v_eq) * 120, 45.0, 95.0))
+            
+            # Shrinkage (Regresión a la media): 65% estructural, 35% momento actual
+            hga_dinamico[eq] = (HGA_BASE * 0.65) + (hga_puro * 0.35)
         else:
-            hga_dinamico[eq] = HGA_SHIFT
+            hga_dinamico[eq] = HGA_BASE
 
-    # BUG SOLUCIONADO: Se utiliza el HGA dinámico que se acababa de calcular en vez del valor fijo
+    # Se utiliza el HGA dinámico que se acababa de calcular
     elos_l = {eq: BASE_ELO + hga_dinamico.get(eq, HGA_SHIFT) + ((JERARQUIA_EQUIPOS.get(eq, 1.0) - 1.0) * 500) for eq in dx["Equipo"].unique()}
     elos_v = {eq: BASE_ELO - hga_dinamico.get(eq, HGA_SHIFT) + ((JERARQUIA_EQUIPOS.get(eq, 1.0) - 1.0) * 500) for eq in dx["Equipo"].unique()}
     
