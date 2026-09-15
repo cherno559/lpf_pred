@@ -520,28 +520,28 @@ def calcular_lambdas(df, eq_a, eq_b, es_loc, tabla):
     la = (l["ref_home"] if ca == "Local" else l["ref_away"]) * aa * db
     lb = (l["ref_home"] if cb == "Local" else l["ref_away"]) * ab * da
 
-    # --- INICIO DEL BOOST DE EFICACIA RELATIVA ---
-    if "EFEC%" in tabla.columns:
-        # 1. Obtenemos la eficacia del equipo A y B (en formato 0 a 1)
-        efec_a = tabla.loc[eq_a, "EFEC%"] / 100.0 if eq_a in tabla.index else 0.45
-        efec_b = tabla.loc[eq_b, "EFEC%"] / 100.0 if eq_b in tabla.index else 0.45
+    # --- INICIO DEL BOOST DE EFICACIA POR CONDICIÓN (TU FÓRMULA) ---
+    def get_eficacia(equipo, condicion_buscada):
+        # Filtramos los partidos del equipo en la condición específica (Local o Visitante)
+        dr = df_actual[(df_actual["Equipo"] == equipo) & (df_actual["Condicion"] == condicion_buscada) & (df_actual["Métrica"] == "Resultado")]
+        if len(dr) == 0: return 0.45 # Valor por defecto si no hay historial
         
-        # 2. Calculamos la media de eficacia del torneo
-        efec_media = tabla["EFEC%"].mean() / 100.0
-        
-        # 3. Armamos el multiplicador: 1 + (Diferencia contra la media * factor de impacto)
-        # IMPACTO AGRESIVO: factor de 0.75
-        modificador_a = 1.0 + ((efec_a - efec_media) * 0.75)
-        modificador_b = 1.0 + ((efec_b - efec_media) * 0.75)
-        
-        # Topeamos el boost/malus entre 0.75 (-25%) y 1.25 (+25%)
-        modificador_a = float(np.clip(modificador_a, 0.75, 1.25))
-        modificador_b = float(np.clip(modificador_b, 0.75, 1.25))
-        
-        # 4. Aplicamos el boost al xG base
-        la *= modificador_a
-        lb *= modificador_b
-    # --- FIN DEL BOOST DE EFICACIA RELATIVA ---
+        # Calculamos puntos obtenidos vs posibles
+        pts = sum([3 if r["Propio"] > r["Concedido"] else (1 if r["Propio"] == r["Concedido"] else 0) for _, r in dr.iterrows()])
+        return pts / (len(dr) * 3.0)
+
+    # 1. Calculamos la eficacia específica: Local de local, Visitante de visitante (0.0 a 1.0)
+    efec_a_cond = get_eficacia(eq_a, ca)
+    efec_b_cond = get_eficacia(eq_b, cb)
+    
+    # 2. Aplicamos exactamente tu fórmula: (1 + eficacia) / 2
+    modificador_a = (1.0 + efec_a_cond) / 2.0
+    modificador_b = (1.0 + efec_b_cond) / 2.0
+    
+    # 3. Multiplicamos el xG base
+    la *= modificador_a
+    lb *= modificador_b
+    # --- FIN DEL BOOST DE EFICACIA POR CONDICIÓN ---
 
     if not es_loc:
         la, lb = lb, la
