@@ -103,11 +103,36 @@ html, body, [class*="css"] { font-family: 'Manrope', sans-serif; background-colo
 # PARÁMETROS DEL MOTOR MATEMÁTICO
 # ──────────────────────────────────────────────────────────────────────
 W_XG = 0.70  
-K_PRIOR_BASE, K_PRIOR_MIN = 15.0, 8.0
+# MEJORA #2: el prior ahora decae más rápido (K_PRIOR_BASE) y llega a un piso mucho más
+# bajo (K_PRIOR_MIN). Antes, incluso con el torneo casi terminado, el prior fijo seguía
+# pesando ~35% del resultado. Con estos valores, a partir de ~fecha 12 el prior pesa <15%
+# y el modelo confía sobre todo en los datos reales de cada equipo.
+K_PRIOR_BASE, K_PRIOR_MIN = 12.0, 3.0
 MAX_GOALS_MATRIX = 7
 N_RECENCIA, PESO_RECIENTE, PESO_NORMAL = 5, 1.30, 1.0
 PESO_HISTORICO = 0.75
 LAM_MIN, LAM_MAX = 0.20, 5.00
+
+# MEJORA #1: piso Y techo simétricos para la fuerza del rival al ajustar una métrica.
+# Antes solo había piso (0.80) y ningún techo, lo que aplastaba a los equipos flojos
+# contra el promedio sin limitar del otro lado a los equipos fuertes. Con un rango
+# simétrico ±40% alrededor de 1.0, un equipo realmente débil (defensa factor 0.55-0.65)
+# puede seguir viéndose débil, y un equipo realmente fuerte no se recorta antes.
+FUERZA_RIVAL_MIN, FUERZA_RIVAL_MAX = 0.65, 1.40
+
+# MEJORA #4: la penalización por rotación de plantel ahora es proporcional (% de la
+# fuerza del equipo) en vez de una resta fija de xG. Restar siempre 0.35 de xG le pegaba
+# igual a un equipo con lambda=0.9 (le borraba casi todo el ataque) que a uno con
+# lambda=2.5 (apenas lo tocaba). Con un % fijo, el impacto relativo es el mismo para todos.
+PENALIDAD_ROTACION_PCT = 0.22          # ~22% de caída en xG por rotación
+PENALIDAD_ROTACION_POSESION_PCT = 0.08  # ~8% de caída en posesión
+PENALIDAD_ROTACION_TIROS_PCT = 0.15     # ~15% de caída en volumen de tiros
+
+# MEJORA #5: el factor de amplificación de la diferencia de posesión baja de 1.35 a 1.15.
+# Con las mejoras #1-#3 la diferencia real (diff) ya no llega tan comprimida como antes,
+# así que amplificarla tanto como antes generaría posesiones poco realistas (ej. 75-25
+# entre dos equipos parejos). 1.15 da un empujón leve sin exagerar.
+POSESION_AMPLIFICACION = 1.15
 
 RED, WHITE, GRAY = "#ED1A3B", "#ffffff", "#4a4a52"
 PLOT = dict(font=dict(family="Manrope", size=12, color="#a0a0a8"), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", margin=dict(l=10, r=20, t=36, b=10))
@@ -241,7 +266,7 @@ def calcular_elo_dinamico(df: pd.DataFrame) -> dict:
     dx = dx.sort_values(["Torneo_Order", "nFecha"])
     partidos = dx[dx["Condicion"] == "Local"]
     
-    JERARQUIA_EQUIPOS = {
+    _JERARQUIA_BASE = {
         "River Plate": 1.250, "Boca Juniors": 1.150, "Racing Club": 1.080, "Rosario Central": 1.065,             
         "Estudiantes de La Plata": 1.050, "San Lorenzo": 1.045, "CA Talleres": 1.040, "Independiente Rivadavia": 1.035,     
         "CA Independiente": 1.030, "Argentinos Juniors": 1.025, "CA Lanús": 1.025, "Tigre": 1.020,                       
@@ -252,6 +277,12 @@ def calcular_elo_dinamico(df: pd.DataFrame) -> dict:
         "Banfield": 0.935, "Atlético Tucumán": 0.930, "Aldosivi": 0.925, "Deportivo Riestra": 0.925,           
         "Central Córdoba": 0.920, "Estudiantes de Río Cuarto": 0.915    
     }
+    # MEJORA #3: se amplifica la desviación respecto a 1.0 para que el spread entre el
+    # mejor y el peor equipo pase de ~0.335 a ~0.70. Sigue siendo una tabla fija (lo ideal
+    # a futuro es calcularla con datos históricos reales), pero al menos ya no le pone un
+    # techo tan bajo a cuánto puede diferenciarse un equipo grande de uno chico.
+    AMPLIF_JERARQUIA = 2.1
+    JERARQUIA_EQUIPOS = {eq: 1.0 + (val - 1.0) * AMPLIF_JERARQUIA for eq, val in _JERARQUIA_BASE.items()}
     
     BASE_ELO = 1500.0
     HGA_SHIFT = 65.0  
@@ -392,7 +423,8 @@ def _adjusted_rate(d_all, metrica, col, max_fecha_torneo, tabla, is_attack, targ
         cond_rival = "Visitante" if c_match == "Local" else "Local"
         pa_r, pd_r = _get_prior(tabla, r, cond_rival)
         
-        pd_r_safe, pa_r_safe = max(pd_r, 0.80), max(pa_r, 0.80)
+        pd_r_safe = float(np.clip(pd_r, FUERZA_RIVAL_MIN, FUERZA_RIVAL_MAX))
+        pa_r_safe = float(np.clip(pa_r, FUERZA_RIVAL_MIN, FUERZA_RIVAL_MAX))
         adj = v / pd_r_safe if (is_attack and pd_r_safe > 0) else v / pa_r_safe if (not is_attack and pa_r_safe > 0) else v
         valores_ajustados.append(min(adj, 3.5))
         
@@ -443,7 +475,7 @@ def _strength(df_actual, eq, target_cond, league, max_fecha_torneo: int, tabla: 
     prior_atk, prior_def = _get_prior(tabla, eq, target_cond)
     
     n = n_s if n_s > 0 else 0
-    n_effective = min(n, 15)
+    n_effective = min(n, 25)  # MEJORA #2: antes topeaba en 15, ahora deja pesar más a los datos reales
     
     atk_obs = atk_obs if not np.isnan(atk_obs) else prior_atk
     def_obs = def_obs if not np.isnan(def_obs) else prior_def
@@ -515,7 +547,7 @@ def proyectar_metrica(df, eq_a, eq_b, metrica, es_loc, tabla):
     if metrica == "Posesión de balón":
         tot = val_a + val_b
         if tot > 0:
-            diff = (val_a - val_b) * 1.35 
+            diff = (val_a - val_b) * POSESION_AMPLIFICACION
             val_a_adj = np.clip((tot / 2) + (diff / 2), 20.0, 80.0)
             val_b_adj = np.clip((tot / 2) - (diff / 2), 20.0, 80.0)
             tot_adj = val_a_adj + val_b_adj
@@ -1111,8 +1143,6 @@ elif nav == "Simulador de Jornada":
         use_container_width=True
     )
     
-    PENALIDAD_XG = 0.35 
-
     if st.button("SIMULAR JORNADA COMPLETA"):
         if len(cruces_editados) == 0:
             st.warning("⚠️ No hay partidos para simular.")
@@ -1131,8 +1161,8 @@ elif nav == "Simulador de Jornada":
                         
                     la, lb = calcular_lambdas(df, ea, eb, True, tabla)
 
-                    if rota_local: la = max(0.1, la - PENALIDAD_XG)
-                    if rota_visitante: lb = max(0.1, lb - PENALIDAD_XG)
+                    if rota_local: la = max(0.1, la * (1 - PENALIDAD_ROTACION_PCT))
+                    if rota_visitante: lb = max(0.1, lb * (1 - PENALIDAD_ROTACION_PCT))
 
                     sim = montecarlo(la, lb, rho_dinamico) 
 
@@ -1158,11 +1188,11 @@ elif nav == "Simulador de Jornada":
                     tda_a, tda_b     = proyectar_metrica(df, ea, eb, "Tiros dentro del área", True, tabla)
 
                     if rota_local:
-                        pos_a *= 0.9  
-                        tiros_a *= 0.8 
+                        pos_a *= (1 - PENALIDAD_ROTACION_POSESION_PCT)
+                        tiros_a *= (1 - PENALIDAD_ROTACION_TIROS_PCT)
                     if rota_visitante:
-                        pos_b *= 0.9
-                        tiros_b *= 0.8
+                        pos_b *= (1 - PENALIDAD_ROTACION_POSESION_PCT)
+                        tiros_b *= (1 - PENALIDAD_ROTACION_TIROS_PCT)
                     
                     tot_pos = pos_a + pos_b
                     if tot_pos > 0:
