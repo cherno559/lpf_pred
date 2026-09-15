@@ -529,10 +529,14 @@ def calcular_lambdas(df, eq_a, eq_b, es_loc, tabla):
         # 2. Calculamos la media de eficacia del torneo
         efec_media = tabla["EFEC%"].mean() / 100.0
         
-        # 3. Armamos el multiplicador: 1 + (Diferencia contra la media * factor de suavizado)
-        # Usamos un factor de 0.25 para que el impacto sea sutil y no rompa la cantidad de goles
-        modificador_a = 1.0 + ((efec_a - efec_media) * 0.25)
-        modificador_b = 1.0 + ((efec_b - efec_media) * 0.25)
+        # 3. Armamos el multiplicador: 1 + (Diferencia contra la media * factor de impacto)
+        # IMPACTO AGRESIVO: factor de 0.75
+        modificador_a = 1.0 + ((efec_a - efec_media) * 0.75)
+        modificador_b = 1.0 + ((efec_b - efec_media) * 0.75)
+        
+        # Topeamos el boost/malus entre 0.75 (-25%) y 1.25 (+25%)
+        modificador_a = float(np.clip(modificador_a, 0.75, 1.25))
+        modificador_b = float(np.clip(modificador_b, 0.75, 1.25))
         
         # 4. Aplicamos el boost al xG base
         la *= modificador_a
@@ -543,7 +547,6 @@ def calcular_lambdas(df, eq_a, eq_b, es_loc, tabla):
         la, lb = lb, la
         
     return (round(float(np.clip(la, LAM_MIN, LAM_MAX)), 3), round(float(np.clip(lb, LAM_MIN, LAM_MAX)), 3))
-
 def proyectar_metrica(df, eq_a, eq_b, metrica, es_loc, tabla):
     df_m = df[df["Métrica"] == metrica]
     if df_m.empty: return 0.0, 0.0
