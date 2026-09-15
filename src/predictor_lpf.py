@@ -107,7 +107,7 @@ W_XG = 0.70
 # bajo (K_PRIOR_MIN). Antes, incluso con el torneo casi terminado, el prior fijo seguía
 # pesando ~35% del resultado. Con estos valores, a partir de ~fecha 12 el prior pesa <15%
 # y el modelo confía sobre todo en los datos reales de cada equipo.
-K_PRIOR_BASE, K_PRIOR_MIN = 12.0, 3.0
+K_PRIOR_BASE, K_PRIOR_MIN = 12.0, 8.0
 MAX_GOALS_MATRIX = 7
 N_RECENCIA, PESO_RECIENTE, PESO_NORMAL = 5, 1.30, 1.0
 PESO_HISTORICO = 0.75
