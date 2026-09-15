@@ -520,25 +520,31 @@ def calcular_lambdas(df, eq_a, eq_b, es_loc, tabla):
     la = (l["ref_home"] if ca == "Local" else l["ref_away"]) * aa * db
     lb = (l["ref_home"] if cb == "Local" else l["ref_away"]) * ab * da
 
-    # --- INICIO DEL BOOST DE EFICACIA POR CONDICIÓN (TU FÓRMULA) ---
+    # --- INICIO DEL BOOST DE EFICACIA POR CONDICIÓN ---
     def get_eficacia(equipo, condicion_buscada):
-        # Filtramos los partidos del equipo en la condición específica (Local o Visitante)
+        # Filtramos los partidos del equipo en su condición específica (Local o Visitante)
         dr = df_actual[(df_actual["Equipo"] == equipo) & (df_actual["Condicion"] == condicion_buscada) & (df_actual["Métrica"] == "Resultado")]
-        if len(dr) == 0: return 0.45 # Valor por defecto si no hay historial
+        if len(dr) == 0: return 0.45 # Valor medio por defecto
         
         # Calculamos puntos obtenidos vs posibles
         pts = sum([3 if r["Propio"] > r["Concedido"] else (1 if r["Propio"] == r["Concedido"] else 0) for _, r in dr.iterrows()])
         return pts / (len(dr) * 3.0)
 
-    # 1. Calculamos la eficacia específica: Local de local, Visitante de visitante (0.0 a 1.0)
+    # 1. Calculamos la eficacia específica
     efec_a_cond = get_eficacia(eq_a, ca)
     efec_b_cond = get_eficacia(eq_b, cb)
     
-    # 2. Aplicamos exactamente tu fórmula: (1 + eficacia) / 2
+    # 2. Base de tu fórmula: (1 + eficacia) / 2
     modificador_a = (1.0 + efec_a_cond) / 2.0
     modificador_b = (1.0 + efec_b_cond) / 2.0
     
-    # 3. Multiplicamos el xG base
+    # 3. Sumamos el +0.15 exclusivo para el equipo local (amortiguador de malas rachas)
+    if ca == "Local":
+        modificador_a += 0.15
+    if cb == "Local":
+        modificador_b += 0.15
+        
+    # 4. Multiplicamos el xG base
     la *= modificador_a
     lb *= modificador_b
     # --- FIN DEL BOOST DE EFICACIA POR CONDICIÓN ---
