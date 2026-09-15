@@ -511,6 +511,7 @@ def calcular_lambdas(df, eq_a, eq_b, es_loc, tabla):
         
     l = _league_stats(df_actual)
     max_fecha_torneo = int(df_actual["nFecha"].max()) if not df_actual.empty else 1
+    
     ca, cb = ("Local", "Visitante") if es_loc else ("Visitante", "Local")
     
     aa, da, _ = _strength(df_actual, eq_a, ca, l, max_fecha_torneo, tabla)
@@ -518,6 +519,25 @@ def calcular_lambdas(df, eq_a, eq_b, es_loc, tabla):
     
     la = (l["ref_home"] if ca == "Local" else l["ref_away"]) * aa * db
     lb = (l["ref_home"] if cb == "Local" else l["ref_away"]) * ab * da
+
+    # --- INICIO DEL BOOST DE EFICACIA RELATIVA ---
+    if "EFEC%" in tabla.columns:
+        # 1. Obtenemos la eficacia del equipo A y B (en formato 0 a 1)
+        efec_a = tabla.loc[eq_a, "EFEC%"] / 100.0 if eq_a in tabla.index else 0.45
+        efec_b = tabla.loc[eq_b, "EFEC%"] / 100.0 if eq_b in tabla.index else 0.45
+        
+        # 2. Calculamos la media de eficacia del torneo
+        efec_media = tabla["EFEC%"].mean() / 100.0
+        
+        # 3. Armamos el multiplicador: 1 + (Diferencia contra la media * factor de suavizado)
+        # Usamos un factor de 0.25 para que el impacto sea sutil y no rompa la cantidad de goles
+        modificador_a = 1.0 + ((efec_a - efec_media) * 0.25)
+        modificador_b = 1.0 + ((efec_b - efec_media) * 0.25)
+        
+        # 4. Aplicamos el boost al xG base
+        la *= modificador_a
+        lb *= modificador_b
+    # --- FIN DEL BOOST DE EFICACIA RELATIVA ---
 
     if not es_loc:
         la, lb = lb, la
