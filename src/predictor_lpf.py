@@ -10,6 +10,19 @@ import plotly.express as px
 import streamlit as st
 from scipy.optimize import minimize
 
+def guardar_csv_local(df, prefijo):
+    """Guarda un DataFrame directamente en el directorio local especificado."""
+    directorio = "/home/sebi/Documents/futbol/TABLAS"
+    os.makedirs(directorio, exist_ok=True) # Crea las carpetas si no existen
+    
+    # Genera un nombre distinguible con fecha y hora
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    nombre_archivo = f"{prefijo}_{timestamp}.csv"
+    ruta_completa = os.path.join(directorio, nombre_archivo)
+    
+    df.to_csv(ruta_completa, index=False)
+    return ruta_completa
+
 # ──────────────────────────────────────────────────────────────────────
 # CONFIGURACIÓN Y ESTILOS
 # ──────────────────────────────────────────────────────────────────────
@@ -103,35 +116,15 @@ html, body, [class*="css"] { font-family: 'Manrope', sans-serif; background-colo
 # PARÁMETROS DEL MOTOR MATEMÁTICO
 # ──────────────────────────────────────────────────────────────────────
 W_XG = 0.70  
-# MEJORA #2: el prior ahora decae más rápido (K_PRIOR_BASE) y llega a un piso mucho más
-# bajo (K_PRIOR_MIN). Antes, incluso con el torneo casi terminado, el prior fijo seguía
-# pesando ~35% del resultado. Con estos valores, a partir de ~fecha 12 el prior pesa <15%
-# y el modelo confía sobre todo en los datos reales de cada equipo.
 K_PRIOR_BASE, K_PRIOR_MIN = 12.0, 8.0
 MAX_GOALS_MATRIX = 7
 N_RECENCIA, PESO_RECIENTE, PESO_NORMAL = 5, 1.30, 1.0
 PESO_HISTORICO = 0.75
 LAM_MIN, LAM_MAX = 0.20, 5.00
-
-# MEJORA #1: piso Y techo simétricos para la fuerza del rival al ajustar una métrica.
-# Antes solo había piso (0.80) y ningún techo, lo que aplastaba a los equipos flojos
-# contra el promedio sin limitar del otro lado a los equipos fuertes. Con un rango
-# simétrico ±40% alrededor de 1.0, un equipo realmente débil (defensa factor 0.55-0.65)
-# puede seguir viéndose débil, y un equipo realmente fuerte no se recorta antes.
 FUERZA_RIVAL_MIN, FUERZA_RIVAL_MAX = 0.65, 1.40
-
-# MEJORA #4: la penalización por rotación de plantel ahora es proporcional (% de la
-# fuerza del equipo) en vez de una resta fija de xG. Restar siempre 0.35 de xG le pegaba
-# igual a un equipo con lambda=0.9 (le borraba casi todo el ataque) que a uno con
-# lambda=2.5 (apenas lo tocaba). Con un % fijo, el impacto relativo es el mismo para todos.
-PENALIDAD_ROTACION_PCT = 0.22          # ~22% de caída en xG por rotación
-PENALIDAD_ROTACION_POSESION_PCT = 0.08  # ~8% de caída en posesión
-PENALIDAD_ROTACION_TIROS_PCT = 0.15     # ~15% de caída en volumen de tiros
-
-# MEJORA #5: el factor de amplificación de la diferencia de posesión baja de 1.35 a 1.15.
-# Con las mejoras #1-#3 la diferencia real (diff) ya no llega tan comprimida como antes,
-# así que amplificarla tanto como antes generaría posesiones poco realistas (ej. 75-25
-# entre dos equipos parejos). 1.15 da un empujón leve sin exagerar.
+PENALIDAD_ROTACION_PCT = 0.22
+PENALIDAD_ROTACION_POSESION_PCT = 0.08
+PENALIDAD_ROTACION_TIROS_PCT = 0.15
 POSESION_AMPLIFICACION = 1.15
 
 RED, WHITE, GRAY = "#ED1A3B", "#ffffff", "#4a4a52"
@@ -241,11 +234,9 @@ def construir_df(datos: dict) -> pd.DataFrame:
             xg_loc_raw = p["metricas"].get("Goles esperados (xG)", {}).get("local")
             xg_vis_raw = p["metricas"].get("Goles esperados (xG)", {}).get("visitante")
             
-            # 1. Rescatamos los penales de la extracción (por defecto 0 si la celda está vacía o no existe en Apertura)
             penales_loc = p["metricas"].get("Penales a favor", {}).get("local", 0.0)
             penales_vis = p["metricas"].get("Penales a favor", {}).get("visitante", 0.0)
 
-            # 2. Valor estadístico estándar de xG por penal
             VALOR_PENAL_XG = 0.79
 
             if xg_loc_raw is None: 
@@ -255,19 +246,18 @@ def construir_df(datos: dict) -> pd.DataFrame:
                 xg_vis = (oc["visitante"] * 0.38) + (max(0, tt["visitante"] - oc["visitante"]) * 0.05)
                 p["metricas"]["xG_Model"] = {"local": xg_loc, "visitante": xg_vis}
             else:
-                # 3. Cálculo de npxG puro con límite inferior en 0.0
                 xg_loc_neto = max(0.0, xg_loc_raw - (penales_loc * VALOR_PENAL_XG))
                 xg_vis_neto = max(0.0, xg_vis_raw - (penales_vis * VALOR_PENAL_XG))
                 
                 p["metricas"]["xG_Model"] = {"local": xg_loc_neto, "visitante": xg_vis_neto}
 
-            # 4. Inyección en DataFrame: El ajuste previo afecta tanto a Propio como a Concedido
             for met, vals in p["metricas"].items():
                 base = {"nFecha": nf, "Fase": fase, "Métrica": met, "Torneo": torneo, "Categoria": categoria}
                 filas.append({**base, "Equipo": p["local"], "Rival": p["visitante"], "Condicion": "Local", "Propio": vals["local"], "Concedido": vals["visitante"]})
                 filas.append({**base, "Equipo": p["visitante"], "Rival": p["local"], "Condicion": "Visitante", "Propio": vals["visitante"], "Concedido": vals["local"]})
                 
     return pd.DataFrame(filas)
+
 # ──────────────────────────────────────────────────────────────────────
 # MOTOR MATEMÁTICO: XG-ELO BIVARIADO (LOCAL/VISITANTE) Y MLE
 # ──────────────────────────────────────────────────────────────────────
@@ -291,15 +281,12 @@ def calcular_elo_dinamico(df: pd.DataFrame) -> dict:
         "Banfield": 0.935, "Atlético Tucumán": 0.930, "Aldosivi": 0.925, "Deportivo Riestra": 0.925,           
         "Central Córdoba": 0.920, "Estudiantes de Río Cuarto": 0.915    
     }
-    # MEJORA #3: se amplifica la desviación respecto a 1.0 para que el spread entre el
-    # mejor y el peor equipo pase de ~0.335 a ~0.70. 
     AMPLIF_JERARQUIA = 2.1
     JERARQUIA_EQUIPOS = {eq: 1.0 + (val - 1.0) * AMPLIF_JERARQUIA for eq, val in _JERARQUIA_BASE.items()}
     
     BASE_ELO = 1500.0
     HGA_SHIFT = 65.0  
     
-    # Cálculo dinámico de HGA por equipo (Híbrido)
     hga_dinamico = {}
     HGA_BASE = 65.0 
     
@@ -308,15 +295,11 @@ def calcular_elo_dinamico(df: pd.DataFrame) -> dict:
         xg_v_eq = dx[(dx["Equipo"] == eq) & (dx["Condicion"] == "Visitante")]["Propio"].mean()
         
         if not np.isnan(xg_l_eq) and not np.isnan(xg_v_eq):
-            # Calculamos el HGA puramente estadístico pero con un piso realista (45.0)
             hga_puro = float(np.clip((xg_l_eq - xg_v_eq) * 120, 45.0, 95.0))
-            
-            # Shrinkage (Regresión a la media): 65% estructural, 35% momento actual
             hga_dinamico[eq] = (HGA_BASE * 0.65) + (hga_puro * 0.35)
         else:
             hga_dinamico[eq] = HGA_BASE
 
-    # Se utiliza el HGA dinámico que se acababa de calcular
     elos_l = {eq: BASE_ELO + hga_dinamico.get(eq, HGA_SHIFT) + ((JERARQUIA_EQUIPOS.get(eq, 1.0) - 1.0) * 500) for eq in dx["Equipo"].unique()}
     elos_v = {eq: BASE_ELO - hga_dinamico.get(eq, HGA_SHIFT) + ((JERARQUIA_EQUIPOS.get(eq, 1.0) - 1.0) * 500) for eq in dx["Equipo"].unique()}
     
@@ -397,13 +380,11 @@ def calcular_tabla(df: pd.DataFrame, condicion: str = "General") -> pd.DataFrame
         e  = (d["Propio"] == d["Concedido"]).sum()
         d_ = (d["Propio"] < d["Concedido"]).sum()
         pts = int(v * 3 + e)
-        # BUG SOLUCIONADO: Se agregó Diferencia de Gol para el ordenamiento
         gf = d["Propio"].sum()
         gc = d["Concedido"].sum()
         rows.append({"Equipo": eq, "PJ": pj, "V": int(v), "E": int(e), "D": int(d_),
                      "GF": gf, "GC": gc, "DG": gf - gc, "PTS": pts, "PPJ": pts / pj, "EFEC%": (pts / (pj * 3)) * 100})
     
-    # Orden oficial por reglamento: PTS, luego Diferencia de Gol, luego Goles a Favor
     tabla = pd.DataFrame(rows).sort_values(["PTS", "DG", "GF"], ascending=[False, False, False]).reset_index(drop=True)
     tabla["Pos"] = tabla.index + 1
     
@@ -494,7 +475,7 @@ def _strength(df_actual, eq, target_cond, league, max_fecha_torneo: int, tabla: 
     prior_atk, prior_def = _get_prior(tabla, eq, target_cond)
     
     n = n_s if n_s > 0 else 0
-    n_effective = min(n, 25)  # MEJORA #2: antes topeaba en 15, ahora deja pesar más a los datos reales
+    n_effective = min(n, 25)  
     
     atk_obs = atk_obs if not np.isnan(atk_obs) else prior_atk
     def_obs = def_obs if not np.isnan(def_obs) else prior_def
@@ -520,7 +501,6 @@ def calcular_lambdas(df, eq_a, eq_b, es_loc, tabla):
     la = (l["ref_home"] if ca == "Local" else l["ref_away"]) * aa * db
     lb = (l["ref_home"] if cb == "Local" else l["ref_away"]) * ab * da
 
-    # --- INICIO DEL AJUSTE ESTILO "CASA DE APUESTAS" ---
     def get_eficacia(equipo, condicion_buscada):
         dr = df_actual[(df_actual["Equipo"] == equipo) & (df_actual["Condicion"] == condicion_buscada) & (df_actual["Métrica"] == "Resultado")]
         if len(dr) == 0: return 0.45 
@@ -530,12 +510,9 @@ def calcular_lambdas(df, eq_a, eq_b, es_loc, tabla):
     efec_a = get_eficacia(eq_a, ca)
     efec_b = get_eficacia(eq_b, cb)
     
-    # Medias históricas estimadas del fútbol argentino
     media_efec_loc = 0.48
     media_efec_vis = 0.35
     
-    # 1. Multiplicador Z-Score (Diferencia contra la media de su condición)
-    # Multiplicamos por 0.35 para suavizar el impacto
     if ca == "Local":
         mod_a = 1.0 + ((efec_a - media_efec_loc) * 0.35)
         mod_b = 1.0 + ((efec_b - media_efec_vis) * 0.35)
@@ -543,22 +520,20 @@ def calcular_lambdas(df, eq_a, eq_b, es_loc, tabla):
         mod_a = 1.0 + ((efec_a - media_efec_vis) * 0.35)
         mod_b = 1.0 + ((efec_b - media_efec_loc) * 0.35)
         
-    # LÍMITES ESTRICTOS: Ningún equipo es penalizado o premiado por más del 15%
     mod_a = float(np.clip(mod_a, 0.85, 1.15))
     mod_b = float(np.clip(mod_b, 0.85, 1.15))
     
     la *= mod_a
     lb *= mod_b
     
-    # 2. Bono Fijo Estructural de Localía (+0.18 goles esperados fijos)
     if es_loc:
         la += 0.18
-    # --- FIN DEL AJUSTE ---
 
     if not es_loc:
         la, lb = lb, la
         
     return (round(float(np.clip(la, LAM_MIN, LAM_MAX)), 3), round(float(np.clip(lb, LAM_MIN, LAM_MAX)), 3))
+
 def proyectar_metrica(df, eq_a, eq_b, metrica, es_loc, tabla):
     df_m = df[df["Métrica"] == metrica]
     if df_m.empty: return 0.0, 0.0
@@ -729,7 +704,6 @@ def contexto_tactica_clash(adn: pd.DataFrame, eq_a: str, eq_b: str) -> str:
     tags_b_txt = set(t for t, _ in tags_b)
 
     clash_lines = []
-    # BUG SOLUCIONADO: Los tags ahora hacen match correctamente con los generados en calcular_adn_tactico
     if "PRESSING INTENSO" in tags_a_txt and "JUEGO DIRECTO" in tags_b_txt: clash_lines.append("⚡ <b>Pressing vs Juego Directo</b>: el local intentará robar alto, el visitante buscará saltar líneas.")
     if "POSESIÓN DOMINANTE" in tags_a_txt and "PRESSING INTENSO" in tags_b_txt: clash_lines.append("🔄 <b>Batalla de control</b>: local posesivo vs visitante que presiona — partido de mediocampo intenso.")
     if "BLOQUE HUNDIDO" in tags_b_txt and "POSESIÓN DOMINANTE" in tags_a_txt: clash_lines.append("🎯 <b>Posesión vs Bloque Bajo</b>: local domina la pelota, visitante espera agazapado en el área.")
@@ -925,8 +899,8 @@ with st.sidebar:
             "Predicción de Partidos",
             "Simulador de Jornada",
             "Métricas Globales",
-            "Comparativa de Perfiles",  # Antes H2H
-            "Evolución Temporal",       # Antes Análisis de Rival
+            "Comparativa de Perfiles",  
+            "Evolución Temporal",       
             "Análisis de Estilos",
             "Posiciones",
             "ADN Táctico",
@@ -1196,6 +1170,8 @@ elif nav == "Simulador de Jornada":
         hide_index=True,
         use_container_width=True
     )
+
+    exportar_auto = c2.checkbox("💾 Exportar resultados a CSV automáticamente al simular")
     
     if st.button("SIMULAR JORNADA COMPLETA"):
         if len(cruces_editados) == 0:
@@ -1282,6 +1258,10 @@ elif nav == "Simulador de Jornada":
             df_res = pd.DataFrame(resultados_jornada)
             df_res["Indice_Arquero"] = df_res["Goles_Evitados"] - (df_res["xGOT_Contra"] * 0.1)
             
+            if exportar_auto:
+                ruta_sim = guardar_csv_local(df_res, f"Simulacion_F{jornada_elegida}")
+                st.success(f"✅ Jornada exportada a: `{ruta_sim}`")
+
             def format_ranking(df_temp, sort_col, ascending, cols_to_show, rename_dict=None):
                 temp = df_temp.sort_values(by=sort_col, ascending=ascending).reset_index(drop=True)
                 temp["Pos"] = temp.index + 1
@@ -1344,7 +1324,6 @@ elif nav == "Simulador de Jornada":
 elif nav == "Métricas Globales":
     st.markdown('<div class="section-header">Métricas Globales Avanzadas (Cruce de Datos)</div>', unsafe_allow_html=True)
     
-    # 1. Preparar lista de métricas combinada con enfoque y condición
     opciones_metricas = []
     for m in metricas:
         for enfoque in ["(A Favor)", "(En Contra)"]:
@@ -1352,7 +1331,6 @@ elif nav == "Métricas Globales":
                 opciones_metricas.append(f"{m} {enfoque} - {cond}")
     opciones_metricas.sort() 
 
-    # Filtros Superiores: Selección múltiple y filtro temporal
     c1, c2 = st.columns([2, 1])
     default_selections = [m for m in ["Goles esperados (xG) (A Favor) - General", "Goles esperados (xG) (En Contra) - General"] if m in opciones_metricas][:2]
     
@@ -1364,7 +1342,6 @@ elif nav == "Métricas Globales":
     fechas_disponibles = sorted(df["nFecha"].dropna().unique())
     f_sel = c2.multiselect("Filtrar por Fechas (Vacío = Todas)", fechas_disponibles, default=[])
     
-    # Filtro Inferior
     formato_sel = st.selectbox("Formato", ["Total acumulado", "Promedio por partido"])
     
     if not m_sel:
@@ -1460,6 +1437,11 @@ elif nav == "Métricas Globales":
         with tab_datos:
             formato_cols = {m: "{:.2f}" for m in m_sel}
             st.dataframe(res_df.style.format(formato_cols), hide_index=True, use_container_width=True)
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("💾 Exportar Tabla de Métricas a CSV"):
+                ruta_met = guardar_csv_local(res_df, "Metricas_Globales")
+                st.success(f"✅ Archivo guardado en: `{ruta_met}`")
 
 elif nav == "Comparativa de Perfiles":
     st.markdown('<div class="section-header">Comparativa de Perfiles Estadísticos</div>', unsafe_allow_html=True)
@@ -1483,7 +1465,6 @@ elif nav == "Evolución Temporal":
     eq_p, met_p = st.selectbox("Seleccionar Equipo", equipos), st.selectbox("Métrica a Evaluar", metricas)
     d_eq  = df[(df["Equipo"] == eq_p) & (df["Métrica"] == met_p)].sort_values("nFecha")
     if not d_eq.empty:
-        # BUG SOLUCIONADO: Se utiliza un label único de Fecha + Rival para evitar solapamientos en el gráfico
         d_eq["Etiqueta_X"] = "F" + d_eq["nFecha"].astype(str) + " (" + d_eq["Rival"] + ")"
         fig_evo = go.Figure([
             go.Bar(x=d_eq["Etiqueta_X"], y=d_eq["Propio"], name="Generado", marker_color=RED), 
@@ -1495,7 +1476,6 @@ elif nav == "Evolución Temporal":
 elif nav == "Análisis de Estilos":
     st.markdown('<div class="section-header">Matriz de Estilos de Juego Dinámica</div>', unsafe_allow_html=True)
     c1, c2 = st.columns(2)
-    # BUG SOLUCIONADO: Ahora podés elegir libremente las métricas de la matriz
     m_x = c1.selectbox("Métrica Eje X", metricas, index=metricas.index("Posesión de balón") if "Posesión de balón" in metricas else 0)
     m_y = c2.selectbox("Métrica Eje Y", metricas, index=metricas.index("Goles esperados (xG)") if "Goles esperados (xG)" in metricas else 0)
     
@@ -1518,12 +1498,16 @@ elif nav == "Posiciones":
     vista_tabla = st.selectbox("Escenario de Tabla", ["General", "Local", "Visitante"])
     t_dinamica  = calcular_tabla(df, vista_tabla)
     if not t_dinamica.empty:
-        # BUG SOLUCIONADO: Se agregó Diferencia de Gol y se ordena bajo reglamento oficial
         t_show = t_dinamica.reset_index()[["Pos", "Equipo", "PJ", "V", "E", "D", "GF", "GC", "DG", "PTS", "EFEC%"]].copy()
         t_show.columns = ["#", "Equipo", "PJ", "V", "E", "D", "GF", "GC", "DG", "PTS", "Efectividad %"]
         t_show["GF"], t_show["GC"], t_show["DG"] = t_show["GF"].astype(int), t_show["GC"].astype(int), t_show["DG"].astype(int)
         t_show["Efectividad %"] = t_show["Efectividad %"].round(1)
         st.dataframe(t_show.style.format({"Efectividad %": "{:.1f}%"}), use_container_width=True, hide_index=True)
+        
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("💾 Exportar Tabla de Posiciones a CSV"):
+            ruta_pos = guardar_csv_local(t_show, f"Posiciones_{vista_tabla}")
+            st.success(f"✅ Archivo guardado en: `{ruta_pos}`")
 
 elif nav == "ADN Táctico":
     st.markdown('<div class="section-header">ADN Táctico — Patrones por Equipo</div>', unsafe_allow_html=True)
@@ -1547,7 +1531,6 @@ elif nav == "ADN Táctico":
             mets_adn, labels_adn = ["Posesion", "TirosProp", "xGProp", "xGConc", "EficOfens"], ["Posesión", "Tiros Prop.", "xG Generado", "xG Concedido", "Efic. Ofens."]
             liga_means, liga_stds = adn_df[mets_adn].mean(), adn_df[mets_adn].std().replace(0, 1)
             eq_vals = [(row[m] - liga_means[m]) / liga_stds[m] if not np.isnan(row[m]) else 0.0 for m in mets_adn]
-            # BUG SOLUCIONADO: Clip matemático explícito entre 0 y 1 para que outliers no rompan el radar
             eq_norm = [float(np.clip((v + 3) / 6, 0.0, 1.0)) for v in eq_vals]
             lig_norm = [0.5] * len(mets_adn)
             fig_adn = go.Figure()
