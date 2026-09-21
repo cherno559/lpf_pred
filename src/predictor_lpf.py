@@ -10,18 +10,9 @@ import plotly.express as px
 import streamlit as st
 from scipy.optimize import minimize
 
-def guardar_csv_local(df, prefijo):
-    """Guarda un DataFrame directamente en el directorio local especificado."""
-    directorio = "/home/sebi/Documents/futbol/TABLAS"
-    os.makedirs(directorio, exist_ok=True) # Crea las carpetas si no existen
-    
-    # Genera un nombre distinguible con fecha y hora
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    nombre_archivo = f"{prefijo}_{timestamp}.csv"
-    ruta_completa = os.path.join(directorio, nombre_archivo)
-    
-    df.to_csv(ruta_completa, index=False)
-    return ruta_completa
+@st.cache_data
+def convertir_csv(df):
+    return df.to_csv(index=False).encode('utf-8')
 
 # ──────────────────────────────────────────────────────────────────────
 # CONFIGURACIÓN Y ESTILOS
@@ -1170,8 +1161,6 @@ elif nav == "Simulador de Jornada":
         hide_index=True,
         use_container_width=True
     )
-
-    exportar_auto = c2.checkbox("💾 Exportar resultados a CSV automáticamente al simular")
     
     if st.button("SIMULAR JORNADA COMPLETA"):
         if len(cruces_editados) == 0:
@@ -1257,11 +1246,16 @@ elif nav == "Simulador de Jornada":
             
             df_res = pd.DataFrame(resultados_jornada)
             df_res["Indice_Arquero"] = df_res["Goles_Evitados"] - (df_res["xGOT_Contra"] * 0.1)
-            
-            if exportar_auto:
-                ruta_sim = guardar_csv_local(df_res, f"Simulacion_F{jornada_elegida}")
-                st.success(f"✅ Jornada exportada a: `{ruta_sim}`")
 
+            csv_sim = convertir_csv(df_res)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            st.download_button(
+                label=f"💾 Descargar CSV de la Fecha {jornada_elegida}",
+                data=csv_sim,
+                file_name=f"Simulacion_F{jornada_elegida}_{timestamp}.csv",
+                mime="text/csv",
+            )
+            
             def format_ranking(df_temp, sort_col, ascending, cols_to_show, rename_dict=None):
                 temp = df_temp.sort_values(by=sort_col, ascending=ascending).reset_index(drop=True)
                 temp["Pos"] = temp.index + 1
@@ -1439,9 +1433,14 @@ elif nav == "Métricas Globales":
             st.dataframe(res_df.style.format(formato_cols), hide_index=True, use_container_width=True)
             
             st.markdown("<br>", unsafe_allow_html=True)
-            if st.button("💾 Exportar Tabla de Métricas a CSV"):
-                ruta_met = guardar_csv_local(res_df, "Metricas_Globales")
-                st.success(f"✅ Archivo guardado en: `{ruta_met}`")
+            csv_met = convertir_csv(res_df)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            st.download_button(
+                label="💾 Descargar Tabla de Métricas CSV",
+                data=csv_met,
+                file_name=f"Metricas_Globales_{timestamp}.csv",
+                mime="text/csv",
+            )
 
 elif nav == "Comparativa de Perfiles":
     st.markdown('<div class="section-header">Comparativa de Perfiles Estadísticos</div>', unsafe_allow_html=True)
@@ -1505,9 +1504,14 @@ elif nav == "Posiciones":
         st.dataframe(t_show.style.format({"Efectividad %": "{:.1f}%"}), use_container_width=True, hide_index=True)
         
         st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("💾 Exportar Tabla de Posiciones a CSV"):
-            ruta_pos = guardar_csv_local(t_show, f"Posiciones_{vista_tabla}")
-            st.success(f"✅ Archivo guardado en: `{ruta_pos}`")
+        csv_pos = convertir_csv(t_show)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        st.download_button(
+            label="💾 Descargar Tabla de Posiciones CSV",
+            data=csv_pos,
+            file_name=f"Posiciones_{vista_tabla}_{timestamp}.csv",
+            mime="text/csv",
+        )
 
 elif nav == "ADN Táctico":
     st.markdown('<div class="section-header">ADN Táctico — Patrones por Equipo</div>', unsafe_allow_html=True)
