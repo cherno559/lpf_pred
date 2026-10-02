@@ -1646,7 +1646,7 @@ elif nav == "Radiografía de Equipo":
         met_p = st.selectbox("Métrica a Evaluar (Evolución)", metricas, index=metricas.index("Goles esperados (xG)") if "Goles esperados (xG)" in metricas else 0)
         d_eq = df[(df["Equipo"] == eq_sel) & (df["Métrica"] == met_p)].sort_values("nFecha")
         
-       if not d_eq.empty:
+        if not d_eq.empty:
             # Agregamos la condición (L/V) y las primeras 3 letras del rival en una segunda línea
             d_eq["Etiqueta_X"] = d_eq.apply(
                 lambda r: f"F{r['nFecha']} ({'L' if r['Condicion'] == 'Local' else 'V'})<br><span style='color:#8b8b95'>{str(r['Rival'])[:3].upper()}</span>", 
