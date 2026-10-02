@@ -70,23 +70,6 @@ header[data-testid="stHeader"] { background: transparent; }
 .stApp h3 { font-family: 'Bebas Neue', sans-serif; font-weight: 400; font-size: 1.7rem; letter-spacing: 1.2px; color: #fff; padding: 0.4rem 0 0.6rem; }
 [data-testid="stWidgetLabel"] p, .stApp label p { font-size: 0.78rem; font-weight: 700; letter-spacing: 0.03em; color: var(--muted); }
 
-/* ═════════════ HERO ═════════════ */
-.hero-banner {
-    position: relative; overflow: hidden;
-    padding: 56px 48px 46px; margin-bottom: 36px;
-    border-radius: var(--r-lg); border: 1px solid var(--line);
-    background:
-        linear-gradient(100deg, rgba(10,10,12,0.97) 0%, rgba(10,10,12,0.72) 46%, rgba(10,10,12,0.93) 100%),
-        url('https://images.unsplash.com/photo-1518605368461-1eb7678b871c?q=80&w=2000&auto=format&fit=crop');
-    background-size: cover; background-position: center 30%;
-    box-shadow: 0 24px 60px rgba(0,0,0,0.55);
-}
-.hero-banner::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: linear-gradient(90deg, var(--red) 0%, rgba(237,26,59,0) 75%); }
-.hero-subtitle { color: var(--red); font-weight: 800; font-size: 0.82rem; text-transform: uppercase; letter-spacing: 5px; margin-bottom: 8px; }
-.hero-title { font-family: 'Bebas Neue', sans-serif; font-size: clamp(2.6rem, 6vw, 4.6rem); color: #fff; letter-spacing: 2px; line-height: 1; margin: 0; padding: 0 !important; }
-.hero-meta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
-.meta-chip { font-size: 0.76rem; font-weight: 600; color: #b4b4be; padding: 6px 12px; border-radius: 999px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.09); backdrop-filter: blur(6px); }
-
 /* ═════════════ SECCIONES ═════════════ */
 .section-header {
     display: flex; align-items: center; gap: 16px;
@@ -850,7 +833,7 @@ def contexto_tactica_clash(adn: pd.DataFrame, eq_a: str, eq_b: str) -> str:
 
     clash_lines = []
     if "PRESSING INTENSO" in tags_a_txt and "JUEGO DIRECTO" in tags_b_txt: clash_lines.append("⚡ <b>Pressing vs Juego Directo</b>: el local intentará robar alto, el visitante buscará saltar líneas.")
-    if "POSESIÓN DOMINANTE" in tags_a_txt and "PRESSING INTENSO" in tags_b_txt: clash_lines.append("🔄 <b>Batalla de control</b>: local posesivo vs visitante que presiona — partido de mediocampo intenso.")
+    if "POSESIÓN DOMINANTE" in tags_a_txt and "PRESSING INTENSO" in tags_b_txt: clash_lines.append("🔄 <b>Batalla de control</b>: local posesivo vs visitante que presiona — partido de mediocampo intense.")
     if "BLOQUE HUNDIDO" in tags_b_txt and "POSESIÓN DOMINANTE" in tags_a_txt: clash_lines.append("🎯 <b>Posesión vs Bloque Bajo</b>: local domina la pelota, visitante espera agazapado en el área.")
     if "DÉFICIT DEFENSIVO" in tags_a_txt or "DÉFICIT DEFENSIVO" in tags_b_txt: clash_lines.append("⚽ <b>Partido abierto</b>: al menos un equipo tiene vulnerabilidades defensivas — esperar ocasiones.")
     if "ALTA EFICIENCIA" in tags_a_txt and "ALTA EFICIENCIA" in tags_b_txt: clash_lines.append("🎖️ <b>Duelo de calidad</b>: ambos equipos son clínicos — los pocos errores se pagarán caro.")
@@ -1079,23 +1062,15 @@ _fecha_datos = (
 )
 
 st.markdown(f"""
-<div class="hero-banner">
-    <div class="hero-subtitle">Liga Profesional de Fútbol · Argentina 2026</div>
-    <h1 class="hero-title">PLATAFORMA DE RENDIMIENTO</h1>
-    <div class="hero-meta">
-        <span class="meta-chip">📅 Datos actualizados: {_fecha_datos}</span>
-        <span class="meta-chip">🗂️ Fuentes activas: {len(archivos_a_cargar)}</span>
+<div style="display: flex; justify-content: flex-end; width: 100%; margin-top: -30px; margin-bottom: 5px;">
+    <div style="text-align: right;">
+        <div style="font-family: 'Bebas Neue', sans-serif; font-size: 2.2rem; color: #ED1A3B; letter-spacing: 2px; line-height: 1;">LPF ANALYTICS</div>
+        <div style="font-size: 0.65rem; color: #8b8b95; text-transform: uppercase; letter-spacing: 1.5px; margin-top: 5px; font-weight: 700;">
+            ACTUALIZADO: {_fecha_datos}
+        </div>
     </div>
 </div>
 """, unsafe_allow_html=True)
-
-with st.expander("ℹ️ Metodología del modelo"):
-    st.markdown("""
-**Motor de predicción:** distribución de Poisson bivariada con ajuste
-Dixon-Coles (`ρ`) optimizado mediante Maximum Likelihood Estimation (MLE) sobre datos históricos.
-**Fuerza de ataque/defensa (`λ`):** se calcula combinando el rendimiento observado (xG/Goles reales)
-con un *prior* bayesiano impulsado por un sistema ELO Bivariado (Local/Visitante) que rankea a los equipos de forma dinámica en base a xG.
-""")
 
 if nav == "Predicción de Partidos":
     st.markdown('<div class="section-header">Módulo Predictivo</div>', unsafe_allow_html=True)
@@ -1458,7 +1433,7 @@ elif nav == "Métricas Globales":
     cat_control = ["Posesión de balón", "Pases totales", "Pases precisos", "Faltas"]
     cat_xg = ["Goles esperados (xG)", "xG al arco (xGOT)"] 
 
-    tab_of, tab_def, tab_ctrl, tab_xg = st.tabs(["⚔ OFENSIVAS", "🛡️ DEFENSIVAS", "🧭 CONTROL", "📊 xG"])
+    tab_of, tab_def, tab_ctrl, tab_xg = st.tabs(["⚔ OFENSIVAS", "🛡️️ DEFENSIVAS", "🧭 CONTROL", "📊 xG"])
     
     def render_panel_metricas(lista_metricas):
         mets_validas = [m for m in lista_metricas if m in df_filt["Métrica"].values]
