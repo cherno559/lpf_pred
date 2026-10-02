@@ -1432,19 +1432,7 @@ elif nav == "Radiografía de Equipo":
 
             fig_adn = go.Figure()
             
-            # 1. Trazado del Equipo (Rojo)
-            fig_adn.add_trace(go.Scatterpolar(
-                r=eq_norm + [eq_norm[0]], 
-                theta=labels_adn + [labels_adn[0]], 
-                fill="toself", 
-                name=eq_sel, 
-                line=dict(color=RED, width=2),
-                fillcolor="rgba(237, 26, 59, 0.4)",
-                hoverinfo="text+name",
-                text=eq_text + [eq_text[0]]
-            ))
-
-            # 2. Trazado de la Liga (Gris)
+            # 1. Trazado de la Liga (Gris) - Actúa como fondo
             fig_adn.add_trace(go.Scatterpolar(
                 r=lig_norm + [lig_norm[0]], 
                 theta=labels_adn + [labels_adn[0]], 
@@ -1454,6 +1442,18 @@ elif nav == "Radiografía de Equipo":
                 fillcolor="rgba(74, 74, 82, 0.4)",
                 hoverinfo="text+name",
                 text=lig_text + [lig_text[0]]
+            ))
+
+            # 2. Trazado del Equipo (Rojo) - Se dibuja al frente
+            fig_adn.add_trace(go.Scatterpolar(
+                r=eq_norm + [eq_norm[0]], 
+                theta=labels_adn + [labels_adn[0]], 
+                fill="toself", 
+                name=eq_sel, 
+                line=dict(color=RED, width=2),
+                fillcolor="rgba(237, 26, 59, 0.4)",
+                hoverinfo="text+name",
+                text=eq_text + [eq_text[0]]
             ))
             
             layout_adn = PLOT.copy()
