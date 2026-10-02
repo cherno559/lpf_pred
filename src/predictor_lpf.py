@@ -70,6 +70,23 @@ header[data-testid="stHeader"] { background: transparent; }
 .stApp h3 { font-family: 'Bebas Neue', sans-serif; font-weight: 400; font-size: 1.7rem; letter-spacing: 1.2px; color: #fff; padding: 0.4rem 0 0.6rem; }
 [data-testid="stWidgetLabel"] p, .stApp label p { font-size: 0.78rem; font-weight: 700; letter-spacing: 0.03em; color: var(--muted); }
 
+/* ═════════════ HERO ═════════════ */
+.hero-banner {
+    position: relative; overflow: hidden;
+    padding: 56px 48px 46px; margin-bottom: 36px;
+    border-radius: var(--r-lg); border: 1px solid var(--line);
+    background:
+        linear-gradient(100deg, rgba(10,10,12,0.97) 0%, rgba(10,10,12,0.72) 46%, rgba(10,10,12,0.93) 100%),
+        url('https://images.unsplash.com/photo-1518605368461-1eb7678b871c?q=80&w=2000&auto=format&fit=crop');
+    background-size: cover; background-position: center 30%;
+    box-shadow: 0 24px 60px rgba(0,0,0,0.55);
+}
+.hero-banner::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: linear-gradient(90deg, var(--red) 0%, rgba(237,26,59,0) 75%); }
+.hero-subtitle { color: var(--red); font-weight: 800; font-size: 0.82rem; text-transform: uppercase; letter-spacing: 5px; margin-bottom: 8px; }
+.hero-title { font-family: 'Bebas Neue', sans-serif; font-size: clamp(2.6rem, 6vw, 4.6rem); color: #fff; letter-spacing: 2px; line-height: 1; margin: 0; padding: 0 !important; }
+.hero-meta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
+.meta-chip { font-size: 0.76rem; font-weight: 600; color: #b4b4be; padding: 6px 12px; border-radius: 999px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.09); backdrop-filter: blur(6px); }
+
 /* ═════════════ SECCIONES ═════════════ */
 .section-header {
     display: flex; align-items: center; gap: 16px;
@@ -136,7 +153,8 @@ header[data-testid="stHeader"] { background: transparent; }
 [data-baseweb="select"] > div, [data-baseweb="input"] > div, .stTextInput > div > div { background-color: var(--surface) !important; border: 1px solid var(--line) !important; border-radius: var(--r-sm) !important; color: #fff !important; transition: border-color 0.15s; }
 [data-baseweb="select"] > div:hover, [data-baseweb="input"] > div:hover { border-color: #3a3a44 !important; }
 [data-baseweb="select"] > div:focus-within, [data-baseweb="input"] > div:focus-within { border-color: var(--red) !important; box-shadow: 0 0 0 3px var(--red-soft); }
-[data-baseweb="tag"] { background-color: var(--red-soft) !important; border: 1px solid var(--red-line) !important; border-radius: 6px !important; color: #fff !important; }
+[data-baseweb="tag"] { background-color: var(--surface-2) !important; border: 1px solid var(--line) !important; border-radius: 4px !important; color: #a8a8b2 !important; font-size: 0.75rem !important; }
+[data-baseweb="tag"]:hover { border-color: #3a3a44 !important; color: #fff !important; }
 [data-testid="stVerticalBlockBorderWrapper"] { border-color: var(--line) !important; border-radius: var(--r-md); }
 
 /* Radio horizontal → control segmentado */
@@ -978,7 +996,7 @@ def fig_score_matrix(M, ea, eb, n=5):
 # NAVEGACIÓN
 # ──────────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown('<div class="sidebar-logo">LPF SCOUTING</div><div class="sidebar-tag">Liga Profesional · Argentina</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sidebar-logo">LPF ANALYTICS</div><div class="sidebar-tag">Liga Profesional · Argentina</div>', unsafe_allow_html=True)
     
     rutas_base = {
         "Histórico": "data/historico",
@@ -996,15 +1014,21 @@ with st.sidebar:
     opciones_disponibles = list(opciones_archivos.keys())
     defaults = [opt for opt in opciones_disponibles if ("clausura" in opt.lower() or "histórico" in opt.lower())]
     
+    # Subtítulo elegante y selector con etiqueta oculta
+    st.markdown('<div style="font-size: 0.68rem; font-weight: 800; color: #5c5c66; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 8px;">🗂️ Origen de Datos</div>', unsafe_allow_html=True)
+    
     torneos_seleccionados_nombres = st.multiselect(
-        "Bases de Datos a Utilizar (Actual + Histórico por defecto):",
+        "Origen de Datos",
         options=opciones_disponibles,
-        default=defaults if defaults else (opciones_disponibles[:1] if opciones_disponibles else [])
+        default=defaults if defaults else (opciones_disponibles[:1] if opciones_disponibles else []),
+        label_visibility="collapsed"
     )
     
     archivos_a_cargar = [opciones_archivos[nombre] for nombre in torneos_seleccionados_nombres]
 
-    st.markdown("<br>", unsafe_allow_html=True)
+    # Línea divisoria sutil antes del menú
+    st.markdown("<hr style='border-color: #1c1c22; margin: 25px 0 15px 0;'>", unsafe_allow_html=True)
+
     nav = st.radio(
         "MÓDULOS DE ANÁLISIS",
         [
@@ -1022,7 +1046,7 @@ datos    = cargar_excel(archivos_a_cargar)
 df       = construir_df(datos)
 
 if not opciones_disponibles:
-    st.error("⚠️ **No se encontró ninguna base de datos.**")
+    st.error("⚠️️ **No se encontró ninguna base de datos.**")
     st.stop()
 
 if df.empty:
@@ -1433,7 +1457,7 @@ elif nav == "Métricas Globales":
     cat_control = ["Posesión de balón", "Pases totales", "Pases precisos", "Faltas"]
     cat_xg = ["Goles esperados (xG)", "xG al arco (xGOT)"] 
 
-    tab_of, tab_def, tab_ctrl, tab_xg = st.tabs(["⚔ OFENSIVAS", "🛡️️ DEFENSIVAS", "🧭 CONTROL", "📊 xG"])
+    tab_of, tab_def, tab_ctrl, tab_xg = st.tabs(["⚔ OFENSIVAS", "🛡 DEFENSIVAS", "🧭 CONTROL", "📊 xG"])
     
     def render_panel_metricas(lista_metricas):
         mets_validas = [m for m in lista_metricas if m in df_filt["Métrica"].values]
