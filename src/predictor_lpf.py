@@ -831,28 +831,6 @@ def fig_score_matrix(M, ea, eb, n=5):
     fig.update_layout(**PLOT, height=350, xaxis_title=f"GOLES {eb.upper()}", yaxis_title=f"GOLES {ea.upper()}", yaxis=dict(autorange="reversed"))
     return fig
 
-def fig_radar_pro(df, eq_a, eq_b, cond_a, cond_b):
-    mets = [m for m in ["Posesión de balón", "Tiros totales", "Tiros al arco", "Goles esperados (xG)", "Pases totales"] if m in df["Métrica"].values]
-    if not mets: return go.Figure()
-    def gv(eq, cond, m):
-        d = df[(df["Equipo"] == eq) & (df["Métrica"] == m)]
-        if cond != "General": d = d[d["Condicion"] == cond]
-        return d["Propio"].mean() if not d.empty else 0.0
-    def get_league_max(m): return df[df["Métrica"] == m].groupby("Equipo")["Propio"].mean().max()
-    va, vb = [gv(eq_a, cond_a, m) for m in mets], [gv(eq_b, cond_b, m) for m in mets]
-    mx = [max(get_league_max(m), 1e-6) for m in mets]
-    text_a, text_b = [f"{m}: <b>{v:.1f}</b>" for m, v in zip(mets, va)], [f"{m}: <b>{v:.1f}</b>" for m, v in zip(mets, vb)]
-    r_a = [a / m for a, m in zip(va, mx)] + [va[0] / mx[0]]
-    r_b = [b / m for b, m in zip(vb, mx)] + [vb[0] / mx[0]]
-    theta = mets + [mets[0]]
-    fig = go.Figure()
-    fig.add_trace(go.Scatterpolar(r=r_a, theta=theta, fill="toself", name=eq_a, line=dict(color=RED), hoverinfo="text+name", text=text_a + [text_a[0]]))
-    fig.add_trace(go.Scatterpolar(r=r_b, theta=theta, fill="toself", name=eq_b, line=dict(color=WHITE), hoverinfo="text+name", text=text_b + [text_b[0]]))
-    layout_args = PLOT.copy()
-    layout_args.update(height=400, polar=dict(bgcolor="rgba(0,0,0,0)", radialaxis=dict(visible=True, showticklabels=False, gridcolor="#2a2a30", range=[0, 1]), angularaxis=dict(gridcolor="#2a2a30", linecolor="#2a2a30")), margin=dict(l=40, r=40, t=36, b=40))
-    fig.update_layout(**layout_args)
-    return fig
-
 # ──────────────────────────────────────────────────────────────────────
 # NAVEGACIÓN
 # ──────────────────────────────────────────────────────────────────────
@@ -890,12 +868,9 @@ with st.sidebar:
             "Predicción de Partidos",
             "Simulador de Jornada",
             "Métricas Globales",
-            "Comparativa de Perfiles",  
-            "Evolución Temporal",       
-            "Análisis de Estilos",
+            "Matriz de Rendimiento",
             "Posiciones",
-            "ADN Táctico",
-            "Rachas y Momentum",
+            "Radiografía de Equipo",
         ],
         label_visibility="collapsed",
     )
@@ -1316,164 +1291,40 @@ elif nav == "Simulador de Jornada":
                              hide_index=True, use_container_width=True, height=320)
 
 elif nav == "Métricas Globales":
-    st.markdown('<div class="section-header">Métricas Globales Avanzadas (Cruce de Datos)</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-header">Métricas Globales Filtradas</div>', unsafe_allow_html=True)
     
-    opciones_metricas = []
-    for m in metricas:
-        for enfoque in ["(A Favor)", "(En Contra)"]:
-            for cond in ["General", "Local", "Visitante"]:
-                opciones_metricas.append(f"{m} {enfoque} - {cond}")
-    opciones_metricas.sort() 
+    cat_ofensivas = ["Tiros totales", "Tiros al arco", "Ocasiones claras", "Tiros dentro del área", "Córners"]
+    cat_defensivas = ["Quites", "Intercepciones", "Despejes", "Atajadas del arquero", "Goles evitados (arquero)"]
+    cat_control = ["Posesión de balón", "Pases totales", "Pases precisos", "Faltas"]
+    cat_xg = ["Goles esperados (xG)", "xG al arco (xGOT)"] 
 
-    c1, c2 = st.columns([2, 1])
-    default_selections = [m for m in ["Goles esperados (xG) (A Favor) - General", "Goles esperados (xG) (En Contra) - General"] if m in opciones_metricas][:2]
+    tab_of, tab_def, tab_ctrl, tab_xg = st.tabs(["⚔️️ OFENSIVAS", "🛡️ DEFENSIVAS", "🧭 CONTROL", "📊 xG"])
     
-    m_sel = c1.multiselect(
-        "Métricas Analizadas (Buscá la métrica, a favor/en contra y condición)", 
-        opciones_metricas, 
-        default=default_selections
-    )
-    fechas_disponibles = sorted(df["nFecha"].dropna().unique())
-    f_sel = c2.multiselect("Filtrar por Fechas (Vacío = Todas)", fechas_disponibles, default=[])
-    
-    formato_sel = st.selectbox("Formato", ["Total acumulado", "Promedio por partido"])
-    
-    if not m_sel:
-        st.warning("⚠️ Seleccioná al menos una métrica para visualizar.")
-    else:
-        mask_fecha = df.index.notna()
-        if f_sel:
-            mask_fecha &= (df["nFecha"].isin(f_sel))
+    def render_panel_metricas(lista_metricas):
+        mets_validas = [m for m in lista_metricas if m in df["Métrica"].values]
+        if not mets_validas:
+            st.warning("No hay datos cargados para estas métricas.")
+            return
             
-        df_filt = df[mask_fecha]
-        equipos_activos = sorted(df_filt["Equipo"].unique())
+        m_sel = st.selectbox("Seleccionar Métrica", mets_validas, key=lista_metricas[0])
+        cond_sel = st.radio("Condición", ["General", "Local", "Visitante"], horizontal=True, key=lista_metricas[0]+"_cond")
         
-        resultados = []
-        for item in m_sel:
-            is_favor = "(A Favor)" in item
-            col_data = "Propio" if is_favor else "Concedido"
+        df_m = df[df["Métrica"] == m_sel]
+        if cond_sel != "General":
+            df_m = df_m[df_m["Condicion"] == cond_sel]
             
-            cond_m = "General"
-            if " - Local" in item: cond_m = "Local"
-            elif " - Visitante" in item: cond_m = "Visitante"
-            
-            m_real = item.replace(" (A Favor)", "").replace(" (En Contra)", "").replace(" - General", "").replace(" - Local", "").replace(" - Visitante", "")
-            
-            mask_cond = df_filt.index.notna()
-            if cond_m != "General":
-                mask_cond &= (df_filt["Condicion"] == cond_m)
-                
-            df_m = df_filt[mask_cond & (df_filt["Métrica"] == m_real)]
-            suma_met = df_m.groupby("Equipo")[col_data].sum()
-            
-            suma_met = suma_met.reindex(equipos_activos, fill_value=0)
-            
-            if formato_sel == "Promedio por partido":
-                df_pj_m = df_filt[mask_cond & (df_filt["Métrica"] == "Resultado")]
-                pj_equipo_m = df_pj_m.groupby("Equipo").size().reindex(equipos_activos, fill_value=0)
-                val = (suma_met / pj_equipo_m.replace(0, 1)) 
-            else:
-                val = suma_met
-                
-            val.name = item
-            resultados.append(val)
-            
-        res_df = pd.concat(resultados, axis=1)
-        res_df.index.name = "Equipo"
-        res_df = res_df.reset_index()
-        
-        res_df = res_df.sort_values(by=m_sel[0], ascending=False)
-        
-        tab_barras, tab_scatter, tab_datos = st.tabs(["📊 Comparativa de Barras", "🎯 Cruce de Datos (Scatter)", "📋 Tabla de Datos"])
-        
-        with tab_barras:
-            fig_bar = go.Figure()
-            colores = [RED, "#ffffff", "#5ecf6b", "#6b8cff", "#cfb45e", "#cf5ead"]
-            for i, m in enumerate(m_sel):
-                fig_bar.add_trace(go.Bar(
-                    name=m,
-                    x=res_df["Equipo"],
-                    y=res_df[m],
-                    marker_color=colores[i % len(colores)]
-                ))
-            fig_bar.update_layout(
-                barmode='group',
-                **PLOT,
-                height=550,
-                xaxis_tickangle=-45,
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-            )
-            st.plotly_chart(fig_bar, use_container_width=True)
-            
-        with tab_scatter:
-            if len(m_sel) == 2:
-                m1, m2 = m_sel[0], m_sel[1]
-                fig_scat = px.scatter(
-                    res_df, x=m1, y=m2, text="Equipo", 
-                    color_discrete_sequence=[RED]
-                )
-                fig_scat.update_traces(
-                    textposition='top center', 
-                    marker=dict(size=12, line=dict(width=1, color="#141417"))
-                )
-                fig_scat.update_layout(
-                    **PLOT, height=600,
-                    xaxis_title=m1, yaxis_title=m2
-                )
-                fig_scat.add_vline(x=res_df[m1].mean(), line_width=1, line_dash="dash", line_color=GRAY)
-                fig_scat.add_hline(y=res_df[m2].mean(), line_width=1, line_dash="dash", line_color=GRAY)
-                
-                st.plotly_chart(fig_scat, use_container_width=True)
-                st.caption("💡 **Tip:** El cuadrante superior derecho marca a los equipos sobre la media en ambas métricas.")
-            else:
-                st.info("📌 Seleccioná exactamente **2 métricas** en los filtros superiores para activar el mapa de dispersión.")
-                
-        with tab_datos:
-            formato_cols = {m: "{:.2f}" for m in m_sel}
-            st.dataframe(res_df.style.format(formato_cols), hide_index=True, use_container_width=True)
-            
-            st.markdown("<br>", unsafe_allow_html=True)
-            csv_met = convertir_csv(res_df)
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            st.download_button(
-                label="💾 Descargar Tabla de Métricas CSV",
-                data=csv_met,
-                file_name=f"Metricas_Globales_{timestamp}.csv",
-                mime="text/csv",
-            )
+        res = df_m.groupby("Equipo")["Propio"].mean().sort_values(ascending=False).reset_index()
+        fig = px.bar(res, x="Equipo", y="Propio", color_discrete_sequence=["#ED1A3B"])
+        fig.update_layout(**PLOT, height=450, xaxis_title="", yaxis_title="Promedio por Partido")
+        st.plotly_chart(fig, use_container_width=True)
 
-elif nav == "Comparativa de Perfiles":
-    st.markdown('<div class="section-header">Comparativa de Perfiles Estadísticos</div>', unsafe_allow_html=True)
-    c1, c2 = st.columns(2)
-    ea     = c1.selectbox("Escuadra A", equipos)
-    cond_a = c1.selectbox(f"Condición de {ea}", ["General", "Local", "Visitante"])
-    eb     = c2.selectbox("Escuadra B", equipos, index=min(1, len(equipos) - 1))
-    cond_b = c2.selectbox(f"Condición de {eb}", ["General", "Local", "Visitante"])
-    t1, t2 = st.tabs(["Comparativa Visual (Radar)", "Métricas Crudas"])
-    with t1: st.plotly_chart(fig_radar_pro(df, ea, eb, cond_a, cond_b), use_container_width=True)
-    with t2:
-        df_a, df_b = df[df["Equipo"] == ea], df[df["Equipo"] == eb]
-        if cond_a != "General": df_a = df_a[df_a["Condicion"] == cond_a]
-        if cond_b != "General": df_b = df_b[df_b["Condicion"] == cond_b]
-        s1, s2 = df_a.groupby("Métrica")[["Propio", "Concedido"]].mean().round(2), df_b.groupby("Métrica")[["Propio", "Concedido"]].mean().round(2)
-        h2h_df = pd.DataFrame({f"{ea} ({cond_a[:3]}) Favor": s1["Propio"], f"{ea} ({cond_a[:3]}) Contra": s1["Concedido"], f"{eb} ({cond_b[:3]}) Favor": s2["Propio"], f"{eb} ({cond_b[:3]}) Contra": s2["Concedido"]}).dropna()
-        st.dataframe(h2h_df, use_container_width=True)
+    with tab_of: render_panel_metricas(cat_ofensivas)
+    with tab_def: render_panel_metricas(cat_defensivas)
+    with tab_ctrl: render_panel_metricas(cat_control)
+    with tab_xg: render_panel_metricas(cat_xg)
 
-elif nav == "Evolución Temporal":
-    st.markdown('<div class="section-header">Evolución de Rendimiento por Fecha</div>', unsafe_allow_html=True)
-    eq_p, met_p = st.selectbox("Seleccionar Equipo", equipos), st.selectbox("Métrica a Evaluar", metricas)
-    d_eq  = df[(df["Equipo"] == eq_p) & (df["Métrica"] == met_p)].sort_values("nFecha")
-    if not d_eq.empty:
-        d_eq["Etiqueta_X"] = "F" + d_eq["nFecha"].astype(str) + " (" + d_eq["Rival"] + ")"
-        fig_evo = go.Figure([
-            go.Bar(x=d_eq["Etiqueta_X"], y=d_eq["Propio"], name="Generado", marker_color=RED), 
-            go.Bar(x=d_eq["Etiqueta_X"], y=d_eq["Concedido"], name="Concedido", marker_color=GRAY)
-        ])
-        fig_evo.update_layout(**PLOT, barmode="group", xaxis=dict(title="Fecha (Rival)"), yaxis=dict(title=met_p))
-        st.plotly_chart(fig_evo, use_container_width=True)
-
-elif nav == "Análisis de Estilos":
-    st.markdown('<div class="section-header">Matriz de Estilos de Juego Dinámica</div>', unsafe_allow_html=True)
+elif nav == "Matriz de Rendimiento":
+    st.markdown('<div class="section-header">Matriz de Rendimiento y Estilos</div>', unsafe_allow_html=True)
     c1, c2 = st.columns(2)
     m_x = c1.selectbox("Métrica Eje X", metricas, index=metricas.index("Posesión de balón") if "Posesión de balón" in metricas else 0)
     m_y = c2.selectbox("Métrica Eje Y", metricas, index=metricas.index("Goles esperados (xG)") if "Goles esperados (xG)" in metricas else 0)
@@ -1501,7 +1352,15 @@ elif nav == "Posiciones":
         t_show.columns = ["#", "Equipo", "PJ", "V", "E", "D", "GF", "GC", "DG", "PTS", "Efectividad %"]
         t_show["GF"], t_show["GC"], t_show["DG"] = t_show["GF"].astype(int), t_show["GC"].astype(int), t_show["DG"].astype(int)
         t_show["Efectividad %"] = t_show["Efectividad %"].round(1)
-        st.dataframe(t_show.style.format({"Efectividad %": "{:.1f}%"}), use_container_width=True, hide_index=True)
+        
+        altura_tabla = (len(t_show) * 35) + 40 
+        
+        st.dataframe(
+            t_show.style.format({"Efectividad %": "{:.1f}%"}), 
+            use_container_width=True, 
+            hide_index=True,
+            height=altura_tabla 
+        )
         
         st.markdown("<br>", unsafe_allow_html=True)
         csv_pos = convertir_csv(t_show)
@@ -1513,59 +1372,69 @@ elif nav == "Posiciones":
             mime="text/csv",
         )
 
-elif nav == "ADN Táctico":
-    st.markdown('<div class="section-header">ADN Táctico — Patrones por Equipo</div>', unsafe_allow_html=True)
-    tab_todos, tab_equipo = st.tabs(["Vista de Liga", "Detalle por Equipo"])
-    with tab_todos:
-        if not adn_df.empty:
-            adn_sorted = adn_df.sort_values("Posesion", ascending=False, na_position="last")
-            cards_html = ""
-            for eq, row in adn_sorted.iterrows():
-                tags_html = render_tags_html(row["Tags"]) if isinstance(row["Tags"], list) else ""
-                pos_str, tp_str = f"{row['Posesion']:.0f}%" if not np.isnan(row["Posesion"]) else "—", f"{row['TirosProp']:.1f}" if not np.isnan(row["TirosProp"]) else "—"
-                xg_str, xgc_str = f"{row['xGProp']:.2f}" if not np.isnan(row["xGProp"]) else "—", f"{row['xGConc']:.2f}" if not np.isnan(row["xGConc"]) else "—"
-                cards_html += f"""<div class="adn-card"><div class="adn-team-name">{eq}</div><div>{tags_html}</div><div style="margin-top:12px;display:flex;gap:28px;flex-wrap:wrap;"><div><div class="adn-perfil">Posesión media</div><div style="font-size:1.1rem;font-weight:800;color:#e0e0e0;">{pos_str}</div></div><div><div class="adn-perfil">Tiros / partido</div><div style="font-size:1.1rem;font-weight:800;color:#e0e0e0;">{tp_str}</div></div><div><div class="adn-perfil">xG generado</div><div style="font-size:1.1rem;font-weight:800;color:#ED1A3B;">{xg_str}</div></div><div><div class="adn-perfil">xG concedido</div><div style="font-size:1.1rem;font-weight:800;color:#888890;">{xgc_str}</div></div></div><div style="margin-top:10px;font-size:0.78rem;color:#555560;border-top:1px solid #1e1e24;padding-top:8px;">{row["Insight"]}</div></div>"""
-            st.markdown(cards_html, unsafe_allow_html=True)
-    with tab_equipo:
-        eq_sel = st.selectbox("Seleccionar Equipo", equipos, key="adn_eq")
-        if eq_sel in adn_df.index:
-            row = adn_df.loc[eq_sel]
-            tags_html = render_tags_html(row["Tags"]) if isinstance(row["Tags"], list) else ""
-            st.markdown(f"""<div class="adn-card" style="margin-bottom:20px;"><div class="adn-team-name">{eq_sel}</div><div>{tags_html}</div><div class="tactica-insight" style="margin-top:14px;">{row["Insight"]}</div></div>""", unsafe_allow_html=True)
-            mets_adn, labels_adn = ["Posesion", "TirosProp", "xGProp", "xGConc", "EficOfens"], ["Posesión", "Tiros Prop.", "xG Generado", "xG Concedido", "Efic. Ofens."]
-            liga_means, liga_stds = adn_df[mets_adn].mean(), adn_df[mets_adn].std().replace(0, 1)
-            eq_vals = [(row[m] - liga_means[m]) / liga_stds[m] if not np.isnan(row[m]) else 0.0 for m in mets_adn]
+elif nav == "Radiografía de Equipo":
+    st.markdown('<div class="section-header">Dashboard de Rendimiento por Equipo</div>', unsafe_allow_html=True)
+    
+    eq_sel = st.selectbox("Seleccionar Equipo a Analizar", equipos)
+    
+    col1, col2 = st.columns([1, 2])
+    
+    with col1:
+        st.markdown("### 🧬 ADN Táctico")
+        if not adn_df.empty and eq_sel in adn_df.index:
+            row_adn = adn_df.loc[eq_sel]
+            tags_html = render_tags_html(row_adn["Tags"]) if isinstance(row_adn["Tags"], list) else ""
+            st.markdown(f"""
+            <div class="adn-card" style="margin-bottom:20px;">
+                <div>{tags_html}</div>
+                <div class="tactica-insight" style="margin-top:14px;">{row_adn["Insight"]}</div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            mets_adn = ["Posesion", "TirosProp", "xGProp", "xGConc"]
+            labels_adn = ["Posesión", "Tiros Prop.", "xG Generado", "xG Concedido"]
+            liga_means = adn_df[mets_adn].mean()
+            liga_stds = adn_df[mets_adn].std().replace(0, 1)
+            eq_vals = [(row_adn[m] - liga_means[m]) / liga_stds[m] if not np.isnan(row_adn[m]) else 0.0 for m in mets_adn]
             eq_norm = [float(np.clip((v + 3) / 6, 0.0, 1.0)) for v in eq_vals]
             lig_norm = [0.5] * len(mets_adn)
+            
             fig_adn = go.Figure()
-            fig_adn.add_trace(go.Scatterpolar(r=lig_norm + [lig_norm[0]], theta=labels_adn + [labels_adn[0]], fill="toself", name="Media Liga", line=dict(color=GRAY, dash="dot"), opacity=0.5))
+            fig_adn.add_trace(go.Scatterpolar(r=lig_norm + [lig_norm[0]], theta=labels_adn + [labels_adn[0]], fill="toself", name="Media Liga", line=dict(color=GRAY, dash="dot")))
             fig_adn.add_trace(go.Scatterpolar(r=eq_norm + [eq_norm[0]], theta=labels_adn + [labels_adn[0]], fill="toself", name=eq_sel, line=dict(color=RED, width=2)))
-            layout_r = PLOT.copy()
-            layout_r.update(height=400, polar=dict(bgcolor="rgba(0,0,0,0)", radialaxis=dict(visible=True, showticklabels=False, gridcolor="#2a2a30", range=[0, 1]), angularaxis=dict(gridcolor="#2a2a30", linecolor="#2a2a30")), margin=dict(l=50, r=50, t=36, b=50), legend=dict(orientation="h", x=0.3, y=-0.1))
-            st.plotly_chart(fig_adn.update_layout(**layout_r), use_container_width=True)
+            fig_adn.update_layout(**PLOT, height=300, polar=dict(bgcolor="rgba(0,0,0,0)", radialaxis=dict(visible=False)), margin=dict(l=30, r=30, t=20, b=20), showlegend=False)
+            st.plotly_chart(fig_adn, use_container_width=True)
 
-elif nav == "Rachas y Momentum":
-    st.markdown('<div class="section-header">Rachas y Momentum</div>', unsafe_allow_html=True)
-    if not rachas_df.empty:
-        tab_liga, tab_equipo_m = st.tabs(["Ranking de Momentum", "Detalle por Equipo"])
-        with tab_liga:
-            st.plotly_chart(fig_momentum_ranking(rachas_df), use_container_width=True)
-            rachas_sorted = rachas_df.sort_values("MomentumScore", ascending=False)
-            cards_html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;margin-top:10px;">'
-            for eq, row in rachas_sorted.iterrows():
-                dots, delta_str = render_racha_dots(row["Ultimas6"]), f"+{row['DeltaXG']:.2f}" if row["DeltaXG"] >= 0 else f"{row['DeltaXG']:.2f}"
-                delta_color = "#5ecf6b" if row["DeltaXG"] > 0.05 else ("#ED1A3B" if row["DeltaXG"] < -0.05 else "#888890")
-                cards_html += f"""<div class="momentum-card"><div class="momentum-team">{eq}</div><div style="margin-bottom:8px;">{dots}</div><div style="display:flex;gap:18px;flex-wrap:wrap;"><div><div class="momentum-label">Forma</div><div class="{row['EstadoCls']}">{row["Estado"]}</div></div><div><div class="momentum-label">Pts últ 3</div><div style="font-size:1rem;font-weight:800;color:#e0e0e0;">{row["Pts3"]}</div></div><div><div class="momentum-label">Δ xG</div><div style="font-size:1.1rem;font-weight:800;color:{delta_color};">{delta_str}</div></div></div></div>"""
-            st.markdown(cards_html + "</div>", unsafe_allow_html=True)
-        with tab_equipo_m:
-            eq_m = st.selectbox("Seleccionar Equipo", equipos, key="racha_eq")
-            if eq_m in rachas_df.index:
-                row_m = rachas_df.loc[eq_m]
-                dots, delta_str = render_racha_dots(row_m["Ultimas6"]), f"+{row_m['DeltaXG']:.2f}" if row_m["DeltaXG"] >= 0 else f"{row_m['DeltaXG']:.2f}"
-                delta_color = "#5ecf6b" if row_m["DeltaXG"] > 0.05 else ("#ED1A3B" if row_m["DeltaXG"] < -0.05 else "#888890")
-                st.markdown(f"""<div class="momentum-card" style="margin-bottom:20px;"><div class="momentum-team">{eq_m}</div><div class="momentum-label">Racha completa</div><div style="margin:8px 0 14px;">{"".join(f'<span class="racha-dot {"racha-v" if r=="V" else ("racha-e" if r=="E" else "racha-d")}">{r}</span>' for r in row_m["Resultados"])}</div><div style="display:flex;gap:30px;flex-wrap:wrap;"><div><div class="momentum-label">Estado</div><div class="{row_m["EstadoCls"]}">{row_m["Estado"]}</div></div><div><div class="momentum-label">xG reciente</div><div style="font-size:1.1rem;font-weight:800;color:#ED1A3B;">{row_m["xGRec"]:.2f}</div></div><div><div class="momentum-label">Tendencia xG</div><div style="font-size:1.1rem;font-weight:800;color:{delta_color};">{delta_str}</div></div></div></div>""", unsafe_allow_html=True)
-                st.markdown('<div class="section-header">Evolución Temporal</div>', unsafe_allow_html=True)
-                st.plotly_chart(fig_momentum_timeline(df, eq_m), use_container_width=True)
+    with col2:
+        st.markdown("### 🔥 Estado de Forma y Evolución")
+        
+        if not rachas_df.empty and eq_sel in rachas_df.index:
+            row_m = rachas_df.loc[eq_sel]
+            dots = render_racha_dots(row_m["Ultimas6"])
+            st.markdown(f"""
+            <div class="momentum-card" style="display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                    <div class="momentum-label">Últimas fechas</div>
+                    <div>{dots}</div>
+                </div>
+                <div style="text-align:right;">
+                    <div class="momentum-label">Estado</div>
+                    <div class="{row_m['EstadoCls']}">{row_m['Estado']}</div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        met_p = st.selectbox("Métrica a Evaluar (Evolución)", metricas, index=metricas.index("Goles esperados (xG)") if "Goles esperados (xG)" in metricas else 0)
+        d_eq = df[(df["Equipo"] == eq_sel) & (df["Métrica"] == met_p)].sort_values("nFecha")
+        
+        if not d_eq.empty:
+            d_eq["Etiqueta_X"] = "F" + d_eq["nFecha"].astype(str)
+            fig_evo = go.Figure([
+                go.Bar(x=d_eq["Etiqueta_X"], y=d_eq["Propio"], name="A Favor", marker_color=RED), 
+                go.Bar(x=d_eq["Etiqueta_X"], y=d_eq["Concedido"], name="En Contra", marker_color=GRAY)
+            ])
+            fig_evo.update_layout(**PLOT, barmode="group", height=350, margin=dict(t=10, b=10, l=10, r=10), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+            st.plotly_chart(fig_evo, use_container_width=True)
 
 st.markdown("<hr style='border-color:#1f1f24; margin-top:50px;'>", unsafe_allow_html=True)
 st.markdown(
