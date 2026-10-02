@@ -1460,13 +1460,24 @@ elif nav == "Radiografía de Equipo":
         met_p = st.selectbox("Métrica a Evaluar (Evolución)", metricas, index=metricas.index("Goles esperados (xG)") if "Goles esperados (xG)" in metricas else 0)
         d_eq = df[(df["Equipo"] == eq_sel) & (df["Métrica"] == met_p)].sort_values("nFecha")
         
+        
         if not d_eq.empty:
             d_eq["Etiqueta_X"] = "F" + d_eq["nFecha"].astype(str)
             fig_evo = go.Figure([
                 go.Bar(x=d_eq["Etiqueta_X"], y=d_eq["Propio"], name="A Favor", marker_color=RED), 
                 go.Bar(x=d_eq["Etiqueta_X"], y=d_eq["Concedido"], name="En Contra", marker_color=GRAY)
             ])
-            fig_evo.update_layout(**PLOT, barmode="group", height=350, margin=dict(t=10, b=10, l=10, r=10), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+            
+            # Corrección: Crear copia de PLOT para evitar duplicar 'margin' y 'legend'
+            layout_evo = PLOT.copy()
+            layout_evo.update(
+                barmode="group", 
+                height=350, 
+                margin=dict(t=10, b=10, l=10, r=10), 
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+            )
+            fig_evo.update_layout(**layout_evo)
+            
             st.plotly_chart(fig_evo, use_container_width=True)
 
 st.markdown("<hr style='border-color:#1f1f24; margin-top:50px;'>", unsafe_allow_html=True)
