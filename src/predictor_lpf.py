@@ -1646,8 +1646,12 @@ elif nav == "Radiografía de Equipo":
         met_p = st.selectbox("Métrica a Evaluar (Evolución)", metricas, index=metricas.index("Goles esperados (xG)") if "Goles esperados (xG)" in metricas else 0)
         d_eq = df[(df["Equipo"] == eq_sel) & (df["Métrica"] == met_p)].sort_values("nFecha")
         
-        if not d_eq.empty:
-            d_eq["Etiqueta_X"] = d_eq.apply(lambda r: f"F{r['nFecha']} ({'L' if r['Condicion'] == 'Local' else 'V'})", axis=1)
+       if not d_eq.empty:
+            # Agregamos la condición (L/V) y las primeras 3 letras del rival en una segunda línea
+            d_eq["Etiqueta_X"] = d_eq.apply(
+                lambda r: f"F{r['nFecha']} ({'L' if r['Condicion'] == 'Local' else 'V'})<br><span style='color:#8b8b95'>{str(r['Rival'])[:3].upper()}</span>", 
+                axis=1
+            )
             
             fig_evo = go.Figure([
                 go.Bar(
@@ -1655,14 +1659,16 @@ elif nav == "Radiografía de Equipo":
                     y=d_eq["Propio"], 
                     name="A Favor", 
                     marker=dict(color=RED, line=dict(width=0)),
-                    hovertemplate="%{y:.2f}<extra>A Favor</extra>"
+                    customdata=d_eq["Rival"], # Pasamos el nombre completo para el Hover
+                    hovertemplate="<b>%{y:.2f}</b> <span style='font-size:11px; color:#8b8b95'>(vs %{customdata})</span><extra>A Favor</extra>"
                 ), 
                 go.Bar(
                     x=d_eq["Etiqueta_X"], 
                     y=d_eq["Concedido"], 
                     name="En Contra", 
                     marker=dict(color=GRAY, line=dict(width=0)),
-                    hovertemplate="%{y:.2f}<extra>En Contra</extra>"
+                    customdata=d_eq["Rival"], # Pasamos el nombre completo para el Hover
+                    hovertemplate="<b>%{y:.2f}</b> <span style='font-size:11px; color:#8b8b95'>(vs %{customdata})</span><extra>En Contra</extra>"
                 )
             ])
             
@@ -1677,12 +1683,3 @@ elif nav == "Radiografía de Equipo":
             estilizar_ejes(fig_evo)
             
             st.plotly_chart(fig_evo, use_container_width=True, config=PLOT_CFG)
-
-st.markdown("<hr style='border-color:#1f1f24; margin-top:50px;'>", unsafe_allow_html=True)
-st.markdown(
-    "<div style='text-align:center; color:#555560; font-size:0.75rem; padding:10px 0 30px;'>"
-    "LPF Analytics v2.0 &nbsp;·&nbsp; Modelo estadístico holístico ponderado (Poisson + Dixon-Coles MLE) &nbsp;·&nbsp; "
-    "Uso analítico/educativo — no constituye asesoramiento de apuestas"
-    "</div>",
-    unsafe_allow_html=True,
-)
