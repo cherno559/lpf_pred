@@ -1425,7 +1425,17 @@ elif nav == "Radiografía de Equipo":
             fig_adn = go.Figure()
             fig_adn.add_trace(go.Scatterpolar(r=lig_norm + [lig_norm[0]], theta=labels_adn + [labels_adn[0]], fill="toself", name="Media Liga", line=dict(color=GRAY, dash="dot")))
             fig_adn.add_trace(go.Scatterpolar(r=eq_norm + [eq_norm[0]], theta=labels_adn + [labels_adn[0]], fill="toself", name=eq_sel, line=dict(color=RED, width=2)))
-            fig_adn.update_layout(**PLOT, height=300, polar=dict(bgcolor="rgba(0,0,0,0)", radialaxis=dict(visible=False)), margin=dict(l=30, r=30, t=20, b=20), showlegend=False)
+            
+            # Corrección: Crear una copia de PLOT para evitar duplicar el argumento 'margin'
+            layout_adn = PLOT.copy()
+            layout_adn.update(
+                height=300, 
+                polar=dict(bgcolor="rgba(0,0,0,0)", radialaxis=dict(visible=False)), 
+                margin=dict(l=30, r=30, t=20, b=20), 
+                showlegend=False
+            )
+            fig_adn.update_layout(**layout_adn)
+            
             st.plotly_chart(fig_adn, use_container_width=True)
 
     with col2:
