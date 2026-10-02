@@ -26,80 +26,213 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Manrope:wght@400;600;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Manrope:wght@400;500;600;700;800&display=swap');
 
-html, body, [class*="css"] { font-family: 'Manrope', sans-serif; background-color: #0a0a0c; color: #e0e0e0; }
-.stApp { background-color: #0a0a0c; }
-#MainMenu, footer { visibility: hidden; }
-
-.hero-banner {
-    background: linear-gradient(to right, rgba(10,10,12,1) 0%, rgba(10,10,12,0.4) 50%, rgba(10,10,12,1) 100%),
-                url('https://images.unsplash.com/photo-1518605368461-1eb7678b871c?q=80&w=2000&auto=format&fit=crop');
-    background-size: cover; background-position: center 30%;
-    padding: 50px 40px; border-radius: 12px; margin-bottom: 40px;
-    border-bottom: 4px solid #ED1A3B; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+/* ═════════════ TOKENS ═════════════ */
+:root {
+    --bg: #0a0a0c;
+    --surface: #121216;
+    --surface-2: #17171c;
+    --line: #26262d;
+    --line-soft: #1c1c22;
+    --text: #ececf0;
+    --muted: #8b8b95;
+    --dim: #5c5c66;
+    --red: #ED1A3B;
+    --red-dark: #b81230;
+    --red-soft: rgba(237,26,59,0.10);
+    --red-line: rgba(237,26,59,0.38);
+    --green: #5ecf6b;
+    --gold: #cfb45e;
+    --blue: #6b8cff;
+    --r-lg: 16px;
+    --r-md: 12px;
+    --r-sm: 8px;
+    --shadow-card: 0 1px 0 rgba(255,255,255,0.03) inset, 0 10px 28px rgba(0,0,0,0.35);
 }
-.hero-subtitle { color: #ED1A3B; font-weight: 800; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 5px; margin-bottom: 5px; }
-.hero-title { font-family: 'Bebas Neue', sans-serif; font-size: 4rem; color: #ffffff; letter-spacing: 2px; line-height: 1; margin: 0; }
-.section-header { font-family: 'Bebas Neue', sans-serif; font-size: 2rem; color: #ffffff; letter-spacing: 1.5px; border-left: 4px solid #ED1A3B; padding-left: 15px; margin: 40px 0 20px 0; }
-.broadcast-board { display: flex; justify-content: space-between; align-items: center; background: #141417; border: 1px solid #2a2a30; border-radius: 8px; padding: 30px 40px; margin-top: 20px; }
-.team-block { flex: 1; text-align: center; }
-.team-block.home { border-right: 1px solid #2a2a30; }
-.team-block.away { border-left: 1px solid #2a2a30; }
-.t-name { font-family: 'Bebas Neue', sans-serif; font-size: 2.2rem; color: #ffffff; letter-spacing: 1px; margin-bottom: 5px; }
-.t-prob { font-size: 3.5rem; font-weight: 800; color: #ED1A3B; line-height: 1; }
-.t-label { font-size: 0.8rem; color: #888890; text-transform: uppercase; letter-spacing: 2px; margin-top: 5px; }
-.draw-block { flex: 0.8; text-align: center; }
-.draw-prob { font-size: 2.2rem; font-weight: 800; color: #888890; }
 
-.top3-container { display: flex; gap: 12px; margin-top: 14px; }
-.score-card { flex: 1; background: #141417; border: 1px solid #2a2a30; border-radius: 8px; padding: 18px 12px; text-align: center; }
-.score-card.first { border-color: #ED1A3B; }
-.score-rank { font-size: 0.7rem; color: #888890; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 6px; }
-.score-card.first .score-rank { color: #ED1A3B; }
-.score-result { font-family: 'Bebas Neue', sans-serif; font-size: 2.4rem; color: #ffffff; line-height: 1; }
-.score-card.first .score-result { color: #ED1A3B; font-size: 2.8rem; }
-.score-pct { font-size: 0.85rem; color: #888890; margin-top: 4px; }
-.score-card.first .score-pct { color: #ffffff; font-weight: 600; }
+/* ═════════════ BASE ═════════════ */
+html, body, [class*="css"]:not([data-testid="stIconMaterial"]) { font-family: 'Manrope', sans-serif; color: var(--text); }
+[data-testid="stIconMaterial"], .material-symbols-rounded { font-family: 'Material Symbols Rounded' !important; }
+.stApp {
+    background-color: var(--bg);
+    background-image: radial-gradient(1100px 520px at 88% -8%, rgba(237,26,59,0.09), transparent 62%);
+    background-attachment: fixed;
+}
+#MainMenu, footer { visibility: hidden; }
+header[data-testid="stHeader"] { background: transparent; }
+.block-container { padding-top: 2.2rem; padding-bottom: 4rem; max-width: 1400px; }
+::selection { background: rgba(237,26,59,0.40); color: #fff; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--line); border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: #3a3a44; }
 
-.stButton>button { font-family: 'Bebas Neue', sans-serif; font-size: 1.5rem; letter-spacing: 2px; background-color: #ED1A3B; color: #fff; border: none; border-radius: 4px; padding: 10px 20px; width: 100%; transition: background-color 0.3s; }
-.stButton>button:hover { background-color: #c41530; color: #fff; }
-.stSelectbox>div>div, .stTextInput>div>div, .stRadio>div>div { background-color: #141417 !important; border: 1px solid #2a2a30 !important; color: #ffffff !important; border-radius: 4px !important; }
-[data-testid="stSidebar"] { background-color: #0f0f12 !important; border-right: 1px solid #1f1f24 !important; }
-.sidebar-logo { font-family: 'Bebas Neue', sans-serif; font-size: 2.5rem; color: #ED1A3B; letter-spacing: 2px; text-align: center; margin-bottom: 30px; border-bottom: 1px solid #1f1f24; padding-bottom: 20px; }
+.stApp h3 { font-family: 'Bebas Neue', sans-serif; font-weight: 400; font-size: 1.7rem; letter-spacing: 1.2px; color: #fff; padding: 0.4rem 0 0.6rem; }
+[data-testid="stWidgetLabel"] p, .stApp label p { font-size: 0.78rem; font-weight: 700; letter-spacing: 0.03em; color: var(--muted); }
 
-/* ── ADN Táctico ─────────────────────────────────────────── */
-.tag-badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; margin: 3px 4px; }
-.tag-pressing   { background: #2d1a1e; color: #ED1A3B; border: 1px solid #ED1A3B; }
-.tag-bloque     { background: #1a1d2d; color: #6b8cff; border: 1px solid #6b8cff; }
-.tag-posesion   { background: #1d2a1a; color: #5ecf6b; border: 1px solid #5ecf6b; }
-.tag-directo    { background: #2a2a1a; color: #cfb45e; border: 1px solid #cfb45e; }
-.tag-neutral    { background: #1e1e24; color: #888890; border: 1px solid #2a2a35; }
-.tag-contra     { background: #2a1a2a; color: #cf5ead; border: 1px solid #cf5ead; }
-.adn-card { background: #111115; border: 1px solid #2a2a35; border-radius: 10px; padding: 20px 24px; margin-bottom: 12px; transition: box-shadow 0.2s; }
-.adn-card:hover { box-shadow: 0 6px 20px rgba(0,0,0,0.4); }
-.adn-team-name { font-family: 'Bebas Neue', sans-serif; font-size: 1.6rem; color: #ffffff; letter-spacing: 1px; margin-bottom: 10px; }
-.adn-perfil { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 2px; color: #555560; margin-bottom: 6px; }
+/* ═════════════ HERO ═════════════ */
+.hero-banner {
+    position: relative; overflow: hidden;
+    padding: 56px 48px 46px; margin-bottom: 36px;
+    border-radius: var(--r-lg); border: 1px solid var(--line);
+    background:
+        linear-gradient(100deg, rgba(10,10,12,0.97) 0%, rgba(10,10,12,0.72) 46%, rgba(10,10,12,0.93) 100%),
+        url('https://images.unsplash.com/photo-1518605368461-1eb7678b871c?q=80&w=2000&auto=format&fit=crop');
+    background-size: cover; background-position: center 30%;
+    box-shadow: 0 24px 60px rgba(0,0,0,0.55);
+}
+.hero-banner::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: linear-gradient(90deg, var(--red) 0%, rgba(237,26,59,0) 75%); }
+.hero-subtitle { color: var(--red); font-weight: 800; font-size: 0.82rem; text-transform: uppercase; letter-spacing: 5px; margin-bottom: 8px; }
+.hero-title { font-family: 'Bebas Neue', sans-serif; font-size: clamp(2.6rem, 6vw, 4.6rem); color: #fff; letter-spacing: 2px; line-height: 1; margin: 0; padding: 0 !important; }
+.hero-meta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
+.meta-chip { font-size: 0.76rem; font-weight: 600; color: #b4b4be; padding: 6px 12px; border-radius: 999px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.09); backdrop-filter: blur(6px); }
 
-/* ── Rachas ──────────────────────────────────────────────── */
-.racha-dot { display: inline-block; width: 28px; height: 28px; border-radius: 50%; text-align: center; line-height: 28px; font-size: 0.75rem; font-weight: 800; margin: 2px; }
-.racha-v { background: #ED1A3B; color: #fff; }
-.racha-e { background: #2a2a35; color: #888890; }
-.racha-d { background: #141417; color: #555560; border: 1px solid #2a2a35; }
-.momentum-card { background: #111115; border: 1px solid #2a2a35; border-radius: 10px; padding: 16px 20px; margin-bottom: 10px; }
-.momentum-team { font-family: 'Bebas Neue', sans-serif; font-size: 1.4rem; color: #fff; letter-spacing: 1px; margin-bottom: 8px; }
-.momentum-label { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 2px; color: #555560; margin-bottom: 4px; }
-.momentum-alza  { color: #5ecf6b; font-weight: 800; font-size: 0.9rem; }
-.momentum-caida { color: #ED1A3B; font-weight: 800; font-size: 0.9rem; }
-.momentum-estable { color: #888890; font-weight: 800; font-size: 0.9rem; }
+/* ═════════════ SECCIONES ═════════════ */
+.section-header {
+    display: flex; align-items: center; gap: 16px;
+    font-family: 'Bebas Neue', sans-serif; font-size: 1.9rem; line-height: 1; color: #fff; letter-spacing: 1.5px;
+    border-left: 3px solid var(--red); padding-left: 14px; margin: 44px 0 20px 0;
+}
+.section-header::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, var(--line), transparent); }
 
-/* ── Contexto táctico (predictor) ──────────────────────── */
-.tactica-clash { background: #111115; border: 1px solid #2a2a35; border-radius: 10px; padding: 24px 28px; margin-top: 20px; }
-.tactica-title { font-family: 'Bebas Neue', sans-serif; font-size: 1.4rem; color: #ED1A3B; letter-spacing: 1.5px; margin-bottom: 16px; }
-.tactica-row { display: flex; align-items: flex-start; gap: 20px; margin-bottom: 14px; }
+/* ═════════════ MARCADOR (BROADCAST BOARD) ═════════════ */
+.broadcast-board {
+    display: grid; grid-template-columns: 1fr 0.75fr 1fr; align-items: center; gap: 0;
+    background: linear-gradient(180deg, var(--surface-2) 0%, var(--surface) 100%);
+    border: 1px solid var(--line); border-radius: var(--r-lg);
+    padding: 34px 28px 28px; margin-top: 20px; box-shadow: var(--shadow-card);
+}
+.team-block, .draw-block { text-align: center; padding: 0 12px; }
+.team-block.home { border-right: 1px solid var(--line-soft); }
+.team-block.away { border-left: 1px solid var(--line-soft); }
+.t-name { font-family: 'Bebas Neue', sans-serif; font-size: 2.2rem; color: #fff; letter-spacing: 1px; margin-bottom: 6px; }
+.t-prob { font-size: 3.6rem; font-weight: 800; color: #fff; line-height: 1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; opacity: 0.88; }
+.team-block.lead .t-prob { color: var(--red); opacity: 1; text-shadow: 0 0 32px rgba(237,26,59,0.45); }
+.t-label { font-size: 0.74rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 2px; margin-top: 8px; }
+.draw-prob { font-size: 2.3rem; font-weight: 800; color: var(--muted); line-height: 1; font-variant-numeric: tabular-nums; }
+.draw-block.lead .draw-prob { color: #fff; }
+.odds-row { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.odds-chip { font-size: 0.72rem; font-weight: 600; color: #a8a8b2; padding: 5px 10px; border-radius: 6px; background: var(--surface-2); border: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+.odds-chip b { color: #fff; font-weight: 800; }
+.odds-chip.theo { color: var(--gold); background: rgba(207,180,94,0.07); border-color: rgba(207,180,94,0.35); }
+.odds-chip.theo b { color: var(--gold); }
+.prob-bar { grid-column: 1 / -1; display: flex; gap: 3px; height: 6px; margin-top: 26px; border-radius: 999px; overflow: hidden; }
+.prob-bar span { display: block; height: 100%; }
+.prob-bar .seg-home { background: var(--red); }
+.prob-bar .seg-draw { background: #4a4a52; }
+.prob-bar .seg-away { background: #e6e6ec; }
+
+/* ═════════════ TOP 3 MARCADORES ═════════════ */
+.top3-container { display: flex; gap: 14px; margin-top: 14px; }
+.score-card { flex: 1; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); padding: 20px 14px 16px; text-align: center; transition: border-color 0.2s, transform 0.2s; }
+.score-card:hover { border-color: #3a3a44; transform: translateY(-2px); }
+.score-card.first { background: linear-gradient(180deg, rgba(237,26,59,0.13), rgba(237,26,59,0.02)); border-color: var(--red-line); box-shadow: 0 0 0 1px rgba(237,26,59,0.12), 0 14px 34px rgba(237,26,59,0.13); }
+.score-rank { font-size: 0.68rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 2px; margin-bottom: 8px; }
+.score-card.first .score-rank { color: var(--red); }
+.score-result { font-family: 'Bebas Neue', sans-serif; font-size: 2.3rem; color: #fff; line-height: 1; letter-spacing: 1px; }
+.score-card.first .score-result { color: var(--red); font-size: 2.8rem; }
+.score-pct { font-size: 0.88rem; color: var(--muted); margin-top: 6px; font-variant-numeric: tabular-nums; }
+.score-card.first .score-pct { color: #fff; font-weight: 700; }
+.score-bar { height: 3px; margin-top: 14px; background: #202027; border-radius: 999px; overflow: hidden; }
+.score-bar > i { display: block; height: 100%; background: #5c5c66; border-radius: 999px; }
+.score-card.first .score-bar > i { background: var(--red); }
+
+/* ═════════════ CONTROLES ═════════════ */
+.stButton > button {
+    font-family: 'Bebas Neue', sans-serif; font-size: 1.45rem; letter-spacing: 2px;
+    background: linear-gradient(180deg, #f02a49 0%, var(--red) 100%); color: #fff;
+    border: 1px solid rgba(255,255,255,0.08); border-radius: var(--r-sm); padding: 10px 20px; width: 100%;
+    box-shadow: 0 6px 18px rgba(237,26,59,0.28); transition: transform 0.15s, box-shadow 0.15s, background 0.15s;
+}
+.stButton > button:hover { background: linear-gradient(180deg, #f43a57 0%, #d3172f 100%); color: #fff; border-color: rgba(255,255,255,0.14); transform: translateY(-1px); box-shadow: 0 10px 24px rgba(237,26,59,0.38); }
+.stButton > button:active { transform: translateY(0); box-shadow: 0 3px 10px rgba(237,26,59,0.3); }
+.stButton > button:focus-visible, .stDownloadButton > button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.stDownloadButton > button { background: transparent; color: #fff; border: 1px solid var(--line); border-radius: var(--r-sm); font-weight: 700; transition: border-color 0.15s, background 0.15s; }
+.stDownloadButton > button:hover { border-color: var(--red); background: var(--red-soft); color: #fff; }
+
+[data-baseweb="select"] > div, [data-baseweb="input"] > div, .stTextInput > div > div { background-color: var(--surface) !important; border: 1px solid var(--line) !important; border-radius: var(--r-sm) !important; color: #fff !important; transition: border-color 0.15s; }
+[data-baseweb="select"] > div:hover, [data-baseweb="input"] > div:hover { border-color: #3a3a44 !important; }
+[data-baseweb="select"] > div:focus-within, [data-baseweb="input"] > div:focus-within { border-color: var(--red) !important; box-shadow: 0 0 0 3px var(--red-soft); }
+[data-baseweb="tag"] { background-color: var(--red-soft) !important; border: 1px solid var(--red-line) !important; border-radius: 6px !important; color: #fff !important; }
+[data-testid="stVerticalBlockBorderWrapper"] { border-color: var(--line) !important; border-radius: var(--r-md); }
+
+/* Radio horizontal → control segmentado */
+.stRadio [role="radiogroup"] { gap: 2px; }
+.stRadio [role="radiogroup"][aria-orientation="horizontal"], .stRadio div[role="radiogroup"]:not([aria-orientation="vertical"]) { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 4px; display: inline-flex; }
+.stRadio label { border-radius: 7px; padding: 4px 10px; transition: background 0.15s; }
+.stRadio label:hover { background: var(--surface-2); }
+.stRadio label:has(input:checked) { background: var(--red-soft); }
+
+/* ═════════════ SIDEBAR ═════════════ */
+[data-testid="stSidebar"] { background-color: #0e0e11 !important; border-right: 1px solid var(--line-soft) !important; }
+.sidebar-logo { font-family: 'Bebas Neue', sans-serif; font-size: 2.5rem; line-height: 1; color: var(--red); letter-spacing: 2px; text-align: center; }
+.sidebar-tag { text-align: center; font-size: 0.68rem; font-weight: 600; letter-spacing: 3px; text-transform: uppercase; color: var(--dim); margin: 6px 0 26px; padding-bottom: 22px; border-bottom: 1px solid var(--line-soft); }
+[data-testid="stSidebar"] .stRadio [role="radiogroup"] { display: flex; flex-direction: column; gap: 4px; background: transparent; border: none; padding: 0; }
+[data-testid="stSidebar"] .stRadio label { padding: 11px 14px; border: 1px solid transparent; border-radius: 10px; width: 100%; }
+[data-testid="stSidebar"] .stRadio label:hover { background: var(--surface-2); }
+[data-testid="stSidebar"] .stRadio label:has(input:checked) { background: var(--red-soft); border-color: var(--red-line); }
+[data-testid="stSidebar"] .stRadio label p { font-size: 0.92rem; font-weight: 700; color: #cfcfd6; letter-spacing: 0; }
+[data-testid="stSidebar"] .stRadio label:has(input:checked) p { color: #fff; }
+
+/* ═════════════ TABS / TABLAS / EXPANDER ═════════════ */
+.stTabs [data-baseweb="tab-list"] { gap: 4px; border-bottom: 1px solid var(--line); }
+.stTabs [data-baseweb="tab"] { height: 46px; padding: 0 16px; background: transparent; border-radius: 8px 8px 0 0; color: var(--muted); font-weight: 700; transition: color 0.15s, background 0.15s; }
+.stTabs [data-baseweb="tab"]:hover { color: #fff; background: var(--surface); }
+.stTabs [aria-selected="true"] { color: #fff !important; }
+.stTabs [data-baseweb="tab-highlight"] { background-color: var(--red) !important; height: 3px; }
+.stTabs [data-baseweb="tab-border"] { display: none; }
+[data-testid="stDataFrame"] { border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden; box-shadow: var(--shadow-card); }
+[data-testid="stExpander"] { border: 1px solid var(--line) !important; border-radius: var(--r-md) !important; background: var(--surface); }
+[data-testid="stAlert"] { border-radius: 10px; border: 1px solid var(--line); }
+
+/* ═════════════ ADN TÁCTICO ═════════════ */
+.tag-badge { display: inline-block; padding: 4px 12px; border-radius: 999px; font-size: 0.7rem; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase; margin: 3px 4px 3px 0; }
+.tag-pressing { background: rgba(237,26,59,0.12);  color: #ff5470;       border: 1px solid rgba(237,26,59,0.55); }
+.tag-bloque   { background: rgba(107,140,255,0.12); color: var(--blue);  border: 1px solid rgba(107,140,255,0.5); }
+.tag-posesion { background: rgba(94,207,107,0.12);  color: var(--green); border: 1px solid rgba(94,207,107,0.5); }
+.tag-directo  { background: rgba(207,180,94,0.12);  color: var(--gold);  border: 1px solid rgba(207,180,94,0.5); }
+.tag-neutral  { background: rgba(255,255,255,0.04); color: var(--muted); border: 1px solid var(--line); }
+.tag-contra   { background: rgba(207,94,173,0.12);  color: #e07cc3;      border: 1px solid rgba(207,94,173,0.5); }
+.adn-card { background: linear-gradient(180deg, var(--surface-2), var(--surface)); border: 1px solid var(--line); border-radius: var(--r-md); padding: 20px 24px; margin-bottom: 12px; box-shadow: var(--shadow-card); transition: border-color 0.2s; }
+.adn-card:hover { border-color: #3a3a44; }
+.adn-team-name { font-family: 'Bebas Neue', sans-serif; font-size: 1.6rem; color: #fff; letter-spacing: 1px; margin-bottom: 10px; }
+.adn-perfil { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 2px; color: var(--dim); margin-bottom: 6px; }
+
+/* ═════════════ RACHAS / MOMENTUM ═════════════ */
+.racha-dot { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 50%; font-size: 0.74rem; font-weight: 800; margin: 2px 3px 2px 0; }
+.racha-v { background: var(--red); color: #fff; box-shadow: 0 0 14px rgba(237,26,59,0.45); }
+.racha-e { background: #2a2a33; color: #a0a0aa; }
+.racha-d { background: transparent; color: var(--dim); border: 1px solid var(--line); }
+.momentum-card { background: linear-gradient(180deg, var(--surface-2), var(--surface)); border: 1px solid var(--line); border-radius: var(--r-md); padding: 18px 22px; margin-bottom: 10px; box-shadow: var(--shadow-card); }
+.momentum-team { font-family: 'Bebas Neue', sans-serif; font-size: 1.5rem; color: #fff; letter-spacing: 1px; margin-bottom: 10px; }
+.momentum-label { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; color: var(--dim); margin-bottom: 6px; }
+.momentum-alza { color: var(--green); font-weight: 800; font-size: 0.92rem; }
+.momentum-caida { color: var(--red); font-weight: 800; font-size: 0.92rem; }
+.momentum-estable { color: var(--muted); font-weight: 800; font-size: 0.92rem; }
+.momentum-sub { font-size: 0.78rem; color: var(--muted); margin-top: 10px; font-variant-numeric: tabular-nums; }
+.mom-bar { height: 4px; margin-top: 14px; background: #202027; border-radius: 999px; overflow: hidden; }
+.mom-bar > i { display: block; height: 100%; background: linear-gradient(90deg, #4a4a52, var(--red)); border-radius: 999px; }
+
+/* ═════════════ CONTEXTO TÁCTICO ═════════════ */
+.tactica-clash { background: linear-gradient(180deg, var(--surface-2), var(--surface)); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 26px 30px; margin-top: 22px; box-shadow: var(--shadow-card); }
+.tactica-title { font-family: 'Bebas Neue', sans-serif; font-size: 1.5rem; color: var(--red); letter-spacing: 1.5px; margin-bottom: 18px; }
+.tactica-row { display: flex; align-items: flex-start; gap: 22px; margin-bottom: 14px; }
 .tactica-team-col { flex: 1; }
-.tactica-vs-col { color: #2a2a35; font-family: 'Bebas Neue', sans-serif; font-size: 1.2rem; padding-top: 4px; }
-.tactica-insight { background: #0f0f12; border-left: 3px solid #ED1A3B; border-radius: 0 6px 6px 0; padding: 10px 14px; margin-top: 10px; font-size: 0.82rem; color: #a0a0a8; line-height: 1.5; }
+.tactica-team-label { font-size: 0.7rem; font-weight: 700; color: var(--dim); text-transform: uppercase; letter-spacing: 2px; margin-bottom: 8px; }
+.tactica-team-note { font-size: 0.82rem; line-height: 1.5; color: var(--muted); margin-top: 10px; }
+.tactica-vs-col { display: flex; align-items: center; justify-content: center; width: 38px; height: 38px; flex: none; border-radius: 50%; border: 1px solid var(--line); background: var(--bg); color: var(--dim); font-family: 'Bebas Neue', sans-serif; font-size: 1.05rem; letter-spacing: 1px; }
+.tactica-insight { background: #0e0e11; border-left: 3px solid var(--red); border-radius: 0 8px 8px 0; padding: 12px 16px; margin-top: 12px; font-size: 0.84rem; color: #a8a8b2; line-height: 1.6; }
+
+/* ═════════════ RESPONSIVE / ACCESIBILIDAD ═════════════ */
+@media (max-width: 900px) {
+    .hero-banner { padding: 36px 24px 32px; }
+    .broadcast-board { grid-template-columns: 1fr; gap: 22px; padding: 26px 18px; }
+    .team-block.home, .team-block.away { border: none; }
+    .top3-container { flex-direction: column; }
+    .tactica-row { flex-direction: column; }
+    .tactica-vs-col { align-self: center; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 """, unsafe_allow_html=True)
 
@@ -119,7 +252,23 @@ PENALIDAD_ROTACION_TIROS_PCT = 0.15
 POSESION_AMPLIFICACION = 1.15
 
 RED, WHITE, GRAY = "#ED1A3B", "#ffffff", "#4a4a52"
-PLOT = dict(font=dict(family="Manrope", size=12, color="#a0a0a8"), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", margin=dict(l=10, r=20, t=36, b=10))
+GRID, AXIS_TXT, AXIS_LINE = "rgba(255,255,255,0.06)", "#8b8b95", "#26262d"
+PLOT = dict(
+    font=dict(family="Manrope, sans-serif", size=12, color="#a0a0a8"),
+    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+    margin=dict(l=10, r=20, t=36, b=10),
+    hoverlabel=dict(bgcolor="#17171c", bordercolor="#ED1A3B", font=dict(family="Manrope, sans-serif", size=12, color="#ffffff")),
+)
+PLOT_CFG = dict(displayModeBar=False)  # oculta la barra de herramientas de Plotly en los gráficos "de tarjeta"
+
+def estilizar_ejes(fig, grid_x=False, grid_y=True):
+    """Estilo uniforme de ejes (solo visual). Se llama DESPUÉS de update_layout."""
+    base = dict(zeroline=False, showline=True, linecolor=AXIS_LINE, tickfont=dict(size=11, color=AXIS_TXT), title_font=dict(size=11, color="#6b6b75"))
+    fig.update_xaxes(showgrid=grid_x, gridcolor=GRID, **base)
+    fig.update_yaxes(showgrid=grid_y, gridcolor=GRID, **base)
+    if getattr(fig.layout, "yaxis2", None) and fig.layout.yaxis2.overlaying:  # eje secundario: sin grilla duplicada
+        fig.update_layout(yaxis2=dict(showgrid=False))
+    return fig
 
 # ──────────────────────────────────────────────────────────────────────
 # PROCESAMIENTO DE DATOS
@@ -611,7 +760,8 @@ def top3_marcadores(M, ea, eb):
     flat = [(M[i, j], i, j) for i in range(M.shape[0]) for j in range(M.shape[1]) if not (i == 1 and j == 1)]
     flat.sort(reverse=True)
     medallas, clases = ["🥇 MÁS PROBABLE", "🥈 2°", "🥉 3°"], ["first", "second", "third"]
-    cards = "".join(f"""<div class="score-card {clases[idx]}"><div class="score-rank">{medallas[idx]}</div><div class="score-result">{ea[:3].upper()} {i} – {j} {eb[:3].upper()}</div><div class="score-pct">{prob * 100:.1f}%</div></div>""" for idx, (prob, i, j) in enumerate(flat[:3]))
+    top_p = flat[0][0] if flat and flat[0][0] > 0 else 1.0
+    cards = "".join(f"""<div class="score-card {clases[idx]}"><div class="score-rank">{medallas[idx]}</div><div class="score-result">{ea[:3].upper()} {i} – {j} {eb[:3].upper()}</div><div class="score-pct">{prob * 100:.1f}%</div><div class="score-bar"><i style="width:{prob / top_p * 100:.0f}%"></i></div></div>""" for idx, (prob, i, j) in enumerate(flat[:3]))
     return f'<div class="top3-container">{cards}</div>'
 
 def _safe_mean(df, equipo, metrica, col="Propio", condicion=None):
@@ -684,6 +834,10 @@ def calcular_adn_tactico(df: pd.DataFrame) -> pd.DataFrame:
 
 def render_tags_html(tags: list) -> str: return "".join(f'<span class="tag-badge {clase}">{texto}</span>' for texto, clase in tags)
 
+def render_odds_chips(justa: float, teorica: float) -> str:
+    return (f'<div class="odds-row"><span class="odds-chip">⚖️ Justa <b>{justa:.2f}</b></span>'
+            f'<span class="odds-chip theo">📊 Teórica <b>{teorica:.2f}</b></span></div>')
+
 def contexto_tactica_clash(adn: pd.DataFrame, eq_a: str, eq_b: str) -> str:
     if adn is None or eq_a not in adn.index or eq_b not in adn.index: return ""
     tags_a   = adn.loc[eq_a, "Tags"]   if isinstance(adn.loc[eq_a, "Tags"],   list) else []
@@ -711,15 +865,15 @@ def contexto_tactica_clash(adn: pd.DataFrame, eq_a: str, eq_b: str) -> str:
         <div class="tactica-title">Contexto Táctico del Choque</div>
         <div class="tactica-row">
             <div class="tactica-team-col">
-                <div style="font-size:0.7rem;color:#555560;text-transform:uppercase;letter-spacing:2px;margin-bottom:6px;">{eq_a} (local)</div>
+                <div class="tactica-team-label">{eq_a} (local)</div>
                 {tags_a_html}
-                <div style="font-size:0.8rem;color:#888890;margin-top:8px;">{ins_a}</div>
+                <div class="tactica-team-note">{ins_a}</div>
             </div>
             <div class="tactica-vs-col">VS</div>
             <div class="tactica-team-col">
-                <div style="font-size:0.7rem;color:#555560;text-transform:uppercase;letter-spacing:2px;margin-bottom:6px;">{eq_b} (visitante)</div>
+                <div class="tactica-team-label">{eq_b} (visitante)</div>
                 {tags_b_html}
-                <div style="font-size:0.8rem;color:#888890;margin-top:8px;">{ins_b}</div>
+                <div class="tactica-team-note">{ins_b}</div>
             </div>
         </div>
         <div class="tactica-insight">{clash_html}</div>
@@ -781,7 +935,8 @@ def render_racha_dots(ultimas6: list) -> str:
     html = ""
     for r in ultimas6:
         cls = {"V": "racha-v", "E": "racha-e", "D": "racha-d"}[r]
-        html += f'<span class="racha-dot {cls}">{r}</span>'
+        tip = {"V": "Victoria", "E": "Empate", "D": "Derrota"}[r]
+        html += f'<span class="racha-dot {cls}" title="{tip}">{r}</span>'
     return html
 
 def fig_momentum_timeline(df: pd.DataFrame, equipo: str) -> go.Figure:
@@ -812,30 +967,35 @@ def fig_momentum_timeline(df: pd.DataFrame, equipo: str) -> go.Figure:
     xg_vals = xg_vals[:min_len]
 
     fig = go.Figure()
-    fig.add_trace(go.Bar(x=fechas_labels, y=pts_parciales, name="Pts/Fecha", marker_color=[RED if p == 3 else ("#888890" if p == 1 else "#1e1e24") for p in pts_parciales], yaxis="y1"))
-    fig.add_trace(go.Scatter(x=fechas_labels, y=xg_vals, name="xG Propio", mode="lines+markers", line=dict(color=WHITE, width=2), marker=dict(size=6), yaxis="y2"))
-    fig.update_layout(**PLOT, height=320, yaxis=dict(title="Puntos", showgrid=False, color="#555560"), yaxis2=dict(title="xG", overlaying="y", side="right", showgrid=False, color="#888890"), legend=dict(orientation="h", x=0, y=1.12), xaxis=dict(title="Torneo y Fecha", color="#555560", tickmode="linear"))
+    fig.add_trace(go.Bar(x=fechas_labels, y=pts_parciales, name="Pts/Fecha", marker=dict(color=[RED if p == 3 else ("#888890" if p == 1 else "#1e1e24") for p in pts_parciales], line=dict(width=0)), opacity=0.95, hovertemplate="%{y}<extra>Pts/Fecha</extra>", yaxis="y1"))
+    fig.add_trace(go.Scatter(x=fechas_labels, y=xg_vals, name="xG Propio", mode="lines+markers", line=dict(color=WHITE, width=2.5), marker=dict(size=7, color=WHITE, line=dict(width=2, color="#0a0a0c")), hovertemplate="%{y:.2f}<extra>xG Propio</extra>", yaxis="y2"))
+    fig.update_layout(**PLOT, height=320, hovermode="x unified", bargap=0.3, yaxis=dict(title="Puntos", color="#555560", range=[0, 3.5], dtick=1), yaxis2=dict(title="xG", overlaying="y", side="right", showgrid=False, color="#888890"), legend=dict(orientation="h", x=0, y=1.14, font=dict(size=11)), xaxis=dict(title="Torneo y Fecha", color="#555560", tickmode="linear"))
+    estilizar_ejes(fig)
     return fig
 
 def fig_momentum_ranking(rachas: pd.DataFrame) -> go.Figure:
     df_r = rachas.sort_values("MomentumScore", ascending=True).copy()
-    colors = [RED if sc >= 0.65 else (GRAY if sc <= 0.35 else "#4a4a6a") for sc in df_r["MomentumScore"]]
-    fig = go.Figure(go.Bar(x=df_r["MomentumScore"], y=df_r.index, orientation="h", marker_color=colors, text=[f"{s:.2f}" for s in df_r["MomentumScore"]], textposition="outside"))
-    fig.update_layout(**PLOT, height=max(400, len(df_r) * 28), xaxis=dict(range=[0, 1.1], showgrid=False, color="#555560"), title=dict(text="ÍNDICE DE MOMENTUM", font=dict(family="Bebas Neue", size=18, color="#ffffff")))
+    colors = [RED if sc >= 0.65 else (GRAY if sc <= 0.35 else "#7d2434") for sc in df_r["MomentumScore"]]
+    fig = go.Figure(go.Bar(x=df_r["MomentumScore"], y=df_r.index, orientation="h", marker=dict(color=colors, line=dict(width=0)), text=[f"{s:.2f}" for s in df_r["MomentumScore"]], textposition="outside", textfont=dict(color="#c8c8d0", size=11), cliponaxis=False, hovertemplate="<b>%{y}</b><br>Momentum: %{x:.2f}<extra></extra>"))
+    fig.update_layout(**PLOT, height=max(400, len(df_r) * 28), bargap=0.35, xaxis=dict(range=[0, 1.1], color="#555560"), title=dict(text="ÍNDICE DE MOMENTUM", font=dict(family="Bebas Neue", size=18, color="#ffffff")))
+    estilizar_ejes(fig, grid_x=True, grid_y=False)
     return fig
 
 def fig_score_matrix(M, ea, eb, n=5):
     sub = M[:n, :n]
     z_text = [[f"{sub[i, j]*100:.1f}%" for j in range(n)] for i in range(n)]
-    fig = go.Figure(go.Heatmap(z=sub, x=[str(j) for j in range(n)], y=[str(i) for i in range(n)], text=z_text, texttemplate="%{text}", colorscale=[[0, "#0a0a0c"], [0.5, "#590f19"], [1, "#ED1A3B"]], showscale=False))
+    fig = go.Figure(go.Heatmap(z=sub, x=[str(j) for j in range(n)], y=[str(i) for i in range(n)], text=z_text, texttemplate="%{text}", textfont=dict(family="Manrope", size=13, color="#ffffff"), xgap=4, ygap=4, colorscale=[[0, "#121216"], [0.25, "#3a0f18"], [0.6, "#8f1228"], [1, "#ED1A3B"]], showscale=False, hovertemplate=f"{ea} %{{y}} – {eb} %{{x}}<br>Probabilidad: %{{z:.1%}}<extra></extra>"))
     fig.update_layout(**PLOT, height=350, xaxis_title=f"GOLES {eb.upper()}", yaxis_title=f"GOLES {ea.upper()}", yaxis=dict(autorange="reversed"))
+    estilizar_ejes(fig, grid_x=False, grid_y=False)
+    fig.update_xaxes(showline=False, tickfont=dict(size=13, color="#c8c8d0"))
+    fig.update_yaxes(showline=False, tickfont=dict(size=13, color="#c8c8d0"))
     return fig
 
 # ──────────────────────────────────────────────────────────────────────
 # NAVEGACIÓN
 # ──────────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown('<div class="sidebar-logo">LPF SCOUTING</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sidebar-logo">LPF SCOUTING</div><div class="sidebar-tag">Liga Profesional · Argentina</div>', unsafe_allow_html=True)
     
     rutas_base = {
         "Histórico": "data/historico",
@@ -922,8 +1082,9 @@ st.markdown(f"""
 <div class="hero-banner">
     <div class="hero-subtitle">Liga Profesional de Fútbol · Argentina 2026</div>
     <h1 class="hero-title">PLATAFORMA DE RENDIMIENTO</h1>
-    <div style="color:#888890;font-size:0.8rem;margin-top:8px;">
-        📅 Datos actualizados: {_fecha_datos} &nbsp;|&nbsp; 🗂️ Fuentes activas: {len(archivos_a_cargar)}
+    <div class="hero-meta">
+        <span class="meta-chip">📅 Datos actualizados: {_fecha_datos}</span>
+        <span class="meta-chip">🗂️ Fuentes activas: {len(archivos_a_cargar)}</span>
     </div>
 </div>
 """, unsafe_allow_html=True)
@@ -939,10 +1100,11 @@ con un *prior* bayesiano impulsado por un sistema ELO Bivariado (Local/Visitante
 if nav == "Predicción de Partidos":
     st.markdown('<div class="section-header">Módulo Predictivo</div>', unsafe_allow_html=True)
     idx_river = equipos.index("River Plate") if "River Plate" in equipos else 0
-    c1, c2, c3 = st.columns([4, 4, 2])
-    ea  = c1.selectbox("Equipo Local",     equipos, index=idx_river)
-    eb  = c2.selectbox("Equipo Visitante", equipos, index=min(1, len(equipos) - 1))
-    loc = c3.selectbox("Ajuste Localía",   ["Aplicar Ventaja", "Terreno Neutral"]) == "Aplicar Ventaja"
+    with st.container(border=True):
+        c1, c2, c3 = st.columns([4, 4, 2])
+        ea  = c1.selectbox("Equipo Local",     equipos, index=idx_river)
+        eb  = c2.selectbox("Equipo Visitante", equipos, index=min(1, len(equipos) - 1))
+        loc = c3.selectbox("Ajuste Localía",   ["Aplicar Ventaja", "Terreno Neutral"]) == "Aplicar Ventaja"
     
     if st.button("CALCULAR PROBABILIDADES"):
         la, lb = calcular_lambdas(df, ea, eb, loc, tabla)
@@ -961,53 +1123,44 @@ if nav == "Predicción de Partidos":
         c_emp = 1 / (sim['empate'] * m_emp)   if sim['empate'] > 0   else 0.0
         c_vis = 1 / (sim['derrota'] * m_vis)  if sim['derrota'] > 0  else 0.0
         
+        _mx = max(sim['victoria'], sim['empate'], sim['derrota'])
+        _lead = lambda p: "lead" if p == _mx else ""
         st.markdown(f"""
         <div class="broadcast-board">
-            <div class="team-block home">
+            <div class="team-block home {_lead(sim['victoria'])}">
                 <div class="t-name">{ea}</div>
                 <div class="t-prob">{sim['victoria']*100:.1f}%</div>
                 <div class="t-label">Victoria Local</div>
-                <div style="display:flex; justify-content:center; gap:8px; margin-top:12px;">
-                    <div style="font-size:0.75rem; color:#a0a0a8; background:#111115; padding:4px 8px; border-radius:4px; border: 1px solid #2a2a35;">
-                        ⚖️ JUSTA: {r_loc:.2f}
-                    </div>
-                    <div style="font-size:0.75rem; color:#cfb45e; background:#2a2a1a; padding:4px 8px; border-radius:4px; border: 1px solid #cfb45e;">
-                        📊 TEÓRICA: {c_loc:.2f}
-                    </div>
-                </div>
+                {render_odds_chips(r_loc, c_loc)}
             </div>
-            <div class="draw-block">
-                <div class="t-label" style="margin-bottom:5px;">Empate</div>
+            <div class="draw-block {_lead(sim['empate'])}">
+                <div class="t-label" style="margin:0 0 8px;">Empate</div>
                 <div class="draw-prob">{sim['empate']*100:.1f}%</div>
-                <div style="display:flex; justify-content:center; gap:8px; margin-top:12px;">
-                    <div style="font-size:0.75rem; color:#a0a0a8; background:#111115; padding:4px 8px; border-radius:4px; border: 1px solid #2a2a35;">
-                        ⚖️ JUSTA: {r_emp:.2f}
-                    </div>
-                    <div style="font-size:0.75rem; color:#cfb45e; background:#2a2a1a; padding:4px 8px; border-radius:4px; border: 1px solid #cfb45e;">
-                        📊 TEÓRICA: {c_emp:.2f}
-                    </div>
-                </div>
+                {render_odds_chips(r_emp, c_emp)}
             </div>
-            <div class="team-block away">
+            <div class="team-block away {_lead(sim['derrota'])}">
                 <div class="t-name">{eb}</div>
-                <div class="t-prob" style="color:#ffffff;">{sim['derrota']*100:.1f}%</div>
+                <div class="t-prob">{sim['derrota']*100:.1f}%</div>
                 <div class="t-label">Victoria Visitante</div>
-                <div style="display:flex; justify-content:center; gap:8px; margin-top:12px;">
-                    <div style="font-size:0.75rem; color:#a0a0a8; background:#111115; padding:4px 8px; border-radius:4px; border: 1px solid #2a2a35;">
-                        ⚖️ JUSTA: {r_vis:.2f}
-                    </div>
-                    <div style="font-size:0.75rem; color:#cfb45e; background:#2a2a1a; padding:4px 8px; border-radius:4px; border: 1px solid #cfb45e;">
-                        📊 TEÓRICA: {c_vis:.2f}
-                    </div>
-                </div>
+                {render_odds_chips(r_vis, c_vis)}
+            </div>
+            <div class="prob-bar">
+                <span class="seg-home" style="flex:{sim['victoria']:.4f}"></span>
+                <span class="seg-draw" style="flex:{sim['empate']:.4f}"></span>
+                <span class="seg-away" style="flex:{sim['derrota']:.4f}"></span>
             </div>
         </div>
         """, unsafe_allow_html=True)
         
-        st.markdown('<div class="section-header">Marcadores Más Probables</div>', unsafe_allow_html=True)
-        st.markdown(top3_marcadores(sim["matrix"], ea, eb), unsafe_allow_html=True)
-        ctx = contexto_tactica_clash(adn_df, ea, eb)
-        if ctx: st.markdown(ctx, unsafe_allow_html=True)
+        tab_marc, tab_met, tab_forma = st.tabs(["🎯 Marcadores & Táctica", "📝 Proyección de Métricas", "🔥 Forma Reciente"])
+
+        with tab_marc:
+            st.markdown('<div class="section-header">Marcadores Más Probables</div>', unsafe_allow_html=True)
+            st.markdown(top3_marcadores(sim["matrix"], ea, eb), unsafe_allow_html=True)
+            ctx = contexto_tactica_clash(adn_df, ea, eb)
+            if ctx: st.markdown(ctx, unsafe_allow_html=True)
+            st.markdown('<div class="section-header">Matriz de Resultados</div>', unsafe_allow_html=True)
+            st.plotly_chart(fig_score_matrix(sim["matrix"], ea, eb), use_container_width=True, config=PLOT_CFG)
 
         tiros_a, tiros_b = proyectar_metrica(df, ea, eb, "Tiros totales", loc, tabla)
         arco_a, arco_b   = proyectar_metrica(df, ea, eb, "Tiros al arco", loc, tabla)
@@ -1041,9 +1194,6 @@ if nav == "Predicción de Partidos":
         else:
             pos_a, pos_b = 50.0, 50.0
         
-        st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown("### 📝 PROYECCIÓN DE MÉTRICAS")
-        
         df_comparativa = pd.DataFrame({
             "Métrica": [
                 "Posesión de balón", "Goles esperados (xG)", "Tiros totales", 
@@ -1074,19 +1224,22 @@ if nav == "Predicción de Partidos":
             ]
         })
 
-        st.dataframe(df_comparativa, hide_index=True, use_container_width=True, height=900)
+        with tab_met:
+            st.markdown('<div class="section-header">Proyección de Métricas</div>', unsafe_allow_html=True)
+            st.dataframe(df_comparativa, hide_index=True, use_container_width=True, height=900)
 
-        if not rachas_df.empty and ea in rachas_df.index and eb in rachas_df.index:
-            st.markdown('<div class="section-header">Forma Reciente</div>', unsafe_allow_html=True)
-            mc1, mc2 = st.columns(2)
-            for col_ui, eq_m in [(mc1, ea), (mc2, eb)]:
-                with col_ui:
-                    row_m = rachas_df.loc[eq_m]
-                    dots  = render_racha_dots(row_m["Ultimas6"])
-                    col_ui.markdown(f"""<div class="momentum-card"><div class="momentum-team">{eq_m}</div><div class="momentum-label">Últimas {len(row_m["Ultimas6"])} fechas</div><div style="margin-bottom:10px;">{dots}</div><div class="momentum-label">Estado de forma</div><div class="{row_m["EstadoCls"]}">{row_m["Estado"]}</div><div style="font-size:0.78rem;color:#555560;margin-top:6px;">xG reciente: {row_m["xGRec"]:.2f} &nbsp;|&nbsp; Pts últimas 3: {row_m["Pts3"]}</div></div>""", unsafe_allow_html=True)
-            
-        st.markdown('<div class="section-header">Matriz de Resultados</div>', unsafe_allow_html=True)
-        st.plotly_chart(fig_score_matrix(sim["matrix"], ea, eb), use_container_width=True)
+        with tab_forma:
+            if not rachas_df.empty and ea in rachas_df.index and eb in rachas_df.index:
+                st.markdown('<div class="section-header">Forma Reciente</div>', unsafe_allow_html=True)
+                mc1, mc2 = st.columns(2)
+                for col_ui, eq_m in [(mc1, ea), (mc2, eb)]:
+                    with col_ui:
+                        row_m = rachas_df.loc[eq_m]
+                        dots  = render_racha_dots(row_m["Ultimas6"])
+                        col_ui.markdown(f"""<div class="momentum-card"><div class="momentum-team">{eq_m}</div><div class="momentum-label">Últimas {len(row_m["Ultimas6"])} fechas</div><div>{dots}</div><div class="momentum-label" style="margin-top:14px;">Estado de forma</div><div class="{row_m["EstadoCls"]}">{row_m["Estado"]}</div><div class="mom-bar"><i style="width:{max(0.0, min(1.0, float(row_m["MomentumScore"]))) * 100:.0f}%"></i></div><div class="momentum-sub">xG reciente: {row_m["xGRec"]:.2f} &nbsp;·&nbsp; Pts últimas 3: {row_m["Pts3"]}</div></div>""", unsafe_allow_html=True)
+            else:
+                st.info("No hay datos de forma reciente para estos equipos.")
+
 
 elif nav == "Simulador de Jornada":
     st.markdown('<div class="section-header">Simulador de Jornada Automático (Inversión de Fixture)</div>', unsafe_allow_html=True)
@@ -1293,11 +1446,9 @@ elif nav == "Simulador de Jornada":
 elif nav == "Métricas Globales":
     st.markdown('<div class="section-header">Métricas Globales Filtradas</div>', unsafe_allow_html=True)
     
-    # Filtro global de fechas
     fechas_disponibles = sorted(df["nFecha"].dropna().unique())
     f_sel = st.multiselect("📅 Filtrar por Fechas (Vacío = Todas las jornadas)", fechas_disponibles, default=[])
     
-    # Aplicar filtro de fechas
     df_filt = df.copy()
     if f_sel:
         df_filt = df_filt[df_filt["nFecha"].isin(f_sel)]
@@ -1307,7 +1458,7 @@ elif nav == "Métricas Globales":
     cat_control = ["Posesión de balón", "Pases totales", "Pases precisos", "Faltas"]
     cat_xg = ["Goles esperados (xG)", "xG al arco (xGOT)"] 
 
-    tab_of, tab_def, tab_ctrl, tab_xg = st.tabs(["⚔️ OFENSIVAS", "🛡️ DEFENSIVAS", "🧭 CONTROL", "📊 xG"])
+    tab_of, tab_def, tab_ctrl, tab_xg = st.tabs(["⚔ OFENSIVAS", "🛡️ DEFENSIVAS", "🧭 CONTROL", "📊 xG"])
     
     def render_panel_metricas(lista_metricas):
         mets_validas = [m for m in lista_metricas if m in df_filt["Métrica"].values]
@@ -1315,7 +1466,6 @@ elif nav == "Métricas Globales":
             st.warning("No hay datos cargados para estas métricas en las fechas seleccionadas.")
             return
             
-        # Panel de botones en columnas
         col1, col2, col3 = st.columns([2, 1.5, 1.5])
         with col1:
             m_sel = st.selectbox("Seleccionar Métrica", mets_validas, key=lista_metricas[0]+"_m")
@@ -1324,21 +1474,21 @@ elif nav == "Métricas Globales":
         with col3:
             cond_sel = st.radio("Condición", ["General", "Local", "Visitante"], horizontal=True, key=lista_metricas[0]+"_cond")
         
-        # Filtrar por métrica y condición
         df_m = df_filt[df_filt["Métrica"] == m_sel]
         if cond_sel != "General":
             df_m = df_m[df_m["Condicion"] == cond_sel]
             
-        # Seleccionar columna de datos según el enfoque
         col_data = "Propio" if enfoque == "A Favor" else "Concedido"
             
         res = df_m.groupby("Equipo")[col_data].mean().sort_values(ascending=False).reset_index()
         
-        # Feedback visual: Rojo para A Favor, Gris para En Contra
         color_barras = RED if enfoque == "A Favor" else GRAY
         
         fig = px.bar(res, x="Equipo", y=col_data, color_discrete_sequence=[color_barras])
-        fig.update_layout(**PLOT, height=450, xaxis_title="", yaxis_title="Promedio por Partido")
+        fig.update_traces(marker_line_width=0, opacity=0.95, hovertemplate=f"<b>%{{x}}</b><br>{m_sel} ({enfoque.lower()}): %{{y:.2f}}<extra></extra>")
+        fig.update_layout(**PLOT, height=450, bargap=0.28, xaxis_title="", yaxis_title="Promedio por Partido")
+        estilizar_ejes(fig)
+        fig.update_xaxes(tickangle=-40)
         st.plotly_chart(fig, use_container_width=True)
 
     with tab_of: render_panel_metricas(cat_ofensivas)
@@ -1359,10 +1509,10 @@ elif nav == "Matriz de Rendimiento":
         }).dropna()
         
         m_x_mean, m_y_mean = df_e["X_VAL"].mean(), df_e["Y_VAL"].mean()
-        fig = go.Figure(go.Scatter(x=df_e["X_VAL"], y=df_e["Y_VAL"], mode="markers+text", text=df_e.index, textposition="top center", marker=dict(size=14, color=RED, line=dict(width=2, color="#141417")), textfont=dict(family="Manrope", size=11, color="#ffffff")))
-        fig.add_vline(x=m_x_mean, line=dict(color=GRAY, dash="dash", width=1))
-        fig.add_hline(y=m_y_mean, line=dict(color=GRAY, dash="dash", width=1))
-        st.plotly_chart(fig.update_layout(**PLOT, height=600, xaxis_title=m_x, yaxis_title=m_y), use_container_width=True)
+        fig = go.Figure(go.Scatter(x=df_e["X_VAL"], y=df_e["Y_VAL"], mode="markers+text", text=df_e.index, textposition="top center", marker=dict(size=14, color=RED, opacity=0.92, line=dict(width=2, color="#0a0a0c")), textfont=dict(family="Manrope", size=11, color="#d4d4da"), hovertemplate=f"<b>%{{text}}</b><br>{m_x}: %{{x:.2f}}<br>{m_y}: %{{y:.2f}}<extra></extra>"))
+        fig.add_vline(x=m_x_mean, line=dict(color=GRAY, dash="dash", width=1), annotation_text="Media liga", annotation_position="top", annotation_font=dict(size=10, color="#6b6b75"))
+        fig.add_hline(y=m_y_mean, line=dict(color=GRAY, dash="dash", width=1), annotation_text="Media liga", annotation_position="right", annotation_font=dict(size=10, color="#6b6b75"))
+        st.plotly_chart(estilizar_ejes(fig.update_layout(**PLOT, height=600, xaxis_title=m_x, yaxis_title=m_y), grid_x=True), use_container_width=True)
     else: 
         st.warning("No hay suficientes datos para generar la matriz con las métricas seleccionadas.")
 
@@ -1379,7 +1529,7 @@ elif nav == "Posiciones":
         altura_tabla = (len(t_show) * 35) + 40 
         
         st.dataframe(
-            t_show.style.format({"Efectividad %": "{:.1f}%"}), 
+            t_show.style.format({"Efectividad %": "{:.1f}%"}).set_properties(subset=["#"], **{"color": "#ED1A3B"}).set_properties(subset=["PTS"], **{"background-color": "#2a1318", "color": "#ffffff"}), 
             use_container_width=True, 
             hide_index=True,
             height=altura_tabla 
@@ -1414,59 +1564,49 @@ elif nav == "Radiografía de Equipo":
             </div>
             """, unsafe_allow_html=True)
             
-            # --- NUEVA LÓGICA DE NORMALIZACIÓN (Por valor máximo real) ---
             mets_adn = ["Posesion", "TirosProp", "xGProp", "xGConc"]
             labels_adn = ["Posesión", "Tiros Prop.", "xG Generado", "xG Concedido"]
             
-            # Obtener promedios y máximos reales de la liga
             liga_means = adn_df[mets_adn].mean()
-            liga_maxs = adn_df[mets_adn].max().replace(0, 1) # Evitar división por cero
+            liga_maxs = adn_df[mets_adn].max().replace(0, 1) 
             
-            # Normalizar del 0 al 1 dividiendo por el máximo de la liga
             eq_norm = [float(row_adn[m] / liga_maxs[m]) if pd.notna(row_adn[m]) else 0.0 for m in mets_adn]
             lig_norm = [float(liga_means[m] / liga_maxs[m]) for m in mets_adn]
             
-            # Textos para mostrar el valor real al hacer hover
             eq_text = [f"{labels_adn[i]}: {row_adn[m]:.1f}" for i, m in enumerate(mets_adn)]
             lig_text = [f"Media Liga: {liga_means[m]:.1f}" for i, m in enumerate(mets_adn)]
 
             fig_adn = go.Figure()
             
-            # --- CAPAS DE RELLENO (FONDO) ---
-            # 1. Relleno Liga
             fig_adn.add_trace(go.Scatterpolar(
                 r=lig_norm + [lig_norm[0]], 
                 theta=labels_adn + [labels_adn[0]], 
-                fill="toself", mode="none", # Solo relleno, sin línea
-                fillcolor="rgba(74, 74, 82, 0.4)", hoverinfo="skip"
+                fill="toself", mode="none", 
+                fillcolor="rgba(74, 74, 82, 0.28)", hoverinfo="skip"
             ))
-            # 2. Relleno Equipo
             fig_adn.add_trace(go.Scatterpolar(
                 r=eq_norm + [eq_norm[0]], 
                 theta=labels_adn + [labels_adn[0]], 
-                fill="toself", mode="none", # Solo relleno, sin línea
-                fillcolor="rgba(237, 26, 59, 0.4)", hoverinfo="skip"
+                fill="toself", mode="none", 
+                fillcolor="rgba(237, 26, 59, 0.34)", hoverinfo="skip"
             ))
 
-            # --- CAPAS DE LÍNEAS Y PUNTOS (FRENTE) ---
-            # 3. Bordes y Puntos Liga
             fig_adn.add_trace(go.Scatterpolar(
                 r=lig_norm + [lig_norm[0]], 
                 theta=labels_adn + [labels_adn[0]], 
                 mode="lines+markers", 
-                line=dict(color=GRAY, dash="dot", width=1.5), 
-                marker=dict(size=6, color=GRAY), # Punto gris explícito
-                name="Media Liga", hoverinfo="text+name", 
+                line=dict(color="#8b8b95", dash="dot", width=1.5), 
+                marker=dict(size=6, color="#8b8b95"), 
+                name="Media Liga", hovertemplate="%{text}<extra>Media Liga</extra>", 
                 text=lig_text + [lig_text[0]]
             ))
-            # 4. Bordes y Puntos Equipo
             fig_adn.add_trace(go.Scatterpolar(
                 r=eq_norm + [eq_norm[0]], 
                 theta=labels_adn + [labels_adn[0]], 
                 mode="lines+markers", 
-                line=dict(color=RED, width=2), 
-                marker=dict(size=6, color=RED), # Punto rojo explícito
-                name=eq_sel, hoverinfo="text+name", 
+                line=dict(color=RED, width=2.5), 
+                marker=dict(size=8, color=RED, line=dict(width=2, color="#0a0a0c")), 
+                name=eq_sel, hovertemplate="%{text}<extra>%{fullData.name}</extra>", 
                 text=eq_text + [eq_text[0]]
             ))
             
@@ -1475,14 +1615,16 @@ elif nav == "Radiografía de Equipo":
                 height=300, 
                 polar=dict(
                     bgcolor="rgba(0,0,0,0)", 
-                    radialaxis=dict(visible=False, range=[0, 1])
+                    radialaxis=dict(visible=True, range=[0, 1], showticklabels=False, ticks="", gridcolor=GRID, linecolor="rgba(0,0,0,0)"), 
+                    angularaxis=dict(gridcolor=GRID, linecolor=AXIS_LINE, tickfont=dict(size=12, color="#c8c8d0"))
                 ), 
-                margin=dict(l=30, r=30, t=20, b=20), 
+                margin=dict(l=48, r=48, t=24, b=24), 
                 showlegend=False
             )
             fig_adn.update_layout(**layout_adn)
             
-            st.plotly_chart(fig_adn, use_container_width=True)
+            st.plotly_chart(fig_adn, use_container_width=True, config=PLOT_CFG)
+
     with col2:
         st.markdown("### 🔥 Estado de Forma y Evolución")
         
@@ -1506,22 +1648,42 @@ elif nav == "Radiografía de Equipo":
         d_eq = df[(df["Equipo"] == eq_sel) & (df["Métrica"] == met_p)].sort_values("nFecha")
         
         if not d_eq.empty:
-            # Creamos la etiqueta sumando (L) para Local y (V) para Visitante
             d_eq["Etiqueta_X"] = d_eq.apply(lambda r: f"F{r['nFecha']} ({'L' if r['Condicion'] == 'Local' else 'V'})", axis=1)
             
             fig_evo = go.Figure([
-                go.Bar(x=d_eq["Etiqueta_X"], y=d_eq["Propio"], name="A Favor", marker_color=RED), 
-                go.Bar(x=d_eq["Etiqueta_X"], y=d_eq["Concedido"], name="En Contra", marker_color=GRAY)
+                go.Bar(
+                    x=d_eq["Etiqueta_X"], 
+                    y=d_eq["Propio"], 
+                    name="A Favor", 
+                    marker=dict(color=RED, line=dict(width=0)),
+                    hovertemplate="%{y:.2f}<extra>A Favor</extra>"
+                ), 
+                go.Bar(
+                    x=d_eq["Etiqueta_X"], 
+                    y=d_eq["Concedido"], 
+                    name="En Contra", 
+                    marker=dict(color=GRAY, line=dict(width=0)),
+                    hovertemplate="%{y:.2f}<extra>En Contra</extra>"
+                )
             ])
             
-            # Corrección de argumentos duplicados en Plotly
             layout_evo = PLOT.copy()
             layout_evo.update(
-                barmode="group", 
+                barmode="group", bargap=0.28, bargroupgap=0.06, hovermode="x unified", 
                 height=350, 
                 margin=dict(t=10, b=10, l=10, r=10), 
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
             )
             fig_evo.update_layout(**layout_evo)
+            estilizar_ejes(fig_evo)
             
-            st.plotly_chart(fig_evo, use_container_width=True)
+            st.plotly_chart(fig_evo, use_container_width=True, config=PLOT_CFG)
+
+st.markdown("<hr style='border-color:#1f1f24; margin-top:50px;'>", unsafe_allow_html=True)
+st.markdown(
+    "<div style='text-align:center; color:#555560; font-size:0.75rem; padding:10px 0 30px;'>"
+    "LPF Analytics v2.0 &nbsp;·&nbsp; Modelo estadístico holístico ponderado (Poisson + Dixon-Coles MLE) &nbsp;·&nbsp; "
+    "Uso analítico/educativo — no constituye asesoramiento de apuestas"
+    "</div>",
+    unsafe_allow_html=True,
+)
