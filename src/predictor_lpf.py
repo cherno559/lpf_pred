@@ -1293,28 +1293,51 @@ elif nav == "Simulador de Jornada":
 elif nav == "Métricas Globales":
     st.markdown('<div class="section-header">Métricas Globales Filtradas</div>', unsafe_allow_html=True)
     
+    # Filtro global de fechas
+    fechas_disponibles = sorted(df["nFecha"].dropna().unique())
+    f_sel = st.multiselect("📅 Filtrar por Fechas (Vacío = Todas las jornadas)", fechas_disponibles, default=[])
+    
+    # Aplicar filtro de fechas
+    df_filt = df.copy()
+    if f_sel:
+        df_filt = df_filt[df_filt["nFecha"].isin(f_sel)]
+    
     cat_ofensivas = ["Tiros totales", "Tiros al arco", "Ocasiones claras", "Tiros dentro del área", "Córners"]
     cat_defensivas = ["Quites", "Intercepciones", "Despejes", "Atajadas del arquero", "Goles evitados (arquero)"]
     cat_control = ["Posesión de balón", "Pases totales", "Pases precisos", "Faltas"]
     cat_xg = ["Goles esperados (xG)", "xG al arco (xGOT)"] 
 
-    tab_of, tab_def, tab_ctrl, tab_xg = st.tabs(["⚔️️ OFENSIVAS", "🛡️ DEFENSIVAS", "🧭 CONTROL", "📊 xG"])
+    tab_of, tab_def, tab_ctrl, tab_xg = st.tabs(["⚔️ OFENSIVAS", "🛡️ DEFENSIVAS", "🧭 CONTROL", "📊 xG"])
     
     def render_panel_metricas(lista_metricas):
-        mets_validas = [m for m in lista_metricas if m in df["Métrica"].values]
+        mets_validas = [m for m in lista_metricas if m in df_filt["Métrica"].values]
         if not mets_validas:
-            st.warning("No hay datos cargados para estas métricas.")
+            st.warning("No hay datos cargados para estas métricas en las fechas seleccionadas.")
             return
             
-        m_sel = st.selectbox("Seleccionar Métrica", mets_validas, key=lista_metricas[0])
-        cond_sel = st.radio("Condición", ["General", "Local", "Visitante"], horizontal=True, key=lista_metricas[0]+"_cond")
+        # Panel de botones en columnas
+        col1, col2, col3 = st.columns([2, 1.5, 1.5])
+        with col1:
+            m_sel = st.selectbox("Seleccionar Métrica", mets_validas, key=lista_metricas[0]+"_m")
+        with col2:
+            enfoque = st.radio("Enfoque", ["A Favor", "En Contra"], horizontal=True, key=lista_metricas[0]+"_enf")
+        with col3:
+            cond_sel = st.radio("Condición", ["General", "Local", "Visitante"], horizontal=True, key=lista_metricas[0]+"_cond")
         
-        df_m = df[df["Métrica"] == m_sel]
+        # Filtrar por métrica y condición
+        df_m = df_filt[df_filt["Métrica"] == m_sel]
         if cond_sel != "General":
             df_m = df_m[df_m["Condicion"] == cond_sel]
             
-        res = df_m.groupby("Equipo")["Propio"].mean().sort_values(ascending=False).reset_index()
-        fig = px.bar(res, x="Equipo", y="Propio", color_discrete_sequence=["#ED1A3B"])
+        # Seleccionar columna de datos según el enfoque
+        col_data = "Propio" if enfoque == "A Favor" else "Concedido"
+            
+        res = df_m.groupby("Equipo")[col_data].mean().sort_values(ascending=False).reset_index()
+        
+        # Feedback visual: Rojo para A Favor, Gris para En Contra
+        color_barras = RED if enfoque == "A Favor" else GRAY
+        
+        fig = px.bar(res, x="Equipo", y=col_data, color_discrete_sequence=[color_barras])
         fig.update_layout(**PLOT, height=450, xaxis_title="", yaxis_title="Promedio por Partido")
         st.plotly_chart(fig, use_container_width=True)
 
