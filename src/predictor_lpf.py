@@ -1506,7 +1506,9 @@ elif nav == "Radiografía de Equipo":
         d_eq = df[(df["Equipo"] == eq_sel) & (df["Métrica"] == met_p)].sort_values("nFecha")
         
         if not d_eq.empty:
-            d_eq["Etiqueta_X"] = "F" + d_eq["nFecha"].astype(str)
+            # Creamos la etiqueta sumando (L) para Local y (V) para Visitante
+            d_eq["Etiqueta_X"] = d_eq.apply(lambda r: f"F{r['nFecha']} ({'L' if r['Condicion'] == 'Local' else 'V'})", axis=1)
+            
             fig_evo = go.Figure([
                 go.Bar(x=d_eq["Etiqueta_X"], y=d_eq["Propio"], name="A Favor", marker_color=RED), 
                 go.Bar(x=d_eq["Etiqueta_X"], y=d_eq["Concedido"], name="En Contra", marker_color=GRAY)
