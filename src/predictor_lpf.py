@@ -1432,27 +1432,41 @@ elif nav == "Radiografía de Equipo":
 
             fig_adn = go.Figure()
             
-            # 1. Trazado de la Liga (Gris) - Actúa como fondo
+            # --- CAPAS DE RELLENO (FONDO) ---
+            # 1. Relleno Liga
             fig_adn.add_trace(go.Scatterpolar(
                 r=lig_norm + [lig_norm[0]], 
                 theta=labels_adn + [labels_adn[0]], 
-                fill="toself", 
-                name="Media Liga", 
-                line=dict(color=GRAY, dash="dot", width=1.5),
-                fillcolor="rgba(74, 74, 82, 0.4)",
-                hoverinfo="text+name",
-                text=lig_text + [lig_text[0]]
+                fill="toself", mode="none", # Solo relleno, sin línea
+                fillcolor="rgba(74, 74, 82, 0.4)", hoverinfo="skip"
             ))
-
-            # 2. Trazado del Equipo (Rojo) - Se dibuja al frente
+            # 2. Relleno Equipo
             fig_adn.add_trace(go.Scatterpolar(
                 r=eq_norm + [eq_norm[0]], 
                 theta=labels_adn + [labels_adn[0]], 
-                fill="toself", 
-                name=eq_sel, 
-                line=dict(color=RED, width=2),
-                fillcolor="rgba(237, 26, 59, 0.4)",
-                hoverinfo="text+name",
+                fill="toself", mode="none", # Solo relleno, sin línea
+                fillcolor="rgba(237, 26, 59, 0.4)", hoverinfo="skip"
+            ))
+
+            # --- CAPAS DE LÍNEAS Y PUNTOS (FRENTE) ---
+            # 3. Bordes y Puntos Liga
+            fig_adn.add_trace(go.Scatterpolar(
+                r=lig_norm + [lig_norm[0]], 
+                theta=labels_adn + [labels_adn[0]], 
+                mode="lines+markers", 
+                line=dict(color=GRAY, dash="dot", width=1.5), 
+                marker=dict(size=6, color=GRAY), # Punto gris explícito
+                name="Media Liga", hoverinfo="text+name", 
+                text=lig_text + [lig_text[0]]
+            ))
+            # 4. Bordes y Puntos Equipo
+            fig_adn.add_trace(go.Scatterpolar(
+                r=eq_norm + [eq_norm[0]], 
+                theta=labels_adn + [labels_adn[0]], 
+                mode="lines+markers", 
+                line=dict(color=RED, width=2), 
+                marker=dict(size=6, color=RED), # Punto rojo explícito
+                name=eq_sel, hoverinfo="text+name", 
                 text=eq_text + [eq_text[0]]
             ))
             
@@ -1461,7 +1475,7 @@ elif nav == "Radiografía de Equipo":
                 height=300, 
                 polar=dict(
                     bgcolor="rgba(0,0,0,0)", 
-                    radialaxis=dict(visible=False, range=[0, 1]) # Rango fijo anclado a los máximos
+                    radialaxis=dict(visible=False, range=[0, 1])
                 ), 
                 margin=dict(l=30, r=30, t=20, b=20), 
                 showlegend=False
@@ -1469,7 +1483,6 @@ elif nav == "Radiografía de Equipo":
             fig_adn.update_layout(**layout_adn)
             
             st.plotly_chart(fig_adn, use_container_width=True)
-
     with col2:
         st.markdown("### 🔥 Estado de Forma y Evolución")
         
