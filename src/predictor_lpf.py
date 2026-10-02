@@ -1414,14 +1414,22 @@ elif nav == "Radiografía de Equipo":
             </div>
             """, unsafe_allow_html=True)
             
+            # --- NUEVA LÓGICA DE NORMALIZACIÓN (Por valor máximo real) ---
             mets_adn = ["Posesion", "TirosProp", "xGProp", "xGConc"]
             labels_adn = ["Posesión", "Tiros Prop.", "xG Generado", "xG Concedido"]
-            liga_means = adn_df[mets_adn].mean()
-            liga_stds = adn_df[mets_adn].std().replace(0, 1)
-            eq_vals = [(row_adn[m] - liga_means[m]) / liga_stds[m] if not np.isnan(row_adn[m]) else 0.0 for m in mets_adn]
-            eq_norm = [float(np.clip((v + 3) / 6, 0.0, 1.0)) for v in eq_vals]
-            lig_norm = [0.5] * len(mets_adn)
             
+            # Obtener promedios y máximos reales de la liga
+            liga_means = adn_df[mets_adn].mean()
+            liga_maxs = adn_df[mets_adn].max().replace(0, 1) # Evitar división por cero
+            
+            # Normalizar del 0 al 1 dividiendo por el máximo de la liga
+            eq_norm = [float(row_adn[m] / liga_maxs[m]) if pd.notna(row_adn[m]) else 0.0 for m in mets_adn]
+            lig_norm = [float(liga_means[m] / liga_maxs[m]) for m in mets_adn]
+            
+            # Textos para mostrar el valor real al hacer hover
+            eq_text = [f"{labels_adn[i]}: {row_adn[m]:.1f}" for i, m in enumerate(mets_adn)]
+            lig_text = [f"Media Liga: {liga_means[m]:.1f}" for i, m in enumerate(mets_adn)]
+
             fig_adn = go.Figure()
             
             # 1. Trazado del Equipo (Rojo)
@@ -1431,29 +1439,37 @@ elif nav == "Radiografía de Equipo":
                 fill="toself", 
                 name=eq_sel, 
                 line=dict(color=RED, width=2),
-                fillcolor="rgba(237, 26, 59, 0.4)" # Rojo semi-transparente
+                fillcolor="rgba(237, 26, 59, 0.4)",
+                hoverinfo="text+name",
+                text=eq_text + [eq_text[0]]
             ))
 
-            # 2. Trazado de la Liga (Gris) - Dibujado en 2do lugar para que la línea resalte
+            # 2. Trazado de la Liga (Gris)
             fig_adn.add_trace(go.Scatterpolar(
                 r=lig_norm + [lig_norm[0]], 
                 theta=labels_adn + [labels_adn[0]], 
                 fill="toself", 
                 name="Media Liga", 
                 line=dict(color=GRAY, dash="dot", width=1.5),
-                fillcolor="rgba(74, 74, 82, 0.4)" # Gris semi-transparente
+                fillcolor="rgba(74, 74, 82, 0.4)",
+                hoverinfo="text+name",
+                text=lig_text + [lig_text[0]]
             ))
             
             layout_adn = PLOT.copy()
             layout_adn.update(
                 height=300, 
-                polar=dict(bgcolor="rgba(0,0,0,0)", radialaxis=dict(visible=False)), 
+                polar=dict(
+                    bgcolor="rgba(0,0,0,0)", 
+                    radialaxis=dict(visible=False, range=[0, 1]) # Rango fijo anclado a los máximos
+                ), 
                 margin=dict(l=30, r=30, t=20, b=20), 
                 showlegend=False
             )
             fig_adn.update_layout(**layout_adn)
             
             st.plotly_chart(fig_adn, use_container_width=True)
+
     with col2:
         st.markdown("### 🔥 Estado de Forma y Evolución")
         
@@ -1476,7 +1492,6 @@ elif nav == "Radiografía de Equipo":
         met_p = st.selectbox("Métrica a Evaluar (Evolución)", metricas, index=metricas.index("Goles esperados (xG)") if "Goles esperados (xG)" in metricas else 0)
         d_eq = df[(df["Equipo"] == eq_sel) & (df["Métrica"] == met_p)].sort_values("nFecha")
         
-        
         if not d_eq.empty:
             d_eq["Etiqueta_X"] = "F" + d_eq["nFecha"].astype(str)
             fig_evo = go.Figure([
@@ -1484,7 +1499,7 @@ elif nav == "Radiografía de Equipo":
                 go.Bar(x=d_eq["Etiqueta_X"], y=d_eq["Concedido"], name="En Contra", marker_color=GRAY)
             ])
             
-            # Corrección: Crear copia de PLOT para evitar duplicar 'margin' y 'legend'
+            # Corrección de argumentos duplicados en Plotly
             layout_evo = PLOT.copy()
             layout_evo.update(
                 barmode="group", 
@@ -1495,12 +1510,3 @@ elif nav == "Radiografía de Equipo":
             fig_evo.update_layout(**layout_evo)
             
             st.plotly_chart(fig_evo, use_container_width=True)
-
-st.markdown("<hr style='border-color:#1f1f24; margin-top:50px;'>", unsafe_allow_html=True)
-st.markdown(
-    "<div style='text-align:center; color:#555560; font-size:0.75rem; padding:10px 0 30px;'>"
-    "LPF Analytics v2.0 &nbsp;·&nbsp; Modelo estadístico holístico ponderado (Poisson + Dixon-Coles MLE) &nbsp;·&nbsp; "
-    "Uso analítico/educativo — no constituye asesoramiento de apuestas"
-    "</div>",
-    unsafe_allow_html=True,
-)
