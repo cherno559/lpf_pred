@@ -1423,10 +1423,27 @@ elif nav == "Radiografía de Equipo":
             lig_norm = [0.5] * len(mets_adn)
             
             fig_adn = go.Figure()
-            fig_adn.add_trace(go.Scatterpolar(r=lig_norm + [lig_norm[0]], theta=labels_adn + [labels_adn[0]], fill="toself", name="Media Liga", line=dict(color=GRAY, dash="dot")))
-            fig_adn.add_trace(go.Scatterpolar(r=eq_norm + [eq_norm[0]], theta=labels_adn + [labels_adn[0]], fill="toself", name=eq_sel, line=dict(color=RED, width=2)))
             
-            # Corrección: Crear una copia de PLOT para evitar duplicar el argumento 'margin'
+            # 1. Trazado del Equipo (Rojo)
+            fig_adn.add_trace(go.Scatterpolar(
+                r=eq_norm + [eq_norm[0]], 
+                theta=labels_adn + [labels_adn[0]], 
+                fill="toself", 
+                name=eq_sel, 
+                line=dict(color=RED, width=2),
+                fillcolor="rgba(237, 26, 59, 0.4)" # Rojo semi-transparente
+            ))
+
+            # 2. Trazado de la Liga (Gris) - Dibujado en 2do lugar para que la línea resalte
+            fig_adn.add_trace(go.Scatterpolar(
+                r=lig_norm + [lig_norm[0]], 
+                theta=labels_adn + [labels_adn[0]], 
+                fill="toself", 
+                name="Media Liga", 
+                line=dict(color=GRAY, dash="dot", width=1.5),
+                fillcolor="rgba(74, 74, 82, 0.4)" # Gris semi-transparente
+            ))
+            
             layout_adn = PLOT.copy()
             layout_adn.update(
                 height=300, 
@@ -1437,7 +1454,6 @@ elif nav == "Radiografía de Equipo":
             fig_adn.update_layout(**layout_adn)
             
             st.plotly_chart(fig_adn, use_container_width=True)
-
     with col2:
         st.markdown("### 🔥 Estado de Forma y Evolución")
         
