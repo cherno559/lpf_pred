@@ -6,7 +6,8 @@ de la Liga Profesional Argentina y las guarda en un Excel existente.
 Ahora soporta Torneo, Temporada y Slug por consola para descargar Playoffs.
 
 Dependencias:
-    pip install tls-client openpyxl
+    pip install playwright openpyxl
+    playwright install chromium
 """
 
 import argparse
@@ -14,7 +15,8 @@ import time
 import sys
 import os
 import traceback
-import tls_client
+import json
+from playwright.sync_api import sync_playwright
 
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -26,7 +28,7 @@ from openpyxl.utils import get_column_letter
 TOURNAMENT_ID = 155
 SEASON_ID     = 87913
 SLUG_RONDA    = ""
-BASE_URL      = "https://api.sofascore.com"
+BASE_URL      = "https://www.sofascore.com"
 SLEEP_REQ     = 2.0
 
 # ──────────────────────────────────────────────────────────────────
@@ -136,34 +138,100 @@ EXCEL_DEFAULT = "/home/sebi/Documents/futbol/lpf_pred/data/actual/clausura26.xls
 # ──────────────────────────────────────────────────────────────────
 # SESIÓN TLS
 # ──────────────────────────────────────────────────────────────────
-def build_session() -> tls_client.Session:
-    session = tls_client.Session(
-        client_identifier="chrome_120",
-        random_tls_extension_order=True,
-    )
-    session.headers.update({
-        "accept":                    "application/json, text/plain, */*",
-        "accept-encoding":           "gzip, deflate, br",
-        "accept-language":           "es-AR,es;q=0.9,en-US;q=0.8,en;q=0.7",
-        "cache-control":             "no-cache",
-        "dnt":                       "1",
-        "origin":                    "https://www.sofascore.com",
-        "pragma":                    "no-cache",
-        "referer":                   "https://www.sofascore.com/",
-        "sec-ch-ua":                 '"Chromium";v="120", "Google Chrome";v="120", "Not-A.Brand";v="99"',
-        "sec-ch-ua-mobile":          "?0",
-        "sec-ch-ua-platform":        '"Windows"',
-        "sec-fetch-dest":            "empty",
-        "sec-fetch-mode":            "cors",
-        "sec-fetch-site":            "same-site",
-        "user-agent":                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                                     "AppleWebKit/537.36 (KHTML, like Gecko) "
-                                     "Chrome/120.0.0.0 Safari/537.36",
-        "x-requested-with":         "XMLHttpRequest",
-    })
-    return session
+PROFILE_DIR = os.path.join(os.path.expanduser("~"), ".scout_sofascore_profile")
+PROBE_URL   = f"{BASE_URL}/api/v1/config/country-sport-priorities/country/AR"
 
-def safe_get(session: tls_client.Session, url: str) -> dict | None:
+
+class _Resp:
+    def __init__(self, status: int, text: str):
+        self.status_code = status
+        self.text = text
+
+    def json(self):
+        return json.loads(self.text)
+
+
+class BrowserSession:
+    """Navegador real (Chromium). Las requests se hacen con fetch() desde dentro
+    de la página de SofaScore, así llevan la sesión/cookies del navegador."""
+
+    def __init__(self, headless: bool = False, cdp_url: str = ""):
+        self._pw = sync_playwright().start()
+        self._cdp = bool(cdp_url)
+
+        if cdp_url:
+            # Conectarse a TU Chrome ya abierto (el que pasó Cloudflare a mano)
+            print(f"   Conectando a Chrome en {cdp_url} …")
+            self.browser = self._pw.chromium.connect_over_cdp(cdp_url)
+            self.ctx = self.browser.contexts[0]
+            self.page = next(
+                (pg for pg in self.ctx.pages if "sofascore.com" in pg.url
+                 and "captcha" not in pg.url),
+                None,
+            )
+            if self.page is None:
+                self.page = self.ctx.new_page()
+                self.page.goto(f"{BASE_URL}/es/", wait_until="domcontentloaded")
+                self.page.wait_for_timeout(4000)
+        else:
+            kwargs = dict(
+                user_data_dir=PROFILE_DIR,
+                headless=headless,
+                locale="es-AR",
+                args=["--disable-blink-features=AutomationControlled"],
+                ignore_default_args=["--enable-automation"],
+            )
+            try:
+                self.ctx = self._pw.chromium.launch_persistent_context(channel="chrome", **kwargs)
+                print("   Usando Google Chrome instalado.")
+            except Exception:
+                self.ctx = self._pw.chromium.launch_persistent_context(**kwargs)
+                print("   Usando Chromium de Playwright.")
+            self.page = self.ctx.pages[0] if self.ctx.pages else self.ctx.new_page()
+            self.page.goto(f"{BASE_URL}/es/", wait_until="domcontentloaded")
+            self.page.wait_for_timeout(5000)
+
+        self._verificar_acceso()
+
+    def _fetch(self, url: str) -> _Resp:
+        res = self.page.evaluate(
+            """async (u) => {
+                const r = await fetch(u, {credentials: 'include',
+                                          headers: {'accept': 'application/json'}});
+                return {status: r.status, text: await r.text()};
+            }""",
+            url,
+        )
+        return _Resp(res["status"], res["text"])
+
+    def _verificar_acceso(self):
+        r = self._fetch(PROBE_URL)
+        if r.status_code == 200:
+            print("   ✓ Acceso a la API OK.")
+            return
+        print(f"   ⚠  La prueba de acceso dio HTTP {r.status_code}.")
+        print("      Si ves un captcha/desafío en la ventana del navegador, resolvelo.")
+        input("      Cuando la página de SofaScore cargue normal, apretá Enter acá… ")
+        self.page.reload(wait_until="domcontentloaded")
+        self.page.wait_for_timeout(3000)
+        r = self._fetch(PROBE_URL)
+        print("   ✓ Acceso OK." if r.status_code == 200 else f"   ✗ Sigue HTTP {r.status_code}.")
+
+    def get(self, url: str) -> _Resp:
+        return self._fetch(url)
+
+    def close(self):
+        try:
+            if not self._cdp:      # si es TU Chrome, no lo cerramos
+                self.ctx.close()
+        finally:
+            self._pw.stop()
+
+
+def build_session(headless: bool = False, cdp_url: str = "") -> BrowserSession:
+    return BrowserSession(headless=headless, cdp_url=cdp_url)
+
+def safe_get(session, url: str) -> dict | None:
     for intento in range(3):
         try:
             resp = session.get(url)
@@ -173,11 +241,13 @@ def safe_get(session: tls_client.Session, url: str) -> dict | None:
                 return None
             if resp.status_code == 403:
                 espera = (intento + 1) * 8
-                print(f"    ⚠  HTTP 403 (bloqueado) — reintentando en {espera}s…")
+                cuerpo = (resp.text or "")[:150].replace("\n", " ")
+                print(f"    ⚠  HTTP 403 (bloqueado) {cuerpo} — reintentando en {espera}s…")
                 time.sleep(espera)
                 continue
             espera = (intento + 1) * 4
-            print(f"    ⚠  HTTP {resp.status_code} — reintentando en {espera}s…")
+            cuerpo = (resp.text or "")[:150].replace("\n", " ")
+            print(f"    ⚠  HTTP {resp.status_code} — {cuerpo} — reintentando en {espera}s…")
             time.sleep(espera)
         except Exception as e:
             print(f"    ⚠  Excepción: {e}")
@@ -194,7 +264,11 @@ def get_events(session, round_number: int) -> list[dict]:
     else:
         url = f"{BASE_URL}/api/v1/unique-tournament/{TOURNAMENT_ID}/season/{SEASON_ID}/events/round/{round_number}"
         
+    print(f"     URL: {url}")
     data = safe_get(session, url)
+    if data is None:
+        print("     ✗ La API no respondió datos (bloqueo, 404 o URL/temporada inválida). "
+              "Revisá los mensajes de arriba.")
     eventos = data.get("events", []) if data else []
     
     # Si la API devuelve los dos torneos juntos (más de 15 partidos), 
@@ -412,12 +486,9 @@ def set_col_widths(ws):
 # ──────────────────────────────────────────────────────────────────
 # PROCESAMIENTO POR JORNADA
 # ──────────────────────────────────────────────────────────────────
-def procesar_jornada(session, wb: Workbook, round_number: int):
+def procesar_jornada(session, wb: Workbook, round_number: int) -> bool:
     sheet_name = f"Fecha {round_number}" if not SLUG_RONDA else f"Fecha {round_number} - {SLUG_RONDA}"
-
-    if sheet_name in wb.sheetnames:
-        del wb[sheet_name]
-    ws = wb.create_sheet(title=sheet_name)
+    sheet_name = sheet_name[:31]  # límite de Excel
 
     print(f"\n{'='*54}")
     texto_ronda = f"FECHA {round_number}" if not SLUG_RONDA else f"FECHA {round_number} ({SLUG_RONDA})"
@@ -426,9 +497,13 @@ def procesar_jornada(session, wb: Workbook, round_number: int):
 
     events = get_events(session, round_number)
     if not events:
-        print("  ⚠  No se encontraron partidos.")
-        ws["A1"] = "Sin partidos disponibles para esta fecha."
-        return
+        print("  ⚠  No se encontraron partidos. No se modifica el Excel.")
+        return False
+
+    # Recién ahora, con datos en mano, reemplazamos la hoja
+    if sheet_name in wb.sheetnames:
+        del wb[sheet_name]
+    ws = wb.create_sheet(title=sheet_name)
 
     print(f"  {len(events)} partido(s) encontrado(s).\n")
     current_row = 1
@@ -463,6 +538,7 @@ def procesar_jornada(session, wb: Workbook, round_number: int):
         print(f"     ✓ Tabla escrita hasta fila {next_row - 1}\n")
 
     set_col_widths(ws)
+    return True
 
 # ──────────────────────────────────────────────────────────────────
 # ENTRY POINT
@@ -496,6 +572,16 @@ def main():
         type=str, default="",
         help="Slug de la ronda para playoffs (ej: round-of-16)",
     )
+    parser.add_argument(
+        "--headless",
+        action="store_true",
+        help="Correr el navegador sin ventana (menos fiable contra el anti-bot).",
+    )
+    parser.add_argument(
+        "--cdp",
+        type=str, default="",
+        help="URL de un Chrome abierto con --remote-debugging-port (ej: http://localhost:9222).",
+    )
     args = parser.parse_args()
 
     global TOURNAMENT_ID, SEASON_ID, SLUG_RONDA
@@ -513,20 +599,25 @@ def main():
         wb = Workbook()
         wb.remove(wb.active)
 
-    print("🌐 Iniciando sesión TLS con SofaScore...")
-    session = build_session()
+    print("🌐 Abriendo navegador con SofaScore...")
+    session = build_session(headless=args.headless, cdp_url=args.cdp)
 
-    for i, jornada in enumerate(args.jornada):
-        try:
-            procesar_jornada(session, wb, jornada)
-        except Exception:
-            print(f"\n❌ Error procesando Fecha {jornada}:")
-            traceback.print_exc()
-        if i < len(args.jornada) - 1:
-            time.sleep(SLEEP_REQ)
+    hubo_datos = False
+    try:
+        for i, jornada in enumerate(args.jornada):
+            try:
+                if procesar_jornada(session, wb, jornada):
+                    hubo_datos = True
+            except Exception:
+                print(f"\n❌ Error procesando Fecha {jornada}:")
+                traceback.print_exc()
+            if i < len(args.jornada) - 1:
+                time.sleep(SLEEP_REQ)
+    finally:
+        session.close()
 
-    if not wb.sheetnames:
-        print("\n⚠  No se generó ninguna hoja con datos.")
+    if not hubo_datos:
+        print("\n⚠  No se obtuvieron datos. El Excel NO fue modificado.")
         sys.exit(1)
 
     wb.save(ruta_excel)
