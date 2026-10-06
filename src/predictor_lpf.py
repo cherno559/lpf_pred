@@ -1403,6 +1403,7 @@ elif nav == "Simulador de Jornada":
                     "Empate": "Prob. Empate",
                     "Prob_Visitante": "Prob. Victoria Visitante",
                 })[["Local", "Prob. Victoria Local", "Prob. Empate", "Prob. Victoria Visitante", "Visitante"]]
+                
                 st.dataframe(
                     df_partidos.style.format({
                         "Prob. Victoria Local": "{:.1%}",
@@ -1410,6 +1411,13 @@ elif nav == "Simulador de Jornada":
                         "Prob. Victoria Visitante": "{:.1%}",
                     }),
                     hide_index=True, use_container_width=True, height=560,
+                )
+                st.download_button(
+                    label="💾 Descargar General",
+                    data=convertir_csv(df_partidos),
+                    file_name=f"General_F{jornada_elegida}_{timestamp}.csv",
+                    mime="text/csv",
+                    key="dl_gen"
                 )
 
             with tab_ark:
@@ -1420,6 +1428,14 @@ elif nav == "Simulador de Jornada":
                 st.dataframe(df_arq.style.format({"Atajadas Proyectadas": "{:.1f}", "Tiros al Arco Recibidos": "{:.1f}",
                                                   "xG en Contra": "{:.2f}", "xGOT en Contra": "{:.2f}"}), 
                              hide_index=True, use_container_width=True, height=320)
+                st.download_button(
+                    label="💾 Descargar Portería",
+                    data=convertir_csv(df_arq),
+                    file_name=f"Porteria_F{jornada_elegida}_{timestamp}.csv",
+                    mime="text/csv",
+                    key="dl_ark"
+                )
+
             with tab_def:
                 df_def = format_ranking(df_res, "xG_Contra", True,
                                         ["xG_Contra", "Ocasiones_Contra", "Arco_Contra", "Tiros_Contra", "Quites", "Intercepciones", "Despejes", "Rival"],
@@ -1428,12 +1444,27 @@ elif nav == "Simulador de Jornada":
                 st.dataframe(df_def.style.format({"xG Concedido": "{:.2f}", "Ocasiones Conced.": "{:.1f}", "Tiros al Arco Recibidos": "{:.1f}",
                                                   "Tiros Tot. Recibidos": "{:.1f}", "Quites": "{:.1f}", "Intercepciones": "{:.1f}", "Despejes": "{:.1f}"}), 
                              hide_index=True, use_container_width=True, height=320)
+                st.download_button(
+                    label="💾 Descargar Defensa",
+                    data=convertir_csv(df_def),
+                    file_name=f"Defensa_F{jornada_elegida}_{timestamp}.csv",
+                    mime="text/csv",
+                    key="dl_def"
+                )
+
             with tab_med:
                 df_med = format_ranking(df_res, "Posesion", False,
                                         ["Posesion", "Precision_Pases", "Quites", "Ocasiones_Favor", "Rival"],
                                         {"Posesion": "Posesión %", "Precision_Pases": "Precisión %", "Quites": "Quites (Recuperación)", "Ocasiones_Favor": "Ocasiones Creadas"})
                 st.dataframe(df_med.style.format({"Posesión %": "{:.1f}%", "Precisión %": "{:.1f}%", "Quites (Recuperación)": "{:.1f}", "Ocasiones Creadas": "{:.1f}"}), 
                              hide_index=True, use_container_width=True, height=320)
+                st.download_button(
+                    label="💾 Descargar Mediocampo",
+                    data=convertir_csv(df_med),
+                    file_name=f"Mediocampo_F{jornada_elegida}_{timestamp}.csv",
+                    mime="text/csv",
+                    key="dl_med"
+                )
 
             with tab_ata:
                 df_del = format_ranking(df_res, "xG_Favor", False,
@@ -1441,6 +1472,13 @@ elif nav == "Simulador de Jornada":
                                         {"xG_Favor": "xG Generado", "Ocasiones_Favor": "Ocasiones Claras", "Tiros_Area_Favor": "Tiros en Área", "Arco_Favor": "Tiros al Arco", "Corners_Favor": "Córners Proyectados"})
                 st.dataframe(df_del.style.format({"xG Generado": "{:.2f}", "Ocasiones Claras": "{:.1f}", "Tiros en Área": "{:.1f}", "Tiros al Arco": "{:.1f}", "Córners Proyectados": "{:.1f}"}), 
                              hide_index=True, use_container_width=True, height=320)
+                st.download_button(
+                    label="💾 Descargar Ataque",
+                    data=convertir_csv(df_del),
+                    file_name=f"Ataque_F{jornada_elegida}_{timestamp}.csv",
+                    mime="text/csv",
+                    key="dl_ata"
+                )
 
 elif nav == "Métricas Globales":
     st.markdown('<div class="section-header">Métricas Globales Filtradas</div>', unsafe_allow_html=True)
