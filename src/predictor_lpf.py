@@ -595,7 +595,7 @@ def _league_stats(df):
     xh, xv = get_avg(dx, "Local"), get_avg(dx, "Visitante")
     if dx.empty: rh, rv = gh, gv
     else: rh, rv = W_XG * xh + (1 - W_XG) * gh, W_XG * xv + (1 - W_XG) * gv
-    return {"ref_home": rh, "ref_away": rv, "ref_all": (rh + rv) / 2}
+    return {"ref_home": rh, "ref_away": rv, "ref_all": (rh + rv) / 2, "goles_total": gh + gv}
 
 def _strength(df_actual, eq, target_cond, league, max_fecha_torneo: int, tabla: pd.DataFrame):
     d_eq = df_actual[df_actual["Equipo"] == eq]
@@ -634,6 +634,20 @@ def _strength(df_actual, eq, target_cond, league, max_fecha_torneo: int, tabla: 
     def_post = (n_effective * def_obs  + k_prior * prior_def) / (n_effective + k_prior)
     
     return atk_post, def_post, n
+
+HGA_LAMBDA = 0.18
+CALIBRAR_GOLES_TOTALES = True   # False = comportamiento anterior (sin reescalar)
+ESCALA_GOLES_MIN, ESCALA_GOLES_MAX = 0.75, 1.25
+
+def escala_goles(l: dict, es_loc: bool = True) -> float:
+    """Factor que alinea los goles totales que espera el modelo para un partido promedio
+    con los goles reales por partido de la liga. Evita que un xG más generoso que los goles
+    (o la ventaja de local sumada dos veces) infle los lambdas y desinfle el empate."""
+    if not CALIBRAR_GOLES_TOTALES: return 1.0
+    base = l["ref_home"] + l["ref_away"] + (HGA_LAMBDA if es_loc else 0.0)
+    real = l.get("goles_total", np.nan)
+    if not (base > 0) or not (real > 0) or np.isnan(real): return 1.0
+    return float(np.clip(real / base, ESCALA_GOLES_MIN, ESCALA_GOLES_MAX))
 
 def calcular_lambdas(df, eq_a, eq_b, es_loc, tabla):
     df_actual = df[df["Categoria"] == "Actual"]
@@ -676,7 +690,11 @@ def calcular_lambdas(df, eq_a, eq_b, es_loc, tabla):
     lb *= mod_b
     
     if es_loc:
-        la += 0.18
+        la += HGA_LAMBDA
+
+    k_goles = escala_goles(l, es_loc)
+    la *= k_goles
+    lb *= k_goles
 
     if not es_loc:
         la, lb = lb, la
@@ -1118,7 +1136,13 @@ if nav == "Predicción de Partidos":
     if not _dr.empty:
         _emp_real = float((_dr["Propio"] == _dr["Concedido"]).mean())
         _emp_mod = montecarlo(float(_dr["Propio"].mean()), float(_dr["Concedido"].mean()), rho_dinamico)["empate"]
-        st.caption(f"Calibración de empates · reales: {_emp_real:.1%} ({len(_dr)} partidos) · modelo (promedio liga): {_emp_mod:.1%} · rho: {rho_dinamico:+.3f}")
+        _df_act = df[df["Categoria"] == "Actual"]
+        _l = _league_stats(_df_act if not _df_act.empty else df)
+        st.caption(
+            f"Calibración · empates reales: {_emp_real:.1%} ({len(_dr)} partidos) · modelo (promedio liga): {_emp_mod:.1%} · rho: {rho_dinamico:+.3f}"
+            f" · goles/partido reales: {_l['goles_total']:.2f} · base del modelo: {_l['ref_home'] + _l['ref_away'] + HGA_LAMBDA:.2f}"
+            f" · escala aplicada: ×{escala_goles(_l, True):.2f}"
+        )
 
     if st.button("CALCULAR PROBABILIDADES"):
         la, lb = calcular_lambdas(df, ea, eb, loc, tabla)
