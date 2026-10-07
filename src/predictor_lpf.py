@@ -472,6 +472,14 @@ def calcular_elo_dinamico(df: pd.DataFrame) -> dict:
         
     return {"local": elos_l, "visitante": elos_v}
 
+def _rho_limites(la: float, lb: float, eps: float = 1e-3):
+    """Rango en el que Dixon-Coles es una distribución válida (las 4 correcciones tau > 0)."""
+    lo = max(-1.0 / max(la, 1e-9), -1.0 / max(lb, 1e-9)) + eps
+    hi = min(1.0, 1.0 / max(la * lb, 1e-9)) - eps
+    return lo, hi
+
+RHO_PRIOR_MU, RHO_PRIOR_SD = -0.10, 0.30   # regularización suave: solo pesa con pocos partidos
+
 @st.cache_data(ttl=120, show_spinner=False)
 def estimar_rho_mle(df: pd.DataFrame) -> float:
     dr = df[(df["Métrica"] == "Resultado") & (df["Condicion"] == "Local")]
@@ -480,25 +488,25 @@ def estimar_rho_mle(df: pd.DataFrame) -> float:
     hg, ag = dr["Propio"].values, dr["Concedido"].values
     mean_hg = np.mean(hg) if np.mean(hg) > 0 else 1.17
     mean_ag = np.mean(ag) if np.mean(ag) > 0 else 0.90
+    lo, hi = _rho_limites(mean_hg, mean_ag)
     
-    def neg_log_likelihood(rho_val):
+    mask_00 = (hg == 0) & (ag == 0)
+    mask_01 = (hg == 0) & (ag == 1)
+    mask_10 = (hg == 1) & (ag == 0)
+    mask_11 = (hg == 1) & (ag == 1)
+    
+    def neg_log_posterior(rho_val):
         r = rho_val[0]
         corr = np.ones_like(hg, dtype=float)
-        
-        mask_00 = (hg == 0) & (ag == 0)
-        mask_01 = (hg == 0) & (ag == 1)
-        mask_10 = (hg == 1) & (ag == 0)
-        mask_11 = (hg == 1) & (ag == 1)
-        
         corr[mask_00] = 1 - (mean_hg * mean_ag * r)
         corr[mask_01] = 1 + (mean_hg * r)
         corr[mask_10] = 1 + (mean_ag * r)
         corr[mask_11] = 1 - r
-        
         corr = np.clip(corr, 1e-5, None)
-        return -np.sum(np.log(corr))
+        prior = ((r - RHO_PRIOR_MU) ** 2) / (2 * RHO_PRIOR_SD ** 2)
+        return -np.sum(np.log(corr)) + prior
         
-    res = minimize(neg_log_likelihood, [0.0], bounds=[(-0.3, 0.3)])
+    res = minimize(neg_log_posterior, [float(np.clip(-0.10, lo, hi))], bounds=[(lo, hi)])
     return float(res.x[0]) if res.success else -0.15
 
 @st.cache_data(ttl=120, show_spinner=False)
@@ -736,7 +744,8 @@ def montecarlo(la, lb, rho_dinamico):
     
     pa, pb = _pmf(la, MAX_GOALS_MATRIX), _pmf(lb, MAX_GOALS_MATRIX)
     M = np.outer(pa, pb)
-    rho = max(rho_dinamico, -0.9 / max(la * lb, 0.01))
+    lo_r, hi_r = _rho_limites(la, lb)
+    rho = float(np.clip(rho_dinamico, lo_r, hi_r))
     
     def tau(x, y, lam, mu, r):
         if x == 0 and y == 0:
@@ -1105,6 +1114,12 @@ if nav == "Predicción de Partidos":
         eb  = c2.selectbox("Equipo Visitante", equipos, index=min(1, len(equipos) - 1))
         loc = c3.selectbox("Ajuste Localía",   ["Aplicar Ventaja", "Terreno Neutral"]) == "Aplicar Ventaja"
     
+    _dr = df[(df["Métrica"] == "Resultado") & (df["Condicion"] == "Local")]
+    if not _dr.empty:
+        _emp_real = float((_dr["Propio"] == _dr["Concedido"]).mean())
+        _emp_mod = montecarlo(float(_dr["Propio"].mean()), float(_dr["Concedido"].mean()), rho_dinamico)["empate"]
+        st.caption(f"Calibración de empates · reales: {_emp_real:.1%} ({len(_dr)} partidos) · modelo (promedio liga): {_emp_mod:.1%} · rho: {rho_dinamico:+.3f}")
+
     if st.button("CALCULAR PROBABILIDADES"):
         la, lb = calcular_lambdas(df, ea, eb, loc, tabla)
         sim    = montecarlo(la, lb, rho_dinamico)
