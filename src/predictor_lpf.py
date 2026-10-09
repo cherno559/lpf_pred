@@ -1574,23 +1574,40 @@ elif nav == "Métricas Globales":
 
 elif nav == "Matriz de Rendimiento":
     st.markdown('<div class="section-header">Matriz de Rendimiento y Estilos</div>', unsafe_allow_html=True)
-    c1, c2 = st.columns(2)
-    m_x = c1.selectbox("Métrica Eje X", metricas, index=metricas.index("Posesión de balón") if "Posesión de balón" in metricas else 0)
-    m_y = c2.selectbox("Métrica Eje Y", metricas, index=metricas.index("Goles esperados (xG)") if "Goles esperados (xG)" in metricas else 0)
-    
-    if m_x in df["Métrica"].values and m_y in df["Métrica"].values:
+
+    cond_sel = st.radio("Condición", ["General", "Local", "Visitante"], horizontal=True, key="mx_cond")
+
+    cx1, cx2 = st.columns([2, 1])
+    m_x = cx1.selectbox("Métrica Eje X", metricas, index=metricas.index("Posesión de balón") if "Posesión de balón" in metricas else 0, key="mx_m_x")
+    enf_x = cx2.radio("Enfoque Eje X", ["A Favor", "En Contra"], horizontal=True, key="mx_enf_x")
+
+    cy1, cy2 = st.columns([2, 1])
+    m_y = cy1.selectbox("Métrica Eje Y", metricas, index=metricas.index("Goles esperados (xG)") if "Goles esperados (xG)" in metricas else 0, key="mx_m_y")
+    enf_y = cy2.radio("Enfoque Eje Y", ["A Favor", "En Contra"], horizontal=True, key="mx_enf_y")
+
+    df_mx = df if cond_sel == "General" else df[df["Condicion"] == cond_sel]
+    col_x = "Propio" if enf_x == "A Favor" else "Concedido"
+    col_y = "Propio" if enf_y == "A Favor" else "Concedido"
+
+    if m_x in df_mx["Métrica"].values and m_y in df_mx["Métrica"].values:
         df_e = pd.DataFrame({
-            "X_VAL": df[df["Métrica"] == m_x].groupby("Equipo")["Propio"].mean(), 
-            "Y_VAL": df[df["Métrica"] == m_y].groupby("Equipo")["Propio"].mean()
+            "X_VAL": df_mx[df_mx["Métrica"] == m_x].groupby("Equipo")[col_x].mean(),
+            "Y_VAL": df_mx[df_mx["Métrica"] == m_y].groupby("Equipo")[col_y].mean()
         }).dropna()
-        
+
+        lbl_x = f"{m_x} ({enf_x.lower()})"
+        lbl_y = f"{m_y} ({enf_y.lower()})"
+        if cond_sel != "General":
+            lbl_x += f" · {cond_sel}"
+            lbl_y += f" · {cond_sel}"
+
         m_x_mean, m_y_mean = df_e["X_VAL"].mean(), df_e["Y_VAL"].mean()
-        fig = go.Figure(go.Scatter(x=df_e["X_VAL"], y=df_e["Y_VAL"], mode="markers+text", text=df_e.index, textposition="top center", marker=dict(size=14, color=RED, opacity=0.92, line=dict(width=2, color="#0a0a0c")), textfont=dict(family="Manrope", size=11, color="#d4d4da"), hovertemplate=f"<b>%{{text}}</b><br>{m_x}: %{{x:.2f}}<br>{m_y}: %{{y:.2f}}<extra></extra>"))
+        fig = go.Figure(go.Scatter(x=df_e["X_VAL"], y=df_e["Y_VAL"], mode="markers+text", text=df_e.index, textposition="top center", marker=dict(size=14, color=RED, opacity=0.92, line=dict(width=2, color="#0a0a0c")), textfont=dict(family="Manrope", size=11, color="#d4d4da"), hovertemplate=f"<b>%{{text}}</b><br>{lbl_x}: %{{x:.2f}}<br>{lbl_y}: %{{y:.2f}}<extra></extra>"))
         fig.add_vline(x=m_x_mean, line=dict(color=GRAY, dash="dash", width=1), annotation_text="Media liga", annotation_position="top", annotation_font=dict(size=10, color="#6b6b75"))
         fig.add_hline(y=m_y_mean, line=dict(color=GRAY, dash="dash", width=1), annotation_text="Media liga", annotation_position="right", annotation_font=dict(size=10, color="#6b6b75"))
-        st.plotly_chart(estilizar_ejes(fig.update_layout(**PLOT, height=600, xaxis_title=m_x, yaxis_title=m_y), grid_x=True), use_container_width=True)
-    else: 
-        st.warning("No hay suficientes datos para generar la matriz con las métricas seleccionadas.")
+        st.plotly_chart(estilizar_ejes(fig.update_layout(**PLOT, height=600, xaxis_title=lbl_x, yaxis_title=lbl_y), grid_x=True), use_container_width=True)
+    else:
+        st.warning("No hay suficientes datos para generar la matriz con las métricas y la condición seleccionadas.")
 
 elif nav == "Posiciones":
     st.markdown('<div class="section-header">Clasificación General</div>', unsafe_allow_html=True)
