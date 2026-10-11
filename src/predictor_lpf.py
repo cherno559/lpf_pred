@@ -1619,7 +1619,7 @@ elif nav == "Matriz de Rendimiento":
         fig.add_hline(y=m_y_mean, line=dict(color=GRAY, dash="dash", width=1), annotation_text="Media filtrada", annotation_position="right", annotation_font=dict(size=10, color="#6b6b75"))
         st.plotly_chart(estilizar_ejes(fig.update_layout(**PLOT, height=600, xaxis_title=lbl_x, yaxis_title=lbl_y), grid_x=True), use_container_width=True)
     else:
-        st.warning("No hay suficientes datos para generar la matriz con las métricas y fechas seleccionadas.")
+        st.warning("No hay suficientes datos para generar la matriz con las métricas y fechas seleccionadas.")s
 
 elif nav == "Posiciones":
     st.markdown('<div class="section-header">Clasificación General</div>', unsafe_allow_html=True)
