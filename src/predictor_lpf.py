@@ -1350,10 +1350,20 @@ elif nav == "Simulador de Jornada":
                     if rota_visitante: lb = max(0.1, lb * (1 - PENALIDAD_ROTACION_PCT))
 
                     sim = montecarlo(la, lb, rho_dinamico) 
+                    M = sim["matrix"]
+                    
+                    # CÁLCULOS AGREGADOS: Valla Invicta y Top 3 Marcadores
+                    clean_sheet_loc = float(M[:, 0].sum())
+                    clean_sheet_vis = float(M[0, :].sum())
+                    
+                    flat_scores = [(M[i, j], i, j) for i in range(M.shape[0]) for j in range(M.shape[1])]
+                    flat_scores.sort(reverse=True)
+                    top3_str = " | ".join([f"{i}-{j} ({p*100:.1f}%)" for p, i, j in flat_scores[:3]])
 
                     resultados_partidos.append({
                         "Local": ea, "Visitante": eb,
                         "Prob_Local": sim["victoria"], "Empate": sim["empate"], "Prob_Visitante": sim["derrota"],
+                        "Top_3_Marcadores": top3_str
                     })
                     
                     tiros_a, tiros_b = proyectar_metrica(df, ea, eb, "Tiros totales", True, tabla)
@@ -1372,6 +1382,10 @@ elif nav == "Simulador de Jornada":
                     desp_a, desp_b   = proyectar_metrica(df, ea, eb, "Despejes", True, tabla)
                     tda_a, tda_b     = proyectar_metrica(df, ea, eb, "Tiros dentro del área", True, tabla)
 
+                    # CÁLCULO AGREGADO: Ponderación xG + xGOT
+                    xg_ajustado_a = (0.65 * la) + (0.35 * xgot_a)
+                    xg_ajustado_b = (0.65 * lb) + (0.35 * xgot_b)
+
                     if rota_local:
                         pos_a *= (1 - PENALIDAD_ROTACION_POSESION_PCT)
                         tiros_a *= (1 - PENALIDAD_ROTACION_TIROS_PCT)
@@ -1388,8 +1402,9 @@ elif nav == "Simulador de Jornada":
                         
                     resultados_jornada.append({
                         "Equipo": ea, "Condición": "Local", "Rival": eb,
-                        "Prob_Victoria": sim["victoria"],
-                        "xG_Favor": la, "xG_Contra": lb, "Tiros_Favor": tiros_a, "Tiros_Contra": tiros_b,
+                        "Prob_Victoria": sim["victoria"], "Valla_Invicta": clean_sheet_loc,
+                        "xG_Favor": la, "xG_Contra": lb, "xG_Ajustado": xg_ajustado_a, 
+                        "Tiros_Favor": tiros_a, "Tiros_Contra": tiros_b,
                         "Arco_Favor": arco_a, "Arco_Contra": arco_b, "Ocasiones_Favor": ocas_a, "Ocasiones_Contra": ocas_b,
                         "Posesion": pos_a, "Corners_Favor": corn_a, "Regates_pct": reg_a,
                         "Precision_Pases": (pp_a / pt_a * 100) if pt_a > 0 else 0.0,
@@ -1400,8 +1415,9 @@ elif nav == "Simulador de Jornada":
                     
                     resultados_jornada.append({
                         "Equipo": eb, "Condición": "Visitante", "Rival": ea,
-                        "Prob_Victoria": sim["derrota"],
-                        "xG_Favor": lb, "xG_Contra": la, "Tiros_Favor": tiros_b, "Tiros_Contra": tiros_a,
+                        "Prob_Victoria": sim["derrota"], "Valla_Invicta": clean_sheet_vis,
+                        "xG_Favor": lb, "xG_Contra": la, "xG_Ajustado": xg_ajustado_b,
+                        "Tiros_Favor": tiros_b, "Tiros_Contra": tiros_a,
                         "Arco_Favor": arco_b, "Arco_Contra": arco_a, "Ocasiones_Favor": ocas_b, "Ocasiones_Contra": ocas_a,
                         "Posesion": pos_b, "Corners_Favor": corn_b, "Regates_pct": reg_b,
                         "Precision_Pases": (pp_b / pt_b * 100) if pt_b > 0 else 0.0,
@@ -1441,7 +1457,8 @@ elif nav == "Simulador de Jornada":
                     "Prob_Local": "Prob. Victoria Local",
                     "Empate": "Prob. Empate",
                     "Prob_Visitante": "Prob. Victoria Visitante",
-                })[["Local", "Prob. Victoria Local", "Prob. Empate", "Prob. Victoria Visitante", "Visitante"]]
+                    "Top_3_Marcadores": "Top 3 Marcadores Probables"
+                })[["Local", "Prob. Victoria Local", "Prob. Empate", "Prob. Victoria Visitante", "Top 3 Marcadores Probables", "Visitante"]]
                 
                 st.dataframe(
                     df_partidos.style.format({
@@ -1476,11 +1493,11 @@ elif nav == "Simulador de Jornada":
                 )
 
             with tab_def:
-                df_def = format_ranking(df_res, "xG_Contra", True,
-                                        ["xG_Contra", "Ocasiones_Contra", "Arco_Contra", "Tiros_Contra", "Quites", "Intercepciones", "Despejes", "Rival"],
-                                        {"xG_Contra": "xG Concedido", "Ocasiones_Contra": "Ocasiones Conced.", "Arco_Contra": "Tiros al Arco Recibidos",
+                df_def = format_ranking(df_res, "Valla_Invicta", False,
+                                        ["Valla_Invicta", "xG_Contra", "Ocasiones_Contra", "Arco_Contra", "Tiros_Contra", "Quites", "Intercepciones", "Despejes", "Rival"],
+                                        {"Valla_Invicta": "Prob. Valla Invicta", "xG_Contra": "xG Concedido", "Ocasiones_Contra": "Ocasiones Conced.", "Arco_Contra": "Tiros al Arco Recibidos",
                                          "Tiros_Contra": "Tiros Tot. Recibidos"})
-                st.dataframe(df_def.style.format({"xG Concedido": "{:.2f}", "Ocasiones Conced.": "{:.1f}", "Tiros al Arco Recibidos": "{:.1f}",
+                st.dataframe(df_def.style.format({"Prob. Valla Invicta": "{:.1%}", "xG Concedido": "{:.2f}", "Ocasiones Conced.": "{:.1f}", "Tiros al Arco Recibidos": "{:.1f}",
                                                   "Tiros Tot. Recibidos": "{:.1f}", "Quites": "{:.1f}", "Intercepciones": "{:.1f}", "Despejes": "{:.1f}"}), 
                              hide_index=True, use_container_width=True, height=320)
                 st.download_button(
@@ -1506,10 +1523,10 @@ elif nav == "Simulador de Jornada":
                 )
 
             with tab_ata:
-                df_del = format_ranking(df_res, "xG_Favor", False,
-                                        ["xG_Favor", "Ocasiones_Favor", "Tiros_Area_Favor", "Arco_Favor", "Corners_Favor", "Rival"],
-                                        {"xG_Favor": "xG Generado", "Ocasiones_Favor": "Ocasiones Claras", "Tiros_Area_Favor": "Tiros en Área", "Arco_Favor": "Tiros al Arco", "Corners_Favor": "Córners Proyectados"})
-                st.dataframe(df_del.style.format({"xG Generado": "{:.2f}", "Ocasiones Claras": "{:.1f}", "Tiros en Área": "{:.1f}", "Tiros al Arco": "{:.1f}", "Córners Proyectados": "{:.1f}"}), 
+                df_del = format_ranking(df_res, "xG_Ajustado", False,
+                                        ["xG_Ajustado", "xG_Favor", "Ocasiones_Favor", "Tiros_Area_Favor", "Arco_Favor", "Corners_Favor", "Rival"],
+                                        {"xG_Ajustado": "xG + xGOT (Ponderado)", "xG_Favor": "xG Generado Base", "Ocasiones_Favor": "Ocasiones Claras", "Tiros_Area_Favor": "Tiros en Área", "Arco_Favor": "Tiros al Arco", "Corners_Favor": "Córners Proyectados"})
+                st.dataframe(df_del.style.format({"xG + xGOT (Ponderado)": "{:.2f}", "xG Generado Base": "{:.2f}", "Ocasiones Claras": "{:.1f}", "Tiros en Área": "{:.1f}", "Tiros al Arco": "{:.1f}", "Córners Proyectados": "{:.1f}"}), 
                              hide_index=True, use_container_width=True, height=320)
                 st.download_button(
                     label="💾 Descargar Ataque",
@@ -1518,7 +1535,6 @@ elif nav == "Simulador de Jornada":
                     mime="text/csv",
                     key="dl_ata"
                 )
-
 elif nav == "Métricas Globales":
     st.markdown('<div class="section-header">Métricas Globales Filtradas</div>', unsafe_allow_html=True)
     
