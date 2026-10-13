@@ -1585,7 +1585,25 @@ elif nav == "Matriz de Rendimiento":
     m_y = cy1.selectbox("Métrica Eje Y", metricas, index=metricas.index("Goles esperados (xG)") if "Goles esperados (xG)" in metricas else 0, key="mx_m_y")
     enf_y = cy2.radio("Enfoque Eje Y", ["A Favor", "En Contra"], horizontal=True, key="mx_enf_y")
 
+    # ── Filtro por fechas puntuales (cruza torneos si hay más de uno cargado) ──
+    _multi_torneo = df["Torneo"].nunique() > 1
+    _df_fechas = df[["Torneo", "nFecha"]].drop_duplicates().sort_values(["Torneo", "nFecha"])
+    _mapa_fechas = {
+        (f"{r.Torneo} · Fecha {int(r.nFecha)}" if _multi_torneo else f"Fecha {int(r.nFecha)}"): (r.Torneo, r.nFecha)
+        for r in _df_fechas.itertuples(index=False)
+    }
+    fechas_mx = st.multiselect(
+        "📅 Filtrar por Fechas (Vacío = Todas las jornadas)",
+        list(_mapa_fechas.keys()),
+        default=[],
+        key="mx_fechas",
+    )
+
     df_mx = df if cond_sel == "General" else df[df["Condicion"] == cond_sel]
+    if fechas_mx:
+        _pares = pd.MultiIndex.from_tuples([_mapa_fechas[k] for k in fechas_mx])
+        df_mx = df_mx[pd.MultiIndex.from_frame(df_mx[["Torneo", "nFecha"]]).isin(_pares)]
+        st.caption(f"Mostrando promedios sobre {len(fechas_mx)} fecha(s) seleccionada(s).")
     col_x = "Propio" if enf_x == "A Favor" else "Concedido"
     col_y = "Propio" if enf_y == "A Favor" else "Concedido"
 
@@ -1600,6 +1618,10 @@ elif nav == "Matriz de Rendimiento":
         if cond_sel != "General":
             lbl_x += f" · {cond_sel}"
             lbl_y += f" · {cond_sel}"
+        if fechas_mx:
+            _sufijo = f" · {len(fechas_mx)} fecha(s)"
+            lbl_x += _sufijo
+            lbl_y += _sufijo
 
         m_x_mean, m_y_mean = df_e["X_VAL"].mean(), df_e["Y_VAL"].mean()
         fig = go.Figure(go.Scatter(x=df_e["X_VAL"], y=df_e["Y_VAL"], mode="markers+text", text=df_e.index, textposition="top center", marker=dict(size=14, color=RED, opacity=0.92, line=dict(width=2, color="#0a0a0c")), textfont=dict(family="Manrope", size=11, color="#d4d4da"), hovertemplate=f"<b>%{{text}}</b><br>{lbl_x}: %{{x:.2f}}<br>{lbl_y}: %{{y:.2f}}<extra></extra>"))
