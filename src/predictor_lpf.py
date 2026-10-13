@@ -1337,6 +1337,9 @@ elif nav == "Simulador de Jornada":
             resultados_jornada = []
             resultados_partidos = []
             
+            # --- NUEVO: Traemos los ELOs para medir la jerarquía/profundidad del plantel ---
+            elos_act = calcular_elo_dinamico(df)
+            
             mapa_penalidades = {
                 "Sin Rotación": (0.0, 0.0, 0.0),
                 "Baja (Sin figura)": (0.12, 0.04, 0.08),  
@@ -1355,11 +1358,27 @@ elif nav == "Simulador de Jornada":
                         
                     la, lb = calcular_lambdas(df, ea, eb, True, tabla)
 
+                    # --- NUEVO: Cálculo de Factor de Profundidad ---
+                    elo_loc = elos_act["local"].get(ea, 1500.0)
+                    elo_vis = elos_act["visitante"].get(eb, 1500.0)
+                    fact_prof_l = max(0.8, elo_loc / 1500.0)
+                    fact_prof_v = max(0.8, elo_vis / 1500.0)
+
                     pen_xg_l, pen_pos_l, pen_tir_l = mapa_penalidades[nivel_rot_l]
                     pen_xg_v, pen_pos_v, pen_tir_v = mapa_penalidades[nivel_rot_v]
 
-                    if pen_xg_l > 0: la = max(0.1, la * (1 - pen_xg_l))
-                    if pen_xg_v > 0: lb = max(0.1, lb * (1 - pen_xg_v))
+                    # --- NUEVO: Impacto bidireccional (Ataque y Defensa) ajustado por Jerarquía ---
+                    pen_atk_l = pen_xg_l / (fact_prof_l ** 2)
+                    pen_def_l = (pen_xg_l * 0.6) / (fact_prof_l ** 2)  # La defensa empeora un 60% en proporción a la rotación ofensiva
+                    
+                    pen_atk_v = pen_xg_v / (fact_prof_v ** 2)
+                    pen_def_v = (pen_xg_v * 0.6) / (fact_prof_v ** 2)
+
+                    if pen_atk_l > 0: la = max(0.1, la * (1 - pen_atk_l))
+                    if pen_def_l > 0: lb = lb * (1 + pen_def_l) # Si rota el local, sube el xG del visitante
+                    
+                    if pen_atk_v > 0: lb = max(0.1, lb * (1 - pen_atk_v))
+                    if pen_def_v > 0: la = la * (1 + pen_def_v) # Si rota el visitante, sube el xG del local
 
                     sim = montecarlo(la, lb, rho_dinamico) 
                     M = sim["matrix"]
