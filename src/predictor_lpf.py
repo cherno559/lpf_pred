@@ -1,5 +1,6 @@
 """
-Plataforma de Rendimiento LPF 2026 - Completa (Motor Predictivo Calibrado)
+Plataforma de Rendimiento LPF 2026 - Completa (Motor Predictivo Calibrado v2.0)
+Mejoras: GEE (Arqueros), Rotación por Jerarquía, Game State, HGA Dinámico
 """
 import re, os, math, textwrap
 from datetime import datetime
@@ -146,45 +147,19 @@ header[data-testid="stHeader"] { background: transparent; }
 }
 .stButton > button:hover { background: linear-gradient(180deg, #f43a57 0%, #d3172f 100%); color: #fff; border-color: rgba(255,255,255,0.14); transform: translateY(-1px); box-shadow: 0 10px 24px rgba(237,26,59,0.38); }
 .stButton > button:active { transform: translateY(0); box-shadow: 0 3px 10px rgba(237,26,59,0.3); }
-.stButton > button:focus-visible, .stDownloadButton > button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 .stDownloadButton > button { background: transparent; color: #fff; border: 1px solid var(--line); border-radius: var(--r-sm); font-weight: 700; transition: border-color 0.15s, background 0.15s; }
 .stDownloadButton > button:hover { border-color: var(--red); background: var(--red-soft); color: #fff; }
 
-[data-baseweb="select"] > div, [data-baseweb="input"] > div, .stTextInput > div > div { background-color: var(--surface) !important; border: 1px solid var(--line) !important; border-radius: var(--r-sm) !important; color: #fff !important; transition: border-color 0.15s; }
-[data-baseweb="select"] > div:hover, [data-baseweb="input"] > div:hover { border-color: #3a3a44 !important; }
-[data-baseweb="select"] > div:focus-within, [data-baseweb="input"] > div:focus-within { border-color: var(--red) !important; box-shadow: 0 0 0 3px var(--red-soft); }
-[data-baseweb="tag"] { background-color: var(--surface-2) !important; border: 1px solid var(--line) !important; border-radius: 4px !important; color: #a8a8b2 !important; font-size: 0.75rem !important; }
-[data-baseweb="tag"]:hover { border-color: #3a3a44 !important; color: #fff !important; }
-[data-testid="stVerticalBlockBorderWrapper"] { border-color: var(--line) !important; border-radius: var(--r-md); }
-
-/* Radio horizontal → control segmentado */
-.stRadio [role="radiogroup"] { gap: 2px; }
-.stRadio [role="radiogroup"][aria-orientation="horizontal"], .stRadio div[role="radiogroup"]:not([aria-orientation="vertical"]) { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 4px; display: inline-flex; }
-.stRadio label { border-radius: 7px; padding: 4px 10px; transition: background 0.15s; }
-.stRadio label:hover { background: var(--surface-2); }
-.stRadio label:has(input:checked) { background: var(--red-soft); }
-
-/* ═════════════ SIDEBAR ═════════════ */
+/* ═════════════ SIDEBAR Y OTROS ELEMENTOS ═════════════ */
 [data-testid="stSidebar"] { background-color: #0e0e11 !important; border-right: 1px solid var(--line-soft) !important; }
 .sidebar-logo { font-family: 'Bebas Neue', sans-serif; font-size: 2.5rem; line-height: 1; color: var(--red); letter-spacing: 2px; text-align: center; }
 .sidebar-tag { text-align: center; font-size: 0.68rem; font-weight: 600; letter-spacing: 3px; text-transform: uppercase; color: var(--dim); margin: 6px 0 26px; padding-bottom: 22px; border-bottom: 1px solid var(--line-soft); }
-[data-testid="stSidebar"] .stRadio [role="radiogroup"] { display: flex; flex-direction: column; gap: 4px; background: transparent; border: none; padding: 0; }
-[data-testid="stSidebar"] .stRadio label { padding: 11px 14px; border: 1px solid transparent; border-radius: 10px; width: 100%; }
-[data-testid="stSidebar"] .stRadio label:hover { background: var(--surface-2); }
-[data-testid="stSidebar"] .stRadio label:has(input:checked) { background: var(--red-soft); border-color: var(--red-line); }
-[data-testid="stSidebar"] .stRadio label p { font-size: 0.92rem; font-weight: 700; color: #cfcfd6; letter-spacing: 0; }
-[data-testid="stSidebar"] .stRadio label:has(input:checked) p { color: #fff; }
-
-/* ═════════════ TABS / TABLAS / EXPANDER ═════════════ */
 .stTabs [data-baseweb="tab-list"] { gap: 4px; border-bottom: 1px solid var(--line); }
-.stTabs [data-baseweb="tab"] { height: 46px; padding: 0 16px; background: transparent; border-radius: 8px 8px 0 0; color: var(--muted); font-weight: 700; transition: color 0.15s, background 0.15s; }
+.stTabs [data-baseweb="tab"] { height: 46px; padding: 0 16px; background: transparent; border-radius: 8px 8px 0 0; color: var(--muted); font-weight: 700; }
 .stTabs [data-baseweb="tab"]:hover { color: #fff; background: var(--surface); }
 .stTabs [aria-selected="true"] { color: #fff !important; }
 .stTabs [data-baseweb="tab-highlight"] { background-color: var(--red) !important; height: 3px; }
-.stTabs [data-baseweb="tab-border"] { display: none; }
 [data-testid="stDataFrame"] { border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden; box-shadow: var(--shadow-card); }
-[data-testid="stExpander"] { border: 1px solid var(--line) !important; border-radius: var(--r-md) !important; background: var(--surface); }
-[data-testid="stAlert"] { border-radius: 10px; border: 1px solid var(--line); }
 
 /* ═════════════ ADN TÁCTICO ═════════════ */
 .tag-badge { display: inline-block; padding: 4px 12px; border-radius: 999px; font-size: 0.7rem; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase; margin: 3px 4px 3px 0; }
@@ -193,11 +168,8 @@ header[data-testid="stHeader"] { background: transparent; }
 .tag-posesion { background: rgba(94,207,107,0.12);  color: var(--green); border: 1px solid rgba(94,207,107,0.5); }
 .tag-directo  { background: rgba(207,180,94,0.12);  color: var(--gold);  border: 1px solid rgba(207,180,94,0.5); }
 .tag-neutral  { background: rgba(255,255,255,0.04); color: var(--muted); border: 1px solid var(--line); }
-.tag-contra   { background: rgba(207,94,173,0.12);  color: #e07cc3;      border: 1px solid rgba(207,94,173,0.5); }
-.adn-card { background: linear-gradient(180deg, var(--surface-2), var(--surface)); border: 1px solid var(--line); border-radius: var(--r-md); padding: 20px 24px; margin-bottom: 12px; box-shadow: var(--shadow-card); transition: border-color 0.2s; }
-.adn-card:hover { border-color: #3a3a44; }
-.adn-team-name { font-family: 'Bebas Neue', sans-serif; font-size: 1.6rem; color: #fff; letter-spacing: 1px; margin-bottom: 10px; }
-.adn-perfil { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 2px; color: var(--dim); margin-bottom: 6px; }
+.adn-card { background: linear-gradient(180deg, var(--surface-2), var(--surface)); border: 1px solid var(--line); border-radius: var(--r-md); padding: 20px 24px; margin-bottom: 12px; box-shadow: var(--shadow-card); }
+.tactica-insight { background: #0e0e11; border-left: 3px solid var(--red); border-radius: 0 8px 8px 0; padding: 12px 16px; margin-top: 12px; font-size: 0.84rem; color: #a8a8b2; line-height: 1.6; }
 
 /* ═════════════ RACHAS / MOMENTUM ═════════════ */
 .racha-dot { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 50%; font-size: 0.74rem; font-weight: 800; margin: 2px 3px 2px 0; }
@@ -205,35 +177,10 @@ header[data-testid="stHeader"] { background: transparent; }
 .racha-e { background: #2a2a33; color: #a0a0aa; }
 .racha-d { background: transparent; color: var(--dim); border: 1px solid var(--line); }
 .momentum-card { background: linear-gradient(180deg, var(--surface-2), var(--surface)); border: 1px solid var(--line); border-radius: var(--r-md); padding: 18px 22px; margin-bottom: 10px; box-shadow: var(--shadow-card); }
-.momentum-team { font-family: 'Bebas Neue', sans-serif; font-size: 1.5rem; color: #fff; letter-spacing: 1px; margin-bottom: 10px; }
-.momentum-label { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; color: var(--dim); margin-bottom: 6px; }
 .momentum-alza { color: var(--green); font-weight: 800; font-size: 0.92rem; }
 .momentum-caida { color: var(--red); font-weight: 800; font-size: 0.92rem; }
 .momentum-estable { color: var(--muted); font-weight: 800; font-size: 0.92rem; }
-.momentum-sub { font-size: 0.78rem; color: var(--muted); margin-top: 10px; font-variant-numeric: tabular-nums; }
-.mom-bar { height: 4px; margin-top: 14px; background: #202027; border-radius: 999px; overflow: hidden; }
-.mom-bar > i { display: block; height: 100%; background: linear-gradient(90deg, #4a4a52, var(--red)); border-radius: 999px; }
 
-/* ═════════════ CONTEXTO TÁCTICO ═════════════ */
-.tactica-clash { background: linear-gradient(180deg, var(--surface-2), var(--surface)); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 26px 30px; margin-top: 22px; box-shadow: var(--shadow-card); }
-.tactica-title { font-family: 'Bebas Neue', sans-serif; font-size: 1.5rem; color: var(--red); letter-spacing: 1.5px; margin-bottom: 18px; }
-.tactica-row { display: flex; align-items: flex-start; gap: 22px; margin-bottom: 14px; }
-.tactica-team-col { flex: 1; }
-.tactica-team-label { font-size: 0.7rem; font-weight: 700; color: var(--dim); text-transform: uppercase; letter-spacing: 2px; margin-bottom: 8px; }
-.tactica-team-note { font-size: 0.82rem; line-height: 1.5; color: var(--muted); margin-top: 10px; }
-.tactica-vs-col { display: flex; align-items: center; justify-content: center; width: 38px; height: 38px; flex: none; border-radius: 50%; border: 1px solid var(--line); background: var(--bg); color: var(--dim); font-family: 'Bebas Neue', sans-serif; font-size: 1.05rem; letter-spacing: 1px; }
-.tactica-insight { background: #0e0e11; border-left: 3px solid var(--red); border-radius: 0 8px 8px 0; padding: 12px 16px; margin-top: 12px; font-size: 0.84rem; color: #a8a8b2; line-height: 1.6; }
-
-/* ═════════════ RESPONSIVE / ACCESIBILIDAD ═════════════ */
-@media (max-width: 900px) {
-    .hero-banner { padding: 36px 24px 32px; }
-    .broadcast-board { grid-template-columns: 1fr; gap: 22px; padding: 26px 18px; }
-    .team-block.home, .team-block.away { border: none; }
-    .top3-container { flex-direction: column; }
-    .tactica-row { flex-direction: column; }
-    .tactica-vs-col { align-self: center; }
-}
-@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 """, unsafe_allow_html=True)
 
@@ -247,9 +194,6 @@ N_RECENCIA, PESO_RECIENTE, PESO_NORMAL = 5, 1.30, 1.0
 PESO_HISTORICO = 0.75
 LAM_MIN, LAM_MAX = 0.20, 5.00
 FUERZA_RIVAL_MIN, FUERZA_RIVAL_MAX = 0.65, 1.40
-PENALIDAD_ROTACION_PCT = 0.22
-PENALIDAD_ROTACION_POSESION_PCT = 0.08
-PENALIDAD_ROTACION_TIROS_PCT = 0.15
 POSESION_AMPLIFICACION = 1.15
 
 RED, WHITE, GRAY = "#ED1A3B", "#ffffff", "#4a4a52"
@@ -260,14 +204,13 @@ PLOT = dict(
     margin=dict(l=10, r=20, t=36, b=10),
     hoverlabel=dict(bgcolor="#17171c", bordercolor="#ED1A3B", font=dict(family="Manrope, sans-serif", size=12, color="#ffffff")),
 )
-PLOT_CFG = dict(displayModeBar=False)  # oculta la barra de herramientas de Plotly en los gráficos "de tarjeta"
+PLOT_CFG = dict(displayModeBar=False)
 
 def estilizar_ejes(fig, grid_x=False, grid_y=True):
-    """Estilo uniforme de ejes (solo visual). Se llama DESPUÉS de update_layout."""
     base = dict(zeroline=False, showline=True, linecolor=AXIS_LINE, tickfont=dict(size=11, color=AXIS_TXT), title_font=dict(size=11, color="#6b6b75"))
     fig.update_xaxes(showgrid=grid_x, gridcolor=GRID, **base)
     fig.update_yaxes(showgrid=grid_y, gridcolor=GRID, **base)
-    if getattr(fig.layout, "yaxis2", None) and fig.layout.yaxis2.overlaying:  # eje secundario: sin grilla duplicada
+    if getattr(fig.layout, "yaxis2", None) and fig.layout.yaxis2.overlaying:  
         fig.update_layout(yaxis2=dict(showgrid=False))
     return fig
 
@@ -374,7 +317,6 @@ def construir_df(datos: dict) -> pd.DataFrame:
         for p in partidos:
             xg_loc_raw = p["metricas"].get("Goles esperados (xG)", {}).get("local")
             xg_vis_raw = p["metricas"].get("Goles esperados (xG)", {}).get("visitante")
-            
             penales_loc = p["metricas"].get("Penales a favor", {}).get("local", 0.0)
             penales_vis = p["metricas"].get("Penales a favor", {}).get("visitante", 0.0)
 
@@ -389,7 +331,6 @@ def construir_df(datos: dict) -> pd.DataFrame:
             else:
                 xg_loc_neto = max(0.0, xg_loc_raw - (penales_loc * VALOR_PENAL_XG))
                 xg_vis_neto = max(0.0, xg_vis_raw - (penales_vis * VALOR_PENAL_XG))
-                
                 p["metricas"]["xG_Model"] = {"local": xg_loc_neto, "visitante": xg_vis_neto}
 
             for met, vals in p["metricas"].items():
@@ -427,14 +368,12 @@ def calcular_elo_dinamico(df: pd.DataFrame) -> dict:
     
     BASE_ELO = 1500.0
     HGA_SHIFT = 65.0  
-    
     hga_dinamico = {}
     HGA_BASE = 65.0 
     
     for eq in dx["Equipo"].unique():
         xg_l_eq = dx[(dx["Equipo"] == eq) & (dx["Condicion"] == "Local")]["Propio"].mean()
         xg_v_eq = dx[(dx["Equipo"] == eq) & (dx["Condicion"] == "Visitante")]["Propio"].mean()
-        
         if not np.isnan(xg_l_eq) and not np.isnan(xg_v_eq):
             hga_puro = float(np.clip((xg_l_eq - xg_v_eq) * 120, 45.0, 95.0))
             hga_dinamico[eq] = (HGA_BASE * 0.65) + (hga_puro * 0.35)
@@ -460,10 +399,8 @@ def calcular_elo_dinamico(df: pd.DataFrame) -> dict:
         xg_l, xg_v = row["Propio"], row["Concedido"]
         
         elo_l, elo_v = elos_l.get(loc, BASE_ELO), elos_v.get(vis, BASE_ELO)
-        
         e_loc = 1 / (1 + 10 ** ((elo_v - elo_l) / 400))
         e_vis = 1 - e_loc
-        
         s_loc = prob_victoria_xg(xg_l, xg_v)
         s_vis = 1.0 - s_loc
             
@@ -473,12 +410,12 @@ def calcular_elo_dinamico(df: pd.DataFrame) -> dict:
     return {"local": elos_l, "visitante": elos_v}
 
 def _rho_limites(la: float, lb: float, eps: float = 1e-3):
-    """Rango en el que Dixon-Coles es una distribución válida (las 4 correcciones tau > 0)."""
     lo = max(-1.0 / max(la, 1e-9), -1.0 / max(lb, 1e-9)) + eps
     hi = min(1.0, 1.0 / max(la * lb, 1e-9)) - eps
     return lo, hi
 
-RHO_PRIOR_MU, RHO_PRIOR_SD = -0.10, 0.30   # regularización suave: solo pesa con pocos partidos
+# Ajustado para priorizar sutilmente el altísimo empuje de 0-0 y 1-1 actual en Argentina
+RHO_PRIOR_MU, RHO_PRIOR_SD = -0.15, 0.25   
 
 @st.cache_data(ttl=120, show_spinner=False)
 def estimar_rho_mle(df: pd.DataFrame) -> float:
@@ -506,7 +443,7 @@ def estimar_rho_mle(df: pd.DataFrame) -> float:
         prior = ((r - RHO_PRIOR_MU) ** 2) / (2 * RHO_PRIOR_SD ** 2)
         return -np.sum(np.log(corr)) + prior
         
-    res = minimize(neg_log_posterior, [float(np.clip(-0.10, lo, hi))], bounds=[(lo, hi)])
+    res = minimize(neg_log_posterior, [float(np.clip(-0.15, lo, hi))], bounds=[(lo, hi)])
     return float(res.x[0]) if res.success else -0.15
 
 @st.cache_data(ttl=120, show_spinner=False)
@@ -636,13 +573,10 @@ def _strength(df_actual, eq, target_cond, league, max_fecha_torneo: int, tabla: 
     return atk_post, def_post, n
 
 HGA_LAMBDA = 0.18
-CALIBRAR_GOLES_TOTALES = True   # False = comportamiento anterior (sin reescalar)
+CALIBRAR_GOLES_TOTALES = True
 ESCALA_GOLES_MIN, ESCALA_GOLES_MAX = 0.75, 1.25
 
 def escala_goles(l: dict, es_loc: bool = True) -> float:
-    """Factor que alinea los goles totales que espera el modelo para un partido promedio
-    con los goles reales por partido de la liga. Evita que un xG más generoso que los goles
-    (o la ventaja de local sumada dos veces) infle los lambdas y desinfle el empate."""
     if not CALIBRAR_GOLES_TOTALES: return 1.0
     base = l["ref_home"] + l["ref_away"] + (HGA_LAMBDA if es_loc else 0.0)
     real = l.get("goles_total", np.nan)
@@ -689,8 +623,17 @@ def calcular_lambdas(df, eq_a, eq_b, es_loc, tabla):
     la *= mod_a
     lb *= mod_b
     
+    # HGA DINÁMICO REEMPLAZANDO EL +0.18 ESTÁTICO
     if es_loc:
-        la += HGA_LAMBDA
+        dx = df_actual[(df_actual["Equipo"] == eq_a) & (df_actual["Métrica"] == "xG_Model")]
+        xg_l_eq = dx[dx["Condicion"] == "Local"]["Propio"].mean()
+        xg_v_eq = dx[dx["Condicion"] == "Visitante"]["Propio"].mean()
+        if not np.isnan(xg_l_eq) and not np.isnan(xg_v_eq):
+            hga_eq = max(0.05, xg_l_eq - xg_v_eq)
+            hga_aplicar = (HGA_LAMBDA * 0.4) + (hga_eq * 0.6)
+        else:
+            hga_aplicar = HGA_LAMBDA
+        la += hga_aplicar
 
     k_goles = escala_goles(l, es_loc)
     la *= k_goles
@@ -878,7 +821,7 @@ def contexto_tactica_clash(adn: pd.DataFrame, eq_a: str, eq_b: str) -> str:
 
     clash_lines = []
     if "PRESSING INTENSO" in tags_a_txt and "JUEGO DIRECTO" in tags_b_txt: clash_lines.append("⚡ <b>Pressing vs Juego Directo</b>: el local intentará robar alto, el visitante buscará saltar líneas.")
-    if "POSESIÓN DOMINANTE" in tags_a_txt and "PRESSING INTENSO" in tags_b_txt: clash_lines.append("🔄 <b>Batalla de control</b>: local posesivo vs visitante que presiona — partido de mediocampo intense.")
+    if "POSESIÓN DOMINANTE" in tags_a_txt and "PRESSING INTENSO" in tags_b_txt: clash_lines.append("🔄 <b>Batalla de control</b>: local posesivo vs visitante que presiona — partido de mediocampo intenso.")
     if "BLOQUE HUNDIDO" in tags_b_txt and "POSESIÓN DOMINANTE" in tags_a_txt: clash_lines.append("🎯 <b>Posesión vs Bloque Bajo</b>: local domina la pelota, visitante espera agazapado en el área.")
     if "DÉFICIT DEFENSIVO" in tags_a_txt or "DÉFICIT DEFENSIVO" in tags_b_txt: clash_lines.append("⚽ <b>Partido abierto</b>: al menos un equipo tiene vulnerabilidades defensivas — esperar ocasiones.")
     if "ALTA EFICIENCIA" in tags_a_txt and "ALTA EFICIENCIA" in tags_b_txt: clash_lines.append("🎖️ <b>Duelo de calidad</b>: ambos equipos son clínicos — los pocos errores se pagarán caro.")
@@ -970,12 +913,10 @@ def render_racha_dots(ultimas6: list) -> str:
 def fig_momentum_timeline(df: pd.DataFrame, equipo: str) -> go.Figure:
     dr = df[(df["Equipo"] == equipo) & (df["Métrica"] == "Resultado")].copy()
     dx = df[(df["Equipo"] == equipo) & (df["Métrica"] == "xG_Model")].copy()
-    
     if dr.empty: return go.Figure()
 
     dr["Orden_Cat"] = np.where(dr["Categoria"] == "Histórico", 0, 1)
     dx["Orden_Cat"] = np.where(dx["Categoria"] == "Histórico", 0, 1)
-    
     dr = dr.sort_values(["Orden_Cat", "nFecha"])
     dx = dx.sort_values(["Orden_Cat", "nFecha"])
 
@@ -1041,7 +982,6 @@ with st.sidebar:
     opciones_disponibles = list(opciones_archivos.keys())
     defaults = [opt for opt in opciones_disponibles if ("clausura" in opt.lower() or "histórico" in opt.lower())]
     
-    # Subtítulo elegante y selector con etiqueta oculta
     st.markdown('<div style="font-size: 0.68rem; font-weight: 800; color: #5c5c66; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 8px;">🗂️ Origen de Datos</div>', unsafe_allow_html=True)
     
     torneos_seleccionados_nombres = st.multiselect(
@@ -1053,7 +993,6 @@ with st.sidebar:
     
     archivos_a_cargar = [opciones_archivos[nombre] for nombre in torneos_seleccionados_nombres]
 
-    # Línea divisoria sutil antes del menú
     st.markdown("<hr style='border-color: #1c1c22; margin: 25px 0 15px 0;'>", unsafe_allow_html=True)
 
     nav = st.radio(
@@ -1073,7 +1012,7 @@ datos    = cargar_excel(archivos_a_cargar)
 df       = construir_df(datos)
 
 if not opciones_disponibles:
-    st.error("⚠️️ **No se encontró ninguna base de datos.**")
+    st.error("⚠ **No se encontró ninguna base de datos.**")
     st.stop()
 
 if df.empty:
@@ -1145,7 +1084,25 @@ if nav == "Predicción de Partidos":
         )
 
     if st.button("CALCULAR PROBABILIDADES"):
+        # GEE Arqueros
+        def get_gee_historico(eq):
+            df_xgot = df[(df["Equipo"] == eq) & (df["Métrica"] == "xG al arco (xGOT)")]
+            df_goles = df[(df["Equipo"] == eq) & (df["Métrica"] == "Resultado")]
+            if not df_xgot.empty and not df_goles.empty:
+                x = df_xgot["Concedido"].mean()
+                g = df_goles["Concedido"].mean()
+                if not np.isnan(x) and not np.isnan(g): return x - g
+            return 0.0
+
+        gee_a = get_gee_historico(ea)
+        gee_b = get_gee_historico(eb)
+        
         la, lb = calcular_lambdas(df, ea, eb, loc, tabla)
+        
+        # Inyectamos la habilidad del arquero directamente en el poisson (Goles Evitados Esperados)
+        la = max(0.1, la - gee_b)
+        lb = max(0.1, lb - gee_a)
+
         sim    = montecarlo(la, lb, rho_dinamico)
         
         margen = 1.11
@@ -1225,6 +1182,15 @@ if nav == "Predicción de Partidos":
         ocas_fall_a, ocas_fall_b   = proyectar_metrica(df, ea, eb, "Ocasiones claras falladas", loc, tabla)
         tfa_a, tfa_b               = proyectar_metrica(df, ea, eb, "Tiros fuera del área", loc, tabla)
 
+        # Ajuste de Game State (el equipo que va ganando cede pelota y tira menos corners)
+        ventaja_a = sim["victoria"] - sim["derrota"]
+        ajuste_pos = ventaja_a * 4.5 
+        ajuste_corn = ventaja_a * 1.2
+        pos_a -= ajuste_pos
+        pos_b += ajuste_pos
+        corn_a -= ajuste_corn
+        corn_b += ajuste_corn
+
         tot_pos = pos_a + pos_b
         if tot_pos > 0:
             pos_a = (pos_a / tot_pos) * 100
@@ -1249,7 +1215,7 @@ if nav == "Predicción de Partidos":
                 f"{pt_a:.0f}", f"{pp_a:.0f}", f"{ataj_a:.0f}", f"{quit_a:.0f}", 
                 f"{inter_a:.0f}", f"{desp_a:.0f}", f"{ocas_a:.0f}", f"{ocas_fall_a:.0f}", 
                 f"{reg_a:.0f}", f"{tda_a:.0f}", f"{tfa_a:.0f}", 
-                f"{xgot_a:.2f}", f"{gev_a:.2f}"
+                f"{xgot_a:.2f}", f"{gee_a:.2f}"
             ],
             eb: [
                 f"{pos_b:.0f}%", f"{lb:.2f}", f"{tiros_b:.0f}", 
@@ -1258,7 +1224,7 @@ if nav == "Predicción de Partidos":
                 f"{pt_b:.0f}", f"{pp_b:.0f}", f"{ataj_b:.0f}", f"{quit_b:.0f}", 
                 f"{inter_b:.0f}", f"{desp_b:.0f}", f"{ocas_b:.0f}", f"{ocas_fall_b:.0f}", 
                 f"{reg_b:.0f}", f"{tda_b:.0f}", f"{tfa_b:.0f}", 
-                f"{xgot_b:.2f}", f"{gev_b:.2f}"
+                f"{xgot_b:.2f}", f"{gee_b:.2f}"
             ]
         })
 
@@ -1336,6 +1302,7 @@ elif nav == "Simulador de Jornada":
         else:
             resultados_jornada = []
             resultados_partidos = []
+            elos_act = calcular_elo_dinamico(df)
             
             mapa_penalidades = {
                 "Sin Rotación": (0.0, 0.0, 0.0),
@@ -1343,6 +1310,15 @@ elif nav == "Simulador de Jornada":
                 "Media (Mixto)": (0.22, 0.08, 0.15),      
                 "Alta (Alternativo)": (0.45, 0.15, 0.30)  
             }
+
+            def get_gee_historico(eq):
+                df_xgot = df[(df["Equipo"] == eq) & (df["Métrica"] == "xG al arco (xGOT)")]
+                df_goles = df[(df["Equipo"] == eq) & (df["Métrica"] == "Resultado")]
+                if not df_xgot.empty and not df_goles.empty:
+                    x = df_xgot["Concedido"].mean()
+                    g = df_goles["Concedido"].mean()
+                    if not np.isnan(x) and not np.isnan(g): return x - g
+                return 0.0
             
             with st.spinner(f"Procesando simulaciones matemáticas para la Fecha {jornada_elegida}..."):
                 for idx, row in cruces_editados.iterrows():
@@ -1355,16 +1331,37 @@ elif nav == "Simulador de Jornada":
                         
                     la, lb = calcular_lambdas(df, ea, eb, True, tabla)
 
+                    # GEE de los arqueros impactando lambdas antes de rotaciones
+                    gee_a = get_gee_historico(ea)
+                    gee_b = get_gee_historico(eb)
+                    la = max(0.1, la - gee_b)
+                    lb = max(0.1, lb - gee_a)
+
+                    # Obtener ELO para calcular Factor de Profundidad (para Handicap)
+                    elo_loc = elos_act["local"].get(ea, 1500.0)
+                    elo_vis = elos_act["visitante"].get(eb, 1500.0)
+                    fact_prof_l = max(0.8, elo_loc / 1500.0)
+                    fact_prof_v = max(0.8, elo_vis / 1500.0)
+
                     pen_xg_l, pen_pos_l, pen_tir_l = mapa_penalidades[nivel_rot_l]
                     pen_xg_v, pen_pos_v, pen_tir_v = mapa_penalidades[nivel_rot_v]
 
-                    if pen_xg_l > 0: la = max(0.1, la * (1 - pen_xg_l))
-                    if pen_xg_v > 0: lb = max(0.1, lb * (1 - pen_xg_v))
+                    # Handicap Bidireccional Ajustado por Jerarquía (Baja ataque, sube gol del rival)
+                    pen_atk_l = pen_xg_l / (fact_prof_l ** 2)
+                    pen_def_l = (pen_xg_l * 0.6) / (fact_prof_l ** 2)
+                    
+                    pen_atk_v = pen_xg_v / (fact_prof_v ** 2)
+                    pen_def_v = (pen_xg_v * 0.6) / (fact_prof_v ** 2)
+
+                    if pen_atk_l > 0: la = max(0.1, la * (1 - pen_atk_l))
+                    if pen_def_l > 0: lb = lb * (1 + pen_def_l)
+                    
+                    if pen_atk_v > 0: lb = max(0.1, lb * (1 - pen_atk_v))
+                    if pen_def_v > 0: la = la * (1 + pen_def_v)
 
                     sim = montecarlo(la, lb, rho_dinamico) 
                     M = sim["matrix"]
                     
-                    # CÁLCULOS AGREGADOS: Valla Invicta y Marcador Más Probable
                     clean_sheet_loc = float(M[:, 0].sum())
                     clean_sheet_vis = float(M[0, :].sum())
                     
@@ -1395,6 +1392,15 @@ elif nav == "Simulador de Jornada":
                     desp_a, desp_b   = proyectar_metrica(df, ea, eb, "Despejes", True, tabla)
                     tda_a, tda_b     = proyectar_metrica(df, ea, eb, "Tiros dentro del área", True, tabla)
 
+                    # Game State Dependency para proyecciones
+                    ventaja_a = sim["victoria"] - sim["derrota"]
+                    ajuste_pos = ventaja_a * 4.5 
+                    ajuste_corn = ventaja_a * 1.2
+                    pos_a -= ajuste_pos
+                    pos_b += ajuste_pos
+                    corn_a -= ajuste_corn
+                    corn_b += ajuste_corn
+
                     xg_ajustado_a = (0.65 * la) + (0.35 * xgot_a)
                     xg_ajustado_b = (0.65 * lb) + (0.35 * xgot_b)
 
@@ -1420,7 +1426,7 @@ elif nav == "Simulador de Jornada":
                         "Arco_Favor": arco_a, "Arco_Contra": arco_b, "Ocasiones_Favor": ocas_a, "Ocasiones_Contra": ocas_b,
                         "Posesion": pos_a, "Corners_Favor": corn_a, "Regates_pct": reg_a,
                         "Precision_Pases": (pp_a / pt_a * 100) if pt_a > 0 else 0.0,
-                        "Goles_Evitados": gev_a, "xGOT_Contra": xgot_b, "Atajadas": ataj_a,
+                        "Goles_Evitados": gee_a, "xGOT_Contra": xgot_b, "Atajadas": ataj_a,
                         "Quites": quit_a, "Intercepciones": inter_a, "Despejes": desp_a,
                         "Tiros_Area_Favor": tda_a,
                     })
@@ -1433,13 +1439,14 @@ elif nav == "Simulador de Jornada":
                         "Arco_Favor": arco_b, "Arco_Contra": arco_a, "Ocasiones_Favor": ocas_b, "Ocasiones_Contra": ocas_a,
                         "Posesion": pos_b, "Corners_Favor": corn_b, "Regates_pct": reg_b,
                         "Precision_Pases": (pp_b / pt_b * 100) if pt_b > 0 else 0.0,
-                        "Goles_Evitados": gev_b, "xGOT_Contra": xgot_a, "Atajadas": ataj_b,
+                        "Goles_Evitados": gee_b, "xGOT_Contra": xgot_a, "Atajadas": ataj_b,
                         "Quites": quit_b, "Intercepciones": inter_b, "Despejes": desp_b,
                         "Tiros_Area_Favor": tda_b,
                     })
             
             df_res = pd.DataFrame(resultados_jornada)
-            df_res["Indice_Arquero"] = df_res["Goles_Evitados"] - (df_res["xGOT_Contra"] * 0.1)
+            # Reemplazamos el viejo índice por el GEE Histórico + Ajuste Proyectado
+            df_res["Indice_Arquero"] = df_res["Goles_Evitados"] + (df_res["xGOT_Contra"] * 0.15)
 
             csv_sim = convertir_csv(df_res)
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -1489,11 +1496,11 @@ elif nav == "Simulador de Jornada":
                 )
 
             with tab_ark:
-                df_arq = format_ranking(df_res, "Atajadas", False,
-                                        ["Atajadas", "Arco_Contra", "xG_Contra", "xGOT_Contra", "Rival"],
-                                        {"Atajadas": "Atajadas Proyectadas", "Arco_Contra": "Tiros al Arco Recibidos",
+                df_arq = format_ranking(df_res, "Indice_Arquero", False,
+                                        ["Indice_Arquero", "Atajadas", "Arco_Contra", "xG_Contra", "xGOT_Contra", "Rival"],
+                                        {"Indice_Arquero": "Índice Arq (GEE + Vol)", "Atajadas": "Atajadas Proyectadas", "Arco_Contra": "Tiros al Arco Recibidos",
                                          "xG_Contra": "xG en Contra", "xGOT_Contra": "xGOT en Contra"})
-                st.dataframe(df_arq.style.format({"Atajadas Proyectadas": "{:.1f}", "Tiros al Arco Recibidos": "{:.1f}",
+                st.dataframe(df_arq.style.format({"Índice Arq (GEE + Vol)": "{:.2f}", "Atajadas Proyectadas": "{:.1f}", "Tiros al Arco Recibidos": "{:.1f}",
                                                   "xG en Contra": "{:.2f}", "xGOT en Contra": "{:.2f}"}), 
                              hide_index=True, use_container_width=True, height=320)
                 st.download_button(
@@ -1613,7 +1620,6 @@ elif nav == "Matriz de Rendimiento":
     m_y = cy1.selectbox("Métrica Eje Y", metricas, index=metricas.index("Goles esperados (xG)") if "Goles esperados (xG)" in metricas else 0, key="mx_m_y")
     enf_y = cy2.radio("Enfoque Eje Y", ["A Favor", "En Contra"], horizontal=True, key="mx_enf_y")
 
-    # ── Filtro por fechas puntuales (cruza torneos si hay más de uno cargado) ──
     _multi_torneo = df["Torneo"].nunique() > 1
     _df_fechas = df[["Torneo", "nFecha"]].drop_duplicates().sort_values(["Torneo", "nFecha"])
     _mapa_fechas = {
@@ -1791,7 +1797,6 @@ elif nav == "Radiografía de Equipo":
         d_eq = df[(df["Equipo"] == eq_sel) & (df["Métrica"] == met_p)].sort_values("nFecha")
         
         if not d_eq.empty:
-            # Agregamos la condición (L/V) y las primeras 3 letras del rival en una segunda línea
             d_eq["Etiqueta_X"] = d_eq.apply(
                 lambda r: f"F{r['nFecha']} ({'L' if r['Condicion'] == 'Local' else 'V'})<br><span style='color:#8b8b95'>{str(r['Rival'])[:3].upper()}</span>", 
                 axis=1
@@ -1803,7 +1808,7 @@ elif nav == "Radiografía de Equipo":
                     y=d_eq["Propio"], 
                     name="A Favor", 
                     marker=dict(color=RED, line=dict(width=0)),
-                    customdata=d_eq["Rival"], # Pasamos el nombre completo para el Hover
+                    customdata=d_eq["Rival"], 
                     hovertemplate="<b>%{y:.2f}</b> <span style='font-size:11px; color:#8b8b95'>(vs %{customdata})</span><extra>A Favor</extra>"
                 ), 
                 go.Bar(
@@ -1811,7 +1816,7 @@ elif nav == "Radiografía de Equipo":
                     y=d_eq["Concedido"], 
                     name="En Contra", 
                     marker=dict(color=GRAY, line=dict(width=0)),
-                    customdata=d_eq["Rival"], # Pasamos el nombre completo para el Hover
+                    customdata=d_eq["Rival"], 
                     hovertemplate="<b>%{y:.2f}</b> <span style='font-size:11px; color:#8b8b95'>(vs %{customdata})</span><extra>En Contra</extra>"
                 )
             ])
