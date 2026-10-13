@@ -1309,11 +1309,13 @@ elif nav == "Simulador de Jornada":
         (df_fixture_temp["Métrica"] == "Resultado")
     ].drop_duplicates(subset=["Equipo", "Rival"])
     
+    opciones_rotacion = ["Sin Rotación", "Baja (Sin figura)", "Media (Mixto)", "Alta (Alternativo)"]
+    
     cruces_validos = pd.DataFrame({
-        "Rotación L": False,                             
+        "Rotación L": "Sin Rotación",                             
         "Local": df_fecha_apertura["Rival"].values,      
         "Visitante": df_fecha_apertura["Equipo"].values, 
-        "Rotación V": False                              
+        "Rotación V": "Sin Rotación"                              
     })
     
     c2.write(f"**Partidos de la Fecha {jornada_elegida} (Localías Invertidas para el Clausura)**")
@@ -1321,8 +1323,8 @@ elif nav == "Simulador de Jornada":
     cruces_editados = c2.data_editor(
         cruces_validos,
         column_config={
-            "Rotación L": st.column_config.CheckboxColumn("Rotación 🔄", default=False),
-            "Rotación V": st.column_config.CheckboxColumn("Rotación 🔄", default=False),
+            "Rotación L": st.column_config.SelectboxColumn("Rotación 🔄", options=opciones_rotacion, default="Sin Rotación"),
+            "Rotación V": st.column_config.SelectboxColumn("Rotación 🔄", options=opciones_rotacion, default="Sin Rotación"),
         },
         hide_index=True,
         use_container_width=True
@@ -1335,35 +1337,46 @@ elif nav == "Simulador de Jornada":
             resultados_jornada = []
             resultados_partidos = []
             
+            mapa_penalidades = {
+                "Sin Rotación": (0.0, 0.0, 0.0),
+                "Baja (Sin figura)": (0.12, 0.04, 0.08),  
+                "Media (Mixto)": (0.22, 0.08, 0.15),      
+                "Alta (Alternativo)": (0.45, 0.15, 0.30)  
+            }
+            
             with st.spinner(f"Procesando simulaciones matemáticas para la Fecha {jornada_elegida}..."):
                 for idx, row in cruces_editados.iterrows():
                     ea = row["Local"]
                     eb = row["Visitante"]
-                    rota_local = row["Rotación L"]
-                    rota_visitante = row["Rotación V"]
+                    nivel_rot_l = row["Rotación L"]
+                    nivel_rot_v = row["Rotación V"]
                     
                     if ea == eb: continue
                         
                     la, lb = calcular_lambdas(df, ea, eb, True, tabla)
 
-                    if rota_local: la = max(0.1, la * (1 - PENALIDAD_ROTACION_PCT))
-                    if rota_visitante: lb = max(0.1, lb * (1 - PENALIDAD_ROTACION_PCT))
+                    pen_xg_l, pen_pos_l, pen_tir_l = mapa_penalidades[nivel_rot_l]
+                    pen_xg_v, pen_pos_v, pen_tir_v = mapa_penalidades[nivel_rot_v]
+
+                    if pen_xg_l > 0: la = max(0.1, la * (1 - pen_xg_l))
+                    if pen_xg_v > 0: lb = max(0.1, lb * (1 - pen_xg_v))
 
                     sim = montecarlo(la, lb, rho_dinamico) 
                     M = sim["matrix"]
                     
-                    # CÁLCULOS AGREGADOS: Valla Invicta y Top 3 Marcadores
+                    # CÁLCULOS AGREGADOS: Valla Invicta y Marcador Más Probable
                     clean_sheet_loc = float(M[:, 0].sum())
                     clean_sheet_vis = float(M[0, :].sum())
                     
                     flat_scores = [(M[i, j], i, j) for i in range(M.shape[0]) for j in range(M.shape[1])]
                     flat_scores.sort(reverse=True)
-                    top3_str = " | ".join([f"{i}-{j} ({p*100:.1f}%)" for p, i, j in flat_scores[:3]])
+                    mejor_p, mejor_i, mejor_j = flat_scores[0]
+                    marcador_probable = f"{mejor_i}-{mejor_j} ({mejor_p*100:.1f}%)"
 
                     resultados_partidos.append({
                         "Local": ea, "Visitante": eb,
                         "Prob_Local": sim["victoria"], "Empate": sim["empate"], "Prob_Visitante": sim["derrota"],
-                        "Top_3_Marcadores": top3_str
+                        "Marcador_Probable": marcador_probable
                     })
                     
                     tiros_a, tiros_b = proyectar_metrica(df, ea, eb, "Tiros totales", True, tabla)
@@ -1382,16 +1395,15 @@ elif nav == "Simulador de Jornada":
                     desp_a, desp_b   = proyectar_metrica(df, ea, eb, "Despejes", True, tabla)
                     tda_a, tda_b     = proyectar_metrica(df, ea, eb, "Tiros dentro del área", True, tabla)
 
-                    # CÁLCULO AGREGADO: Ponderación xG + xGOT
                     xg_ajustado_a = (0.65 * la) + (0.35 * xgot_a)
                     xg_ajustado_b = (0.65 * lb) + (0.35 * xgot_b)
 
-                    if rota_local:
-                        pos_a *= (1 - PENALIDAD_ROTACION_POSESION_PCT)
-                        tiros_a *= (1 - PENALIDAD_ROTACION_TIROS_PCT)
-                    if rota_visitante:
-                        pos_b *= (1 - PENALIDAD_ROTACION_POSESION_PCT)
-                        tiros_b *= (1 - PENALIDAD_ROTACION_TIROS_PCT)
+                    if pen_pos_l > 0:
+                        pos_a *= (1 - pen_pos_l)
+                        tiros_a *= (1 - pen_tir_l)
+                    if pen_pos_v > 0:
+                        pos_b *= (1 - pen_pos_v)
+                        tiros_b *= (1 - pen_tir_v)
                     
                     tot_pos = pos_a + pos_b
                     if tot_pos > 0:
@@ -1457,8 +1469,8 @@ elif nav == "Simulador de Jornada":
                     "Prob_Local": "Prob. Victoria Local",
                     "Empate": "Prob. Empate",
                     "Prob_Visitante": "Prob. Victoria Visitante",
-                    "Top_3_Marcadores": "Top 3 Marcadores Probables"
-                })[["Local", "Prob. Victoria Local", "Prob. Empate", "Prob. Victoria Visitante", "Top 3 Marcadores Probables", "Visitante"]]
+                    "Marcador_Probable": "Marcador Más Probable"
+                })[["Local", "Prob. Victoria Local", "Prob. Empate", "Prob. Victoria Visitante", "Marcador Más Probable", "Visitante"]]
                 
                 st.dataframe(
                     df_partidos.style.format({
