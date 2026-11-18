@@ -1568,9 +1568,14 @@ elif nav == "Métricas Globales":
     fechas_disponibles = sorted(df["nFecha"].dropna().unique())
     f_sel = st.multiselect("📅 Filtrar por Fechas (Vacío = Todas las jornadas)", fechas_disponibles, default=[])
     
+    equipos_disponibles = sorted(df["Equipo"].dropna().unique())
+    eq_sel = st.multiselect("🏟 Filtrar por Equipos (Vacío = Todos los equipos)", equipos_disponibles, default=[], key="mg_equipos")
+
     df_filt = df.copy()
     if f_sel:
         df_filt = df_filt[df_filt["nFecha"].isin(f_sel)]
+    if eq_sel:
+        df_filt = df_filt[df_filt["Equipo"].isin(eq_sel)]
     
     cat_ofensivas = ["Tiros totales", "Tiros al arco", "Ocasiones claras", "Tiros dentro del área", "Córners"]
     cat_defensivas = ["Quites", "Intercepciones", "Despejes", "Atajadas del arquero", "Goles evitados (arquero)"]
@@ -1642,6 +1647,14 @@ elif nav == "Matriz de Rendimiento":
         key="mx_fechas",
     )
 
+    equipos_mx_disp = sorted(df["Equipo"].dropna().unique())
+    equipos_mx = st.multiselect(
+        "🏟 Filtrar por Equipos (Vacío = Todos los equipos)",
+        equipos_mx_disp,
+        default=[],
+        key="mx_equipos",
+    )
+
     df_mx = df if cond_sel == "General" else df[df["Condicion"] == cond_sel]
     if fechas_mx:
         _pares = pd.MultiIndex.from_tuples([_mapa_fechas[k] for k in fechas_mx])
@@ -1666,7 +1679,13 @@ elif nav == "Matriz de Rendimiento":
             lbl_x += _sufijo
             lbl_y += _sufijo
 
+        # La media de liga se calcula con todos los equipos; el filtro solo afecta lo que se dibuja
         m_x_mean, m_y_mean = df_e["X_VAL"].mean(), df_e["Y_VAL"].mean()
+        if equipos_mx:
+            df_e = df_e[df_e.index.isin(equipos_mx)]
+        if df_e.empty:
+            st.warning("Los equipos seleccionados no tienen datos para estas métricas y filtros.")
+            st.stop()
         fig = go.Figure(go.Scatter(x=df_e["X_VAL"], y=df_e["Y_VAL"], mode="markers+text", text=df_e.index, textposition="top center", marker=dict(size=14, color=RED, opacity=0.92, line=dict(width=2, color="#0a0a0c")), textfont=dict(family="Manrope", size=11, color="#d4d4da"), hovertemplate=f"<b>%{{text}}</b><br>{lbl_x}: %{{x:.2f}}<br>{lbl_y}: %{{y:.2f}}<extra></extra>"))
         fig.add_vline(x=m_x_mean, line=dict(color=GRAY, dash="dash", width=1), annotation_text="Media liga", annotation_position="top", annotation_font=dict(size=10, color="#6b6b75"))
         fig.add_hline(y=m_y_mean, line=dict(color=GRAY, dash="dash", width=1), annotation_text="Media liga", annotation_position="right", annotation_font=dict(size=10, color="#6b6b75"))
